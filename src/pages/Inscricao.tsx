@@ -35,7 +35,7 @@ const schema = z
     responsavelNome: z.string().optional(),
     responsavelTelefone: z.string().optional(),
     areas: z.array(z.enum(['elenco', 'staff', 'figurino', 'tecnica'])).min(1, 'Selecione ao menos uma área'),
-    dias: z.array(z.enum(['seg', 'ter', 'qua', 'qui', 'sex', 'sab'])).min(3, 'Selecione pelo menos 3 dias'),
+    dias: z.array(z.enum(['seg', 'ter', 'qua', 'qui', 'sex', 'sab'])),
     disponibilidadeObs: z.string().optional(),
     indisponibilidade: z.array(z.string()).optional(),
     observacoes: z.string().optional(),
@@ -48,6 +48,10 @@ const schema = z
       if (!data.responsavelTelefone || data.responsavelTelefone.length < 14) {
         ctx.addIssue({ code: 'custom', path: ['responsavelTelefone'], message: 'Telefone do responsável incompleto' })
       }
+    }
+    // Disponibilidade mínima de 3 dias só é exigida de quem se candidata ao elenco.
+    if (data.areas.includes('elenco') && data.dias.length < 3) {
+      ctx.addIssue({ code: 'custom', path: ['dias'], message: 'Elenco precisa de pelo menos 3 dias de disponibilidade' })
     }
   })
 
@@ -83,6 +87,7 @@ export function Inscricao() {
     watch,
     setValue,
     reset,
+    trigger,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -121,11 +126,15 @@ export function Inscricao() {
 
   const areas = watch('areas')
   const dias = watch('dias')
+  const requiresMinDias = areas.includes('elenco')
+  // Depois de confirmada, só dá pra atualizar dados pessoais — área/disponibilidade ficam travadas.
+  const isConfirmed = inscricao?.status === 'confirmado'
   const indisponibilidade = watch('indisponibilidade') ?? []
   const menorDeIdade = watch('menorDeIdade')
 
   function toggleArea(area: Area) {
     setValue('areas', areas.includes(area) ? areas.filter(a => a !== area) : [...areas, area], { shouldValidate: true })
+    trigger('dias')
   }
 
   function toggleDia(dia: DiaSemana) {
@@ -324,68 +333,72 @@ export function Inscricao() {
               </div>
             )}
 
-            <div>
-              <Label>Áreas de interesse</Label>
-              <div className="grid grid-cols-2 gap-2.5 mt-2">
-                {AREAS.map(area => {
-                  const Icon = AREA_ICONS[area]
-                  const selected = areas.includes(area)
-                  return (
-                    <button
-                      key={area}
-                      type="button"
-                      onClick={() => toggleArea(area)}
-                      className={cn(
-                        'flex items-center gap-2.5 rounded-xl border px-4 py-3 text-base text-left transition-colors',
-                        selected ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-gray-300 bg-white text-gray-700',
-                      )}
-                    >
-                      <Icon className="h-5 w-5 shrink-0" />
-                      {AREA_LABELS[area]}
-                    </button>
-                  )
-                })}
-              </div>
-              {errors.areas && <p className="text-xs text-red-600 mt-1">{errors.areas.message}</p>}
-            </div>
+            {!isConfirmed && (
+              <>
+                <div>
+                  <Label>Áreas de interesse</Label>
+                  <div className="grid grid-cols-2 gap-2.5 mt-2">
+                    {AREAS.map(area => {
+                      const Icon = AREA_ICONS[area]
+                      const selected = areas.includes(area)
+                      return (
+                        <button
+                          key={area}
+                          type="button"
+                          onClick={() => toggleArea(area)}
+                          className={cn(
+                            'flex items-center gap-2.5 rounded-xl border px-4 py-3 text-base text-left transition-colors',
+                            selected ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-gray-300 bg-white text-gray-700',
+                          )}
+                        >
+                          <Icon className="h-5 w-5 shrink-0" />
+                          {AREA_LABELS[area]}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {errors.areas && <p className="text-xs text-red-600 mt-1">{errors.areas.message}</p>}
+                </div>
 
-            <div>
-              <Label>Disponibilidade (dias da semana, mínimo 3)</Label>
-              <div className="grid grid-cols-6 gap-1.5 mt-2">
-                {DIAS.map(dia => (
-                  <button
-                    key={dia}
-                    type="button"
-                    onClick={() => toggleDia(dia)}
-                    className={cn(
-                      'rounded-lg border py-2.5 text-sm font-medium transition-colors',
-                      dias.includes(dia) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
-                    )}
-                  >
-                    {DIA_SEMANA_LABELS[dia]}
-                  </button>
-                ))}
-              </div>
-              <p className="text-sm text-gray-500 mt-1">{dias.length} de 3 selecionados</p>
-              {errors.dias && <p className="text-xs text-red-600 mt-1">{errors.dias.message}</p>}
-            </div>
+                <div>
+                  <Label>Disponibilidade (dias da semana{requiresMinDias ? ', mínimo 3' : ''})</Label>
+                  <div className="grid grid-cols-6 gap-1.5 mt-2">
+                    {DIAS.map(dia => (
+                      <button
+                        key={dia}
+                        type="button"
+                        onClick={() => toggleDia(dia)}
+                        className={cn(
+                          'rounded-lg border py-2.5 text-sm font-medium transition-colors',
+                          dias.includes(dia) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                        )}
+                      >
+                        {DIA_SEMANA_LABELS[dia]}
+                      </button>
+                    ))}
+                  </div>
+                  {requiresMinDias && <p className="text-sm text-gray-500 mt-1">{dias.length} de 3 selecionados</p>}
+                  {requiresMinDias && errors.dias && <p className="text-xs text-red-600 mt-1">{errors.dias.message}</p>}
+                </div>
 
-            <div>
-              <Label htmlFor="disponibilidadeObs">Observação sobre disponibilidade (opcional)</Label>
-              <Input id="disponibilidadeObs" placeholder="Ex: só à noite, depois das 19h" {...register('disponibilidadeObs')} />
-            </div>
+                <div>
+                  <Label htmlFor="disponibilidadeObs">Observação sobre disponibilidade (opcional)</Label>
+                  <Input id="disponibilidadeObs" placeholder="Ex: só à noite, depois das 19h" {...register('disponibilidadeObs')} />
+                </div>
 
-            <div>
-              <Label>Datas em que você NÃO pode (opcional)</Label>
-              <div className="mt-1.5">
-                <DateMultiSelect value={indisponibilidade} onChange={dates => setValue('indisponibilidade', dates)} />
-              </div>
-            </div>
+                <div>
+                  <Label>Datas em que você NÃO pode (opcional)</Label>
+                  <div className="mt-1.5">
+                    <DateMultiSelect value={indisponibilidade} onChange={dates => setValue('indisponibilidade', dates)} />
+                  </div>
+                </div>
 
-            <div>
-              <Label htmlFor="observacoes">Alguma observação? (opcional)</Label>
-              <Input id="observacoes" placeholder="Experiência anterior, restrições, etc." {...register('observacoes')} />
-            </div>
+                <div>
+                  <Label htmlFor="observacoes">Alguma observação? (opcional)</Label>
+                  <Input id="observacoes" placeholder="Experiência anterior, restrições, etc." {...register('observacoes')} />
+                </div>
+              </>
+            )}
 
             <div className="flex flex-col gap-2">
               {inscricao && (
@@ -393,7 +406,7 @@ export function Inscricao() {
                   Cancelar
                 </Button>
               )}
-              <Button type="submit" className="w-full" disabled={submitting || dias.length < 3}>
+              <Button type="submit" className="w-full" disabled={submitting || (!isConfirmed && requiresMinDias && dias.length < 3)}>
                 {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 {submitting ? 'Enviando...' : inscricao ? 'Salvar alterações' : 'Enviar inscrição'}
               </Button>

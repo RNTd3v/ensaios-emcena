@@ -1,0 +1,176 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-background: hsl(140 20% 96%);
+  --color-foreground: hsl(150 25% 10%);
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(150 25% 10%);
+  --color-primary: #7b467f;
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-accent: hsl(4 72% 48%);
+  --color-accent-foreground: hsl(0 0% 100%);
+  --color-muted: hsl(140 16% 92%);
+  --color-muted-foreground: hsl(150 10% 40%);
+  --color-border: hsl(140 14% 86%);
+  --color-input: hsl(140 16% 92%);
+  --color-destructive: hsl(4 72% 48%);
+  --color-success: hsl(150 65% 30%);
+  --color-sidebar: hsl(0 0% 100%);
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1.5rem;
+}
+
+.dark {
+  --color-background: hsl(150 22% 8%);
+  --color-foreground: hsl(140 20% 95%);
+  --color-card: hsl(150 20% 12%);
+  --color-card-foreground: hsl(140 20% 95%);
+  --color-primary: #9c5da0;
+  --color-primary-foreground: hsl(0 0% 100%);
+  --color-accent: hsl(4 72% 58%);
+  --color-accent-foreground: hsl(0 0% 100%);
+  --color-muted: hsl(150 16% 17%);
+  --color-muted-foreground: hsl(140 10% 65%);
+  --color-border: hsl(150 14% 22%);
+  --color-input: hsl(150 16% 17%);
+  --color-destructive: hsl(4 72% 58%);
+  --color-success: hsl(150 55% 48%);
+  --color-sidebar: hsl(150 22% 10%);
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family:
+      'Inter',
+      system-ui,
+      -apple-system,
+      sans-serif;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  #root {
+    min-height: 100svh;
+  }
+}
+
+select option {
+  background-color: #ffffff;
+  color: #111827;
+}
+
+.dark select option {
+  background-color: hsl(150 20% 15%);
+  color: hsl(140 20% 95%);
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(140 13% 78%);
+  border-radius: 2px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: hsl(150 12% 30%);
+}
+
+.header-page {
+  padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  padding-bottom: 0.75rem;
+  min-height: calc(61px + env(safe-area-inset-top, 0px));
+}
+
+@keyframes breathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+.animate-breathe {
+  animation: breathe 1.2s ease-in-out infinite;
+}
+
+/* Cards de destaque no estilo "presente de Natal" da referência: gradiente + neve sutil */
+.hero-card {
+  position: relative;
+  border-radius: 1.75rem;
+  color: white;
+  overflow: hidden;
+  box-shadow: 0 16px 32px -12px rgb(0 0 0 / 0.35);
+}
+
+.hero-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgb(255 255 255 / 0.35) 1px, transparent 1px);
+  background-size: 16px 16px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.hero-card-green {
+  background: linear-gradient(160deg, hsl(150 60% 26%), hsl(150 70% 12%));
+}
+
+.hero-card-red {
+  background: linear-gradient(160deg, hsl(4 78% 54%), hsl(350 70% 34%));
+}
+
+.dark .hero-card-green {
+  background: linear-gradient(160deg, hsl(150 55% 20%), hsl(150 70% 8%));
+}
+
+.dark .hero-card-red {
+  background: linear-gradient(160deg, hsl(4 70% 42%), hsl(350 65% 22%));
+}
+
+.font-script {
+  font-family: 'Caveat', cursive;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.snow-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.18);
+  backdrop-filter: blur(4px);
+  padding: 0.3rem 0.65rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: white;
+  white-space: nowrap;
+}
+
+/* Evita que o autofill do navegador (ex: campo "nome") sobrescreva o fundo dos inputs. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:autofill {
+  -webkit-text-fill-color: black !important;
+  caret-color: black;
+  -webkit-box-shadow: 0 0 0px 1000px #f9fafb inset !important;
+  box-shadow: 0 0 0px 1000px #f9fafb inset !important;
+  background-color: #f9fafb !important;
+  transition: background-color 9999s ease-in-out 0s;
+}

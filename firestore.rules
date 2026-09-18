@@ -1,0 +1,53 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: usuário autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && userDoc().role == 'admin';
+    }
+
+    // Inscrito com acesso ativo (não revogado)
+    function isActiveParticipant() {
+      return isAuthenticated() && userDoc().active == true;
+    }
+
+    // Usuários: o próprio usuário sempre pode ler seu documento (inclusive antes de existir,
+    // ensureUserDoc verifica existência antes de criar, no primeiro login). Admin lê todos.
+    match /users/{userId} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      // Criação automática no primeiro login (ensureUserDoc), sempre como 'participante' e ativo
+      allow create: if isAuthenticated()
+        && request.auth.uid == userId
+        && request.resource.data.role == 'participante'
+        && request.resource.data.active == true;
+      // Promover a admin, revogar acesso (active=false) etc: só admin
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Inscrições: cada participante só vê/edita a própria; admin vê e gerencia todas.
+    // Só pode criar/editar enquanto o acesso estiver ativo (não revogado).
+    match /inscricoes/{userId} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      allow list: if isAdmin();
+      allow create, update: if isAuthenticated() && request.auth.uid == userId && isActiveParticipant();
+      allow delete: if isAdmin();
+    }
+
+    // Configurações do espetáculo (nome, pôster, data): leitura pública, escrita só admin
+    match /settings/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

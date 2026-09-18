@@ -1,4 +1,4 @@
-import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth'
+import { GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth'
 import { doc, getDoc, getDocs, collection, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { auth, db } from './config'
 import type { AppUser, UserRole } from '@/types'
@@ -16,6 +16,19 @@ export async function loginWithGoogle() {
     const code = (err as { code?: string }).code
     if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
       return signInWithRedirect(auth, new GoogleAuthProvider())
+    }
+    throw err
+  }
+}
+
+export async function loginWithMicrosoft() {
+  const provider = new OAuthProvider('microsoft.com')
+  try {
+    return await signInWithPopup(auth, provider)
+  } catch (err) {
+    const code = (err as { code?: string }).code
+    if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+      return signInWithRedirect(auth, provider)
     }
     throw err
   }

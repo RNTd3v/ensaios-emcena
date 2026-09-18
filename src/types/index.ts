@@ -14,9 +14,9 @@ export type Area = 'elenco' | 'staff' | 'figurino' | 'tecnica'
 
 export const AREA_LABELS: Record<Area, string> = {
   elenco: 'Elenco',
-  staff: 'Staff / Produção',
+  staff: 'Staff',
   figurino: 'Figurino',
-  tecnica: 'Técnica (som/luz)',
+  tecnica: 'Técnica',
 }
 
 export type DiaSemana = 'seg' | 'ter' | 'qua' | 'qui' | 'sex' | 'sab'

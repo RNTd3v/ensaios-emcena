@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PublicHero } from '@/components/layout/PublicHero'
-import { loginWithGoogle } from '@/services/firebase/auth'
+import { loginWithGoogle, loginWithMicrosoft } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 
@@ -15,10 +15,24 @@ function GoogleIcon() {
   )
 }
 
+// Login com Microsoft já implementado, mas escondido até o app OAuth estar configurado no Azure/Firebase.
+const MICROSOFT_LOGIN_ENABLED = false
+
+function MicrosoftIcon() {
+  return (
+    <svg viewBox="0 0 23 23" className="h-4 w-4" aria-hidden="true">
+      <rect x="1" y="1" width="10" height="10" fill="#f25022" />
+      <rect x="12" y="1" width="10" height="10" fill="#7fba00" />
+      <rect x="1" y="12" width="10" height="10" fill="#00a4ef" />
+      <rect x="12" y="12" width="10" height="10" fill="#ffb900" />
+    </svg>
+  )
+}
+
 export function Login() {
   const { user, initialized, redirectError } = useAuthStore()
   const { settings, loaded, refresh } = useSettingsStore()
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState<'google' | 'microsoft' | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -29,13 +43,25 @@ export function Login() {
 
   async function handleGoogleLogin() {
     setError('')
-    setLoading(true)
+    setLoading('google')
     try {
       await loginWithGoogle()
     } catch {
       setError('Não foi possível entrar com o Google. Tente novamente.')
     } finally {
-      setLoading(false)
+      setLoading(null)
+    }
+  }
+
+  async function handleMicrosoftLogin() {
+    setError('')
+    setLoading('microsoft')
+    try {
+      await loginWithMicrosoft()
+    } catch {
+      setError('Não foi possível entrar com a Microsoft. Tente novamente.')
+    } finally {
+      setLoading(null)
     }
   }
 
@@ -61,12 +87,24 @@ export function Login() {
         <Button
           size="lg"
           onClick={handleGoogleLogin}
-          disabled={loading}
+          disabled={loading !== null}
           className="gap-2 rounded-full border border-white/30 bg-white/15 px-8 text-white backdrop-blur-md hover:bg-white/25"
         >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
+          {loading === 'google' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
           Entrar com Google
         </Button>
+
+        {MICROSOFT_LOGIN_ENABLED && (
+          <Button
+            size="lg"
+            onClick={handleMicrosoftLogin}
+            disabled={loading !== null}
+            className="gap-2 rounded-full border border-white/30 bg-white/15 px-8 text-white backdrop-blur-md hover:bg-white/25"
+          >
+            {loading === 'microsoft' ? <Loader2 className="h-4 w-4 animate-spin" /> : <MicrosoftIcon />}
+            Entrar com Microsoft
+          </Button>
+        )}
       </div>
     </PublicHero>
   )

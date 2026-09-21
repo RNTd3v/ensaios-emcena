@@ -7,8 +7,20 @@ import { RefreshCw } from 'lucide-react'
  * se o bundle antigo travar antes de renderizar (ex: chave de API quebrada num deploy anterior),
  * o usuário nunca veria um botão "Atualizar" pra clicar.
  */
+const UPDATE_CHECK_INTERVAL_MS = 60 * 1000
+
 export function PWAUpdatePrompt() {
-  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
+  const {
+    needRefresh: [needRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    // Sem isso, o navegador só reconfere o service worker em navegações/reloads — num PWA
+    // instalado que fica aberto, isso pode nunca acontecer. Checa de tempos em tempos também.
+    onRegisteredSW(_url, registration) {
+      if (!registration) return
+      setInterval(() => registration.update(), UPDATE_CHECK_INTERVAL_MS)
+    },
+  })
 
   useEffect(() => {
     if (needRefresh) updateServiceWorker(true)

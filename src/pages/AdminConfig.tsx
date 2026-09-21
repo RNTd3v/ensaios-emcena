@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, Check, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/Textarea'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { saveSettings } from '@/services/firebase/settings'
@@ -67,6 +68,14 @@ export function AdminConfig() {
             <div>
               <Label htmlFor="callToActionText">Texto do botão de inscrição</Label>
               <Input id="callToActionText" placeholder="Quero participar" {...register('callToActionText')} />
+            </div>
+            <div>
+              <Label htmlFor="welcomeMessage">Mensagem de boas-vindas (Home)</Label>
+              <Textarea
+                id="welcomeMessage"
+                placeholder="Obrigado por participar desse musical!"
+                {...register('welcomeMessage')}
+              />
             </div>
           </CardContent>
         </Card>

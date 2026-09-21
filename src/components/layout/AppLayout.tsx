@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { CalendarDays, ClipboardList, LogOut, Menu, ShieldCheck, Users, X } from 'lucide-react'
+import { CalendarDays, ClipboardList, Home, LogOut, Menu, ShieldCheck, Users, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -8,7 +8,10 @@ import { useSelectionStore } from '@/stores/selectionStore'
 import { PhoneMockup } from '@/components/layout/PhoneMockup'
 import { cn } from '@/lib/utils'
 
-const NAV_ITEMS = [{ to: '/', label: 'Minha inscrição', icon: ClipboardList, end: true }]
+const NAV_ITEMS = [
+  { to: '/', label: 'Início', icon: Home, end: true },
+  { to: '/inscricao', label: 'Minha inscrição', icon: ClipboardList, end: true },
+]
 
 export function AppLayout() {
   const user = useAuthStore(s => s.user)

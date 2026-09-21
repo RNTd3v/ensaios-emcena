@@ -6,6 +6,7 @@ import { AdminGuard } from '@/components/layout/AdminGuard'
 import { AdminOrLiderGuard } from '@/components/layout/AdminOrLiderGuard'
 import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt'
 import { Login } from '@/pages/Login'
+import { Home } from '@/pages/Home'
 import { Inscricao } from '@/pages/Inscricao'
 import { Admin } from '@/pages/Admin'
 import { AdminConfig } from '@/pages/AdminConfig'
@@ -32,7 +33,8 @@ function App() {
             </AuthGuard>
           }
         >
-          <Route index element={<Inscricao />} />
+          <Route index element={<Home />} />
+          <Route path="inscricao" element={<Inscricao />} />
           <Route
             path="admin"
             element={

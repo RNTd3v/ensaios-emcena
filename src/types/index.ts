@@ -107,5 +107,7 @@ export interface AppSettings {
   internalBgUrl?: string
   eventDate?: string // YYYY-MM-DD
   callToActionText?: string
+  /** Mensagem de boas-vindas exibida na Home, personalizável pelo admin. */
+  welcomeMessage?: string
   updatedAt?: string
 }

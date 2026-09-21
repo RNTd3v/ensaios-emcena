@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   internalBgUrl: '/bg-interno.jpg',
   eventDate: '',
   callToActionText: 'Quero participar',
+  welcomeMessage: 'Sua participação na Vila é um presente. Que o Senhor use você pra levar esperança e transformar vidas através dessa história.',
 }
 
 export async function getSettings(): Promise<AppSettings> {

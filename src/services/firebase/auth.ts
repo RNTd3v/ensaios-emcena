@@ -76,6 +76,7 @@ export async function getUsers(): Promise<AppUser[]> {
   })
 }
 
+/** Atualiza o perfil (role) de um usuário. */
 export async function updateUserRole(uid: string, role: UserRole): Promise<void> {
   await updateDoc(doc(db, 'users', uid), { role })
 }

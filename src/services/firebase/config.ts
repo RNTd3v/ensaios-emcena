@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
-import { getFirestore } from 'firebase/firestore'
+import { initializeFirestore, persistentLocalCache, persistentSingleTabManager } from 'firebase/firestore'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -13,4 +13,13 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
-export const db = getFirestore(app)
+/**
+ * `experimentalAutoDetectLongPolling` evita o erro "Could not reach Cloud Firestore backend" em
+ * redes que bloqueiam o streaming WebChannel (proxies corporativos, alguns VPNs/Wi-Fi público):
+ * o SDK detecta isso e cai para long polling automaticamente. `persistentLocalCache` mantém um
+ * cache em IndexedDB para que leituras já feitas sobrevivam a quedas momentâneas de conexão.
+ */
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) }),
+  experimentalAutoDetectLongPolling: true,
+})

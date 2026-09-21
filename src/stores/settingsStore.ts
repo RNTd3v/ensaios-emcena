@@ -12,7 +12,12 @@ export const useSettingsStore = create<SettingsState>(set => ({
   settings: DEFAULT_SETTINGS,
   loaded: false,
   refresh: async () => {
-    const settings = await getSettings()
-    set({ settings, loaded: true })
+    try {
+      const settings = await getSettings()
+      set({ settings, loaded: true })
+    } catch (err) {
+      console.error('[settings] Falha ao carregar configurações, usando padrão:', err)
+      set({ loaded: true })
+    }
   },
 }))

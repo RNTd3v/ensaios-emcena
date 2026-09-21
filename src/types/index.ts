@@ -1,4 +1,23 @@
-export type UserRole = 'admin' | 'participante'
+export type Area = 'elenco' | 'staff' | 'figurino' | 'tecnica'
+
+export const AREA_LABELS: Record<Area, string> = {
+  elenco: 'Elenco',
+  staff: 'Staff',
+  figurino: 'Figurino',
+  tecnica: 'Técnica',
+}
+
+/**
+ * 'lider' ainda não tem escopo (núcleo/área/seção) associado — é só a marcação de perfil.
+ * O escopo (onde essa pessoa lidera) virá com a estrutura de atribuições, quando núcleo existir.
+ */
+export type UserRole = 'admin' | 'participante' | 'lider'
+
+export const USER_ROLE_LABELS: Record<UserRole, string> = {
+  admin: 'Admin',
+  participante: 'Participante',
+  lider: 'Líder',
+}
 
 export interface AppUser {
   uid: string
@@ -8,15 +27,6 @@ export interface AppUser {
   role: UserRole
   active: boolean
   createdAt: string
-}
-
-export type Area = 'elenco' | 'staff' | 'figurino' | 'tecnica'
-
-export const AREA_LABELS: Record<Area, string> = {
-  elenco: 'Elenco',
-  staff: 'Staff',
-  figurino: 'Figurino',
-  tecnica: 'Técnica',
 }
 
 export type DiaSemana = 'seg' | 'ter' | 'qua' | 'qui' | 'sex' | 'sab'

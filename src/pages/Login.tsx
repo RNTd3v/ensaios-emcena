@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PublicHero } from '@/components/layout/PublicHero'
 import { loginWithGoogle, loginWithMicrosoft } from '@/services/firebase/auth'
-import { useAuthStore } from '@/stores/authStore'
+import { useAuthStore, retryLoadProfile } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 
 function GoogleIcon() {
@@ -30,7 +30,7 @@ function MicrosoftIcon() {
 }
 
 export function Login() {
-  const { user, initialized, redirectError } = useAuthStore()
+  const { user, initialized, redirectError, retrying } = useAuthStore()
   const { settings, loaded, refresh } = useSettingsStore()
   const [loading, setLoading] = useState<'google' | 'microsoft' | null>(null)
   const [error, setError] = useState('')
@@ -82,7 +82,22 @@ export function Login() {
       cardClassName="mx-4 space-y-4"
     >
       <div className="space-y-4 text-center">
-        {(error || redirectError) && <p className="text-sm text-white bg-black/40 rounded-lg px-3 py-2">{error || redirectError}</p>}
+        {(error || redirectError) && (
+          <div className="space-y-2">
+            <p className="text-sm text-white bg-black/40 rounded-lg px-3 py-2">{error || redirectError}</p>
+            {redirectError && (
+              <Button
+                variant="outline"
+                onClick={() => retryLoadProfile()}
+                disabled={retrying}
+                className="gap-2 rounded-full border-white/30 bg-white/10 text-white hover:bg-white/20"
+              >
+                {retrying && <Loader2 className="h-4 w-4 animate-spin" />}
+                Tentar novamente
+              </Button>
+            )}
+          </div>
+        )}
 
         <Button
           size="lg"

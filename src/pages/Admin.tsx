@@ -10,8 +10,17 @@ import { Dialog } from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/Spinner'
 import { Avatar } from '@/components/ui/Avatar'
 import { subscribeToAllInscricoes, updateInscricaoStatus } from '@/services/firebase/inscricoes'
-import { getUsers, setUserActive } from '@/services/firebase/auth'
-import { AREA_LABELS, DIA_SEMANA_LABELS, type AppUser, type Area, type Inscricao, type InscricaoStatus } from '@/types'
+import { getUsers, setUserActive, updateUserRole } from '@/services/firebase/auth'
+import {
+  AREA_LABELS,
+  DIA_SEMANA_LABELS,
+  USER_ROLE_LABELS,
+  type AppUser,
+  type Area,
+  type Inscricao,
+  type InscricaoStatus,
+  type UserRole,
+} from '@/types'
 import { whatsappLink } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 
@@ -56,15 +65,20 @@ export function Admin() {
     setUsers(prev => ({ ...prev, [uid]: { ...prev[uid], active } }))
   }
 
+  async function handleRoleChange(uid: string, role: UserRole) {
+    await updateUserRole(uid, role)
+    setUsers(prev => ({ ...prev, [uid]: { ...prev[uid], role } }))
+  }
+
   return (
     <div
       className="space-y-4"
     >
       <div className="flex items-start justify-between pb-4 border-b border-white/30">
         <div>
-          <h1 className="text-xl font-semibold text-white">Inscritos</h1>
+          <h1 className="text-xl font-semibold text-white">Participantes</h1>
           <Badge variant="outline" className="bg-white/10 text-white border-white/30 text-xs px-2 py-0.5 mt-1.5">
-            Total de inscritos: {inscricoes?.length ?? 0}
+            Total de participantes: {inscricoes?.length ?? 0}
           </Badge>
         </div>
         <Link to="/admin/config">
@@ -301,6 +315,20 @@ export function Admin() {
                 <option value="pendente">Pendente</option>
                 <option value="confirmado">Confirmado</option>
                 <option value="recusado">Recusado</option>
+              </Select>
+            </div>
+
+            <div>
+              <p className="text-sm text-muted-foreground mb-1.5">Perfil</p>
+              <Select
+                value={users[selected.uid]?.role ?? 'participante'}
+                onChange={e => handleRoleChange(selected.uid, e.target.value as UserRole)}
+              >
+                {(Object.keys(USER_ROLE_LABELS) as UserRole[]).map(r => (
+                  <option key={r} value={r}>
+                    {USER_ROLE_LABELS[r]}
+                  </option>
+                ))}
               </Select>
             </div>
 

@@ -11,6 +11,7 @@ import { Admin } from '@/pages/Admin'
 import { AdminConfig } from '@/pages/AdminConfig'
 import { EmConstrucao } from '@/pages/EmConstrucao'
 import { Elencos } from '@/pages/Elencos'
+import { Disponibilidade } from '@/pages/Disponibilidade'
 import { initAuth } from '@/stores/authStore'
 
 function App() {
@@ -61,6 +62,14 @@ function App() {
             element={
               <AdminOrLiderGuard>
                 <Elencos />
+              </AdminOrLiderGuard>
+            }
+          />
+          <Route
+            path="disponibilidade"
+            element={
+              <AdminOrLiderGuard>
+                <Disponibilidade />
               </AdminOrLiderGuard>
             }
           />

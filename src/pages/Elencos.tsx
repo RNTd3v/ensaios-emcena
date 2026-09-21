@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Check, Clock, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, Clock, Pencil, Plus, SlidersHorizontal, Star, Trash2 } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,17 +11,13 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
-import { getUsers } from '@/services/firebase/auth'
+import { getUsers, updateUserRole } from '@/services/firebase/auth'
 import { createElenco, deleteElenco, subscribeToElencos, updateElenco, type ElencoInput } from '@/services/firebase/elencos'
 import { useAuthStore } from '@/stores/authStore'
 import { DIA_SEMANA_LABELS, type AppUser, type DiaSemana, type Elenco, type Inscricao } from '@/types'
+import { DIAS_ORDER, sortDias } from '@/lib/dias'
+import { formatElencoHorario } from '@/lib/elencoHorario'
 import { cn } from '@/lib/utils'
-
-const DIAS_ORDER = Object.keys(DIA_SEMANA_LABELS) as DiaSemana[]
-
-function sortDias(dias: DiaSemana[]): DiaSemana[] {
-  return [...dias].sort((a, b) => DIAS_ORDER.indexOf(a) - DIAS_ORDER.indexOf(b))
-}
 
 export function Elencos() {
   const currentUser = useAuthStore(s => s.user)
@@ -30,13 +26,21 @@ export function Elencos() {
   const [users, setUsers] = useState<Record<string, AppUser>>({})
   const [search, setSearch] = useState('')
 
+  const [nomeFilter, setNomeFilter] = useState('')
+  const [pessoaFilter, setPessoaFilter] = useState('')
+  const [diaFilterList, setDiaFilterList] = useState<DiaSemana[]>([])
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const hasActiveFilters = pessoaFilter.trim() !== '' || diaFilterList.length > 0
+
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [nome, setNome] = useState('')
   const [participantesUids, setParticipantesUids] = useState<Set<string>>(new Set())
   const [liderUid, setLiderUid] = useState('')
   const [dias, setDias] = useState<DiaSemana[]>([])
+  const [horarioMode, setHorarioMode] = useState<'comum' | 'porDia'>('comum')
   const [horario, setHorario] = useState('')
+  const [horariosPorDia, setHorariosPorDia] = useState<Partial<Record<DiaSemana, string>>>({})
   const [observacao, setObservacao] = useState('')
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
@@ -60,6 +64,22 @@ export function Elencos() {
   function nameFor(uid: string) {
     return inscricoesByUid[uid]?.apelido || inscricoesByUid[uid]?.nomeCompleto || users[uid]?.displayName || 'Sem nome'
   }
+
+  function toggleDiaFilterList(dia: DiaSemana) {
+    setDiaFilterList(prev => (prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]))
+  }
+
+  const filteredElencos = useMemo(() => {
+    return (elencos ?? []).filter(elenco => {
+      if (nomeFilter.trim() && !elenco.nome.toLowerCase().includes(nomeFilter.trim().toLowerCase())) return false
+      if (diaFilterList.length > 0 && !elenco.dias.some(d => diaFilterList.includes(d))) return false
+      if (pessoaFilter.trim()) {
+        const term = pessoaFilter.trim().toLowerCase()
+        if (!elenco.participantes.some(uid => nameFor(uid).toLowerCase().includes(term))) return false
+      }
+      return true
+    })
+  }, [elencos, nomeFilter, diaFilterList, pessoaFilter, inscricoesByUid, users])
 
   const filteredParticipantes = useMemo(() => {
     if (!inscricoes) return []
@@ -87,7 +107,9 @@ export function Elencos() {
     setParticipantesUids(new Set())
     setLiderUid(currentUser?.role === 'lider' ? currentUser.uid : '')
     setDias([])
+    setHorarioMode('comum')
     setHorario('')
+    setHorariosPorDia({})
     setObservacao('')
     setSearch('')
     setFormError('')
@@ -100,7 +122,9 @@ export function Elencos() {
     setParticipantesUids(new Set(elenco.participantes))
     setLiderUid(elenco.liderUid ?? '')
     setDias(elenco.dias)
-    setHorario(elenco.horario)
+    setHorarioMode(elenco.horarios ? 'porDia' : 'comum')
+    setHorario(elenco.horario ?? '')
+    setHorariosPorDia(elenco.horarios ?? {})
     setObservacao(elenco.observacao ?? '')
     setSearch('')
     setFormError('')
@@ -108,8 +132,16 @@ export function Elencos() {
   }
 
   async function handleSave() {
-    if (!nome.trim() || dias.length === 0 || !horario || participantesUids.size === 0) {
-      setFormError('Preencha nome, participantes, dia(s) e horário.')
+    if (!nome.trim() || dias.length === 0 || participantesUids.size === 0) {
+      setFormError('Preencha nome, participantes e dia(s).')
+      return
+    }
+    if (horarioMode === 'comum' && !horario) {
+      setFormError('Preencha o horário.')
+      return
+    }
+    if (horarioMode === 'porDia' && dias.some(d => !horariosPorDia[d])) {
+      setFormError('Preencha o horário de todos os dias selecionados.')
       return
     }
     setSaving(true)
@@ -119,12 +151,17 @@ export function Elencos() {
       participantes: [...participantesUids],
       liderUid: liderUid || undefined,
       dias,
-      horario,
+      horario: horarioMode === 'comum' ? horario : undefined,
+      horarios: horarioMode === 'porDia' ? Object.fromEntries(dias.map(d => [d, horariosPorDia[d]])) : undefined,
       observacao: observacao.trim() || undefined,
     }
     try {
       if (editingId) await updateElenco(editingId, input)
       else await createElenco(input)
+      if (liderUid && (users[liderUid]?.role ?? 'participante') === 'participante') {
+        await updateUserRole(liderUid, 'lider')
+        setUsers(prev => ({ ...prev, [liderUid]: { ...prev[liderUid], role: 'lider' } }))
+      }
       setModalOpen(false)
     } catch {
       setFormError('Não foi possível salvar. Tente de novo.')
@@ -158,6 +195,20 @@ export function Elencos() {
         </Button>
       </div>
 
+      <div className="flex gap-2">
+        <Input placeholder="Buscar por nome do elenco" value={nomeFilter} onChange={e => setNomeFilter(e.target.value)} className="flex-1" />
+        <Button
+          variant="outline"
+          size="icon"
+          title="Filtros"
+          onClick={() => setFiltersOpen(true)}
+          className="relative border-white/40 bg-white/10 text-white hover:bg-white/20 shrink-0"
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+          {hasActiveFilters && <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary border-2 border-white" />}
+        </Button>
+      </div>
+
       {!elencos && (
         <div className="flex justify-center py-10">
           <Spinner />
@@ -170,8 +221,14 @@ export function Elencos() {
         </Card>
       )}
 
+      {elencos && elencos.length > 0 && filteredElencos.length === 0 && (
+        <Card>
+          <CardContent className="text-center text-sm text-muted-foreground py-6">Nenhum elenco encontrado com esse filtro.</CardContent>
+        </Card>
+      )}
+
       <div className="space-y-2">
-        {(elencos ?? []).map(elenco => (
+        {filteredElencos.map(elenco => (
           <Card key={elenco.id} className="p-0">
             <CardContent className="px-4 py-3 space-y-2.5">
               <div className="flex items-start justify-between gap-2">
@@ -190,14 +247,22 @@ export function Elencos() {
               </div>
 
               <div className="flex -space-x-2">
-                {elenco.participantes.slice(0, 8).map(uid => (
-                  <Avatar
-                    key={uid}
-                    photoURL={users[uid]?.photoURL}
-                    name={nameFor(uid)}
-                    className="h-7 w-7 text-[10px] ring-2 ring-white"
-                  />
-                ))}
+                {elenco.participantes.slice(0, 8).map(uid => {
+                  const isLider = uid === elenco.liderUid
+                  return (
+                    <div key={uid} className={cn('relative', isLider && 'z-10')}>
+                      <Avatar photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-7 w-7 text-[10px] ring-2 ring-white" />
+                      {isLider && (
+                        <span
+                          title="Líder"
+                          className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-white ring-2 ring-white"
+                        >
+                          <Star className="h-2 w-2 fill-current" />
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
                 {elenco.participantes.length > 8 && (
                   <div className="h-7 w-7 rounded-full bg-gray-200 ring-2 ring-white flex items-center justify-center text-[10px] font-medium text-gray-600">
                     +{elenco.participantes.length - 8}
@@ -213,7 +278,7 @@ export function Elencos() {
                 ))}
                 <span className="inline-flex items-center gap-1 text-gray-500">
                   <Clock className="h-3 w-3" />
-                  {elenco.horario}
+                  {formatElencoHorario(elenco)}
                 </span>
               </div>
 
@@ -222,6 +287,50 @@ export function Elencos() {
           </Card>
         ))}
       </div>
+
+      <Dialog open={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filtros">
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="filtro-pessoa">Pessoa</Label>
+            <Input
+              id="filtro-pessoa"
+              placeholder="Buscar por participante"
+              value={pessoaFilter}
+              onChange={e => setPessoaFilter(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label>Dia(s)</Label>
+            <div className="grid grid-cols-6 gap-1.5 mt-1.5">
+              {DIAS_ORDER.map(d => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => toggleDiaFilterList(d)}
+                  className={cn(
+                    'rounded-lg border py-2.5 text-sm font-medium transition-colors',
+                    diaFilterList.includes(d) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                  )}
+                >
+                  {DIA_SEMANA_LABELS[d]}
+                </button>
+              ))}
+            </div>
+          </div>
+          {hasActiveFilters && (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                setPessoaFilter('')
+                setDiaFilterList([])
+              }}
+            >
+              Limpar filtros
+            </Button>
+          )}
+        </div>
+      </Dialog>
 
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? 'Editar elenco' : 'Novo elenco'}>
         <div className="space-y-4">
@@ -278,6 +387,9 @@ export function Elencos() {
                   </option>
                 ))}
               </Select>
+              {liderUid && (users[liderUid]?.role ?? 'participante') === 'participante' && (
+                <p className="text-xs text-muted-foreground mt-1">Essa pessoa vai virar Líder ao salvar.</p>
+              )}
             </div>
           )}
 
@@ -301,8 +413,48 @@ export function Elencos() {
           </div>
 
           <div>
-            <Label htmlFor="elenco-horario">Horário</Label>
-            <Input id="elenco-horario" type="time" value={horario} onChange={e => setHorario(e.target.value)} />
+            <Label>Horário</Label>
+            <div className="grid grid-cols-2 gap-1.5 mt-1.5 mb-2">
+              <button
+                type="button"
+                onClick={() => setHorarioMode('comum')}
+                className={cn(
+                  'rounded-lg border py-2 text-xs font-medium transition-colors',
+                  horarioMode === 'comum' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                )}
+              >
+                Horário comum
+              </button>
+              <button
+                type="button"
+                onClick={() => setHorarioMode('porDia')}
+                className={cn(
+                  'rounded-lg border py-2 text-xs font-medium transition-colors',
+                  horarioMode === 'porDia' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                )}
+              >
+                Horário por dia
+              </button>
+            </div>
+            {horarioMode === 'comum' ? (
+              <Input type="time" value={horario} onChange={e => setHorario(e.target.value)} />
+            ) : dias.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Selecione ao menos um dia primeiro.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {sortDias(dias).map(d => (
+                  <div key={d} className="flex items-center gap-2">
+                    <span className="w-10 shrink-0 text-xs font-medium text-gray-600">{DIA_SEMANA_LABELS[d]}</span>
+                    <Input
+                      type="time"
+                      value={horariosPorDia[d] ?? ''}
+                      onChange={e => setHorariosPorDia(prev => ({ ...prev, [d]: e.target.value }))}
+                      className="flex-1"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>

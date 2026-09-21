@@ -78,7 +78,10 @@ export interface Elenco {
   /** uid de um dos participantes, marcado como líder desse elenco. */
   liderUid?: string
   dias: DiaSemana[]
-  horario: string
+  /** Horário único, válido pra todos os dias. Mutuamente exclusivo com `horarios` (por dia). */
+  horario?: string
+  /** Um horário por dia da semana, quando o elenco não tem um horário comum a todos os dias. */
+  horarios?: Partial<Record<DiaSemana, string>>
   observacao?: string
   createdAt: string
   updatedAt?: string

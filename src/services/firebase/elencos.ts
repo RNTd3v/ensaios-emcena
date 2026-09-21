@@ -19,7 +19,9 @@ export interface ElencoInput {
   participantes: string[]
   liderUid?: string
   dias: DiaSemana[]
-  horario: string
+  /** Só um de horario/horarios deve vir preenchido — ver Elenco em @/types. */
+  horario?: string
+  horarios?: Partial<Record<DiaSemana, string>>
   observacao?: string
 }
 
@@ -36,9 +38,10 @@ export async function createElenco(input: ElencoInput): Promise<void> {
     nome: input.nome,
     participantes: input.participantes,
     dias: input.dias,
-    horario: input.horario,
     createdAt: serverTimestamp(),
   }
+  if (input.horario) data.horario = input.horario
+  if (input.horarios) data.horarios = input.horarios
   if (input.observacao) data.observacao = input.observacao
   if (input.liderUid) data.liderUid = input.liderUid
   await addDoc(collection(db, 'elencos'), data)
@@ -50,7 +53,8 @@ export async function updateElenco(id: string, input: ElencoInput): Promise<void
     participantes: input.participantes,
     liderUid: input.liderUid || deleteField(),
     dias: input.dias,
-    horario: input.horario,
+    horario: input.horario || deleteField(),
+    horarios: input.horarios || deleteField(),
     observacao: input.observacao || deleteField(),
   })
 }

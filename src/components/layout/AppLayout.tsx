@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { ClipboardList, LogOut, Menu, ShieldCheck, Users, X } from 'lucide-react'
+import { CalendarDays, ClipboardList, LogOut, Menu, ShieldCheck, Users, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -84,6 +84,9 @@ export function AppLayout() {
               ))}
               {isAdmin && <MenuItem to="/admin" label="Admin" icon={ShieldCheck} onClick={() => setMenuOpen(false)} />}
               {isAdminOrLider && <MenuItem to="/elencos" label="Elencos" icon={Users} onClick={() => setMenuOpen(false)} />}
+              {isAdminOrLider && (
+                <MenuItem to="/disponibilidade" label="Disponibilidade" icon={CalendarDays} onClick={() => setMenuOpen(false)} />
+              )}
             </div>
             <button
               onClick={() => logout()}

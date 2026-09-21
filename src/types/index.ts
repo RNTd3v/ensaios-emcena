@@ -26,6 +26,9 @@ export interface AppUser {
   photoURL: string | null
   role: UserRole
   active: boolean
+  /** uid de quem revogou o acesso (setado junto com active=false, limpo ao reativar). */
+  revokedByUid?: string
+  revokedAt?: string
   createdAt: string
 }
 
@@ -83,8 +86,17 @@ export interface Elenco {
   /** Um horário por dia da semana, quando o elenco não tem um horário comum a todos os dias. */
   horarios?: Partial<Record<DiaSemana, string>>
   observacao?: string
+  /**
+   * "Excluir" um elenco só desativa (soft delete) — só admin reativa. Exclusão de verdade
+   * (deleteElencoPermanently) é ação separada, só pra admin.
+   */
+  ativo: boolean
+  createdByUid?: string
   createdAt: string
+  updatedByUid?: string
   updatedAt?: string
+  deactivatedByUid?: string
+  deactivatedAt?: string
 }
 
 export interface AppSettings {

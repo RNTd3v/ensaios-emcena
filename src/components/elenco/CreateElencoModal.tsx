@@ -11,6 +11,7 @@ import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
 import { createElenco } from '@/services/firebase/elencos'
 import { updateUserRole } from '@/services/firebase/auth'
+import { useAuthStore } from '@/stores/authStore'
 import { DIA_SEMANA_LABELS, type AppUser, type DiaSemana, type Inscricao } from '@/types'
 import { DIAS_ORDER, sortDias } from '@/lib/dias'
 import { cn } from '@/lib/utils'
@@ -39,6 +40,7 @@ export function CreateElencoModal({
   onLiderPromoted,
 }: Props) {
   const navigate = useNavigate()
+  const currentUser = useAuthStore(s => s.user)
   const [nome, setNome] = useState('')
   const [dias, setDias] = useState<DiaSemana[]>([])
   const [horarioMode, setHorarioMode] = useState<'comum' | 'porDia'>('comum')
@@ -95,17 +97,21 @@ export function CreateElencoModal({
     }
     setSaving(true)
     setError('')
+    if (!currentUser) return
     try {
       const finalNome = nome.trim()
-      await createElenco({
-        nome: finalNome,
-        participantes: selectedInscricoes.map(i => i.uid),
-        liderUid: liderUid || undefined,
-        dias,
-        horario: horarioMode === 'comum' ? horario : undefined,
-        horarios: horarioMode === 'porDia' ? Object.fromEntries(dias.map(d => [d, horariosPorDia[d]])) : undefined,
-        observacao: observacao.trim() || undefined,
-      })
+      await createElenco(
+        {
+          nome: finalNome,
+          participantes: selectedInscricoes.map(i => i.uid),
+          liderUid: liderUid || undefined,
+          dias,
+          horario: horarioMode === 'comum' ? horario : undefined,
+          horarios: horarioMode === 'porDia' ? Object.fromEntries(dias.map(d => [d, horariosPorDia[d]])) : undefined,
+          observacao: observacao.trim() || undefined,
+        },
+        currentUser.uid,
+      )
       if (liderUid && (users[liderUid]?.role ?? 'participante') === 'participante') {
         await updateUserRole(liderUid, 'lider')
         onLiderPromoted?.(liderUid)

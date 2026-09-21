@@ -1,5 +1,5 @@
 import { GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth'
-import { doc, getDoc, getDocs, collection, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, getDoc, getDocs, collection, setDoc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore'
 import { auth, db } from './config'
 import type { AppUser, UserRole } from '@/types'
 
@@ -55,25 +55,25 @@ export async function ensureUserDoc(uid: string, email: string, displayName: str
   }
 }
 
+function fromUserSnap(data: Record<string, unknown>): AppUser {
+  const createdAt = data.createdAt as { toDate?: () => Date } | undefined
+  const revokedAt = data.revokedAt as { toDate?: () => Date } | undefined
+  return {
+    ...data,
+    createdAt: createdAt?.toDate?.().toISOString() ?? new Date().toISOString(),
+    revokedAt: revokedAt?.toDate?.().toISOString(),
+  } as AppUser
+}
+
 export async function getUserDoc(uid: string): Promise<AppUser | null> {
   const snap = await getDoc(doc(db, 'users', uid))
   if (!snap.exists()) return null
-  const data = snap.data()
-  return {
-    ...data,
-    createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date().toISOString(),
-  } as AppUser
+  return fromUserSnap(snap.data())
 }
 
 export async function getUsers(): Promise<AppUser[]> {
   const snap = await getDocs(collection(db, 'users'))
-  return snap.docs.map(d => {
-    const data = d.data()
-    return {
-      ...data,
-      createdAt: data.createdAt?.toDate?.().toISOString() ?? new Date().toISOString(),
-    } as AppUser
-  })
+  return snap.docs.map(d => fromUserSnap(d.data()))
 }
 
 /** Atualiza o perfil (role) de um usuário. */
@@ -81,7 +81,11 @@ export async function updateUserRole(uid: string, role: UserRole): Promise<void>
   await updateDoc(doc(db, 'users', uid), { role })
 }
 
-/** Revoga ou reativa o acesso de um participante ao app. */
-export async function setUserActive(uid: string, active: boolean): Promise<void> {
-  await updateDoc(doc(db, 'users', uid), { active })
+/** Revoga ou reativa o acesso de um participante ao app — sempre grava quem fez a alteração. */
+export async function setUserActive(uid: string, active: boolean, byUid: string): Promise<void> {
+  await updateDoc(doc(db, 'users', uid), {
+    active,
+    revokedByUid: active ? deleteField() : byUid,
+    revokedAt: active ? deleteField() : serverTimestamp(),
+  })
 }

@@ -58,10 +58,15 @@ service cloud.firestore {
 
     // Elencos/grupos de ensaio: admin vê/gerencia todos. Líder só os que ele lidera (liderUid),
     // e só pode criar um elenco novo se colocar a si mesmo como líder.
+    // "Excluir" é soft delete (ativo=false) via update; líder pode desativar o próprio elenco mas
+    // não reativar (só admin) nem excluir de verdade (delete é ação separada, só admin).
     match /elencos/{id} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.liderUid == request.auth.uid);
       allow create: if isAdmin() || (isLider() && request.resource.data.liderUid == request.auth.uid);
-      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.liderUid == request.auth.uid);
+      allow update: if isAdmin()
+        || (isAuthenticated() && resource.data.liderUid == request.auth.uid
+            && !(resource.data.ativo == false && request.resource.data.ativo == true));
+      allow delete: if isAdmin();
     }
   }
 }

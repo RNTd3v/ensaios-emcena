@@ -138,6 +138,7 @@ export function Admin() {
   const elencosByUid = useMemo(() => {
     const map: Record<string, Elenco[]> = {}
     for (const elenco of elencos ?? []) {
+      if (!elenco.ativo) continue
       for (const uid of elenco.participantes) {
         ;(map[uid] ??= []).push(elenco)
       }
@@ -151,7 +152,8 @@ export function Admin() {
   }
 
   async function handleToggleActive(uid: string, active: boolean) {
-    await setUserActive(uid, active)
+    if (!currentUser) return
+    await setUserActive(uid, active, currentUser.uid)
     setUsers(prev => ({ ...prev, [uid]: { ...prev[uid], active } }))
   }
 

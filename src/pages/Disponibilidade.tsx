@@ -82,6 +82,7 @@ export function Disponibilidade() {
   const elencoCountByUid = useMemo(() => {
     const map: Record<string, number> = {}
     for (const elenco of elencos ?? []) {
+      if (!elenco.ativo) continue
       for (const uid of elenco.participantes) {
         map[uid] = (map[uid] ?? 0) + 1
       }

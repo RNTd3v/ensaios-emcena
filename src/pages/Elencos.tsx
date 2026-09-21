@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Check, Clock, Pencil, Plus, SlidersHorizontal, Star, Trash2 } from 'lucide-react'
+import { Archive, ArrowLeft, Check, Clock, Pencil, Plus, RotateCcw, SlidersHorizontal, Star, Trash2 } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,7 +12,15 @@ import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers, updateUserRole } from '@/services/firebase/auth'
-import { createElenco, deleteElenco, subscribeToElencos, updateElenco, type ElencoInput } from '@/services/firebase/elencos'
+import {
+  createElenco,
+  deactivateElenco,
+  deleteElencoPermanently,
+  reactivateElenco,
+  subscribeToElencos,
+  updateElenco,
+  type ElencoInput,
+} from '@/services/firebase/elencos'
 import { useAuthStore } from '@/stores/authStore'
 import { DIA_SEMANA_LABELS, type AppUser, type DiaSemana, type Elenco, type Inscricao } from '@/types'
 import { DIAS_ORDER, sortDias } from '@/lib/dias'
@@ -21,6 +29,7 @@ import { cn } from '@/lib/utils'
 
 export function Elencos() {
   const currentUser = useAuthStore(s => s.user)
+  const isAdmin = currentUser?.role === 'admin'
   const [elencos, setElencos] = useState<Elenco[] | null>(null)
   const [inscricoes, setInscricoes] = useState<Inscricao[] | null>(null)
   const [users, setUsers] = useState<Record<string, AppUser>>({})
@@ -29,8 +38,9 @@ export function Elencos() {
   const [nomeFilter, setNomeFilter] = useState('')
   const [pessoaFilter, setPessoaFilter] = useState('')
   const [diaFilterList, setDiaFilterList] = useState<DiaSemana[]>([])
+  const [showInactive, setShowInactive] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const hasActiveFilters = pessoaFilter.trim() !== '' || diaFilterList.length > 0
+  const hasActiveFilters = pessoaFilter.trim() !== '' || diaFilterList.length > 0 || showInactive
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -45,8 +55,10 @@ export function Elencos() {
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
 
-  const [deleteTarget, setDeleteTarget] = useState<Elenco | null>(null)
-  const [deleting, setDeleting] = useState(false)
+  const [deactivateTarget, setDeactivateTarget] = useState<Elenco | null>(null)
+  const [deactivating, setDeactivating] = useState(false)
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<Elenco | null>(null)
+  const [hardDeleting, setHardDeleting] = useState(false)
 
   useEffect(() => {
     if (!currentUser) return
@@ -71,6 +83,7 @@ export function Elencos() {
 
   const filteredElencos = useMemo(() => {
     return (elencos ?? []).filter(elenco => {
+      if (!showInactive && !elenco.ativo) return false
       if (nomeFilter.trim() && !elenco.nome.toLowerCase().includes(nomeFilter.trim().toLowerCase())) return false
       if (diaFilterList.length > 0 && !elenco.dias.some(d => diaFilterList.includes(d))) return false
       if (pessoaFilter.trim()) {
@@ -79,7 +92,7 @@ export function Elencos() {
       }
       return true
     })
-  }, [elencos, nomeFilter, diaFilterList, pessoaFilter, inscricoesByUid, users])
+  }, [elencos, nomeFilter, diaFilterList, pessoaFilter, showInactive, inscricoesByUid, users])
 
   const filteredParticipantes = useMemo(() => {
     if (!inscricoes) return []
@@ -144,6 +157,7 @@ export function Elencos() {
       setFormError('Preencha o horário de todos os dias selecionados.')
       return
     }
+    if (!currentUser) return
     setSaving(true)
     setFormError('')
     const input: ElencoInput = {
@@ -156,8 +170,8 @@ export function Elencos() {
       observacao: observacao.trim() || undefined,
     }
     try {
-      if (editingId) await updateElenco(editingId, input)
-      else await createElenco(input)
+      if (editingId) await updateElenco(editingId, input, currentUser.uid)
+      else await createElenco(input, currentUser.uid)
       if (liderUid && (users[liderUid]?.role ?? 'participante') === 'participante') {
         await updateUserRole(liderUid, 'lider')
         setUsers(prev => ({ ...prev, [liderUid]: { ...prev[liderUid], role: 'lider' } }))
@@ -170,14 +184,30 @@ export function Elencos() {
     }
   }
 
-  async function handleDelete() {
-    if (!deleteTarget) return
-    setDeleting(true)
+  async function handleReactivate(elenco: Elenco) {
+    if (!currentUser) return
+    await reactivateElenco(elenco.id, currentUser.uid)
+  }
+
+  async function handleDeactivate() {
+    if (!deactivateTarget || !currentUser) return
+    setDeactivating(true)
     try {
-      await deleteElenco(deleteTarget.id)
-      setDeleteTarget(null)
+      await deactivateElenco(deactivateTarget.id, currentUser.uid)
+      setDeactivateTarget(null)
     } finally {
-      setDeleting(false)
+      setDeactivating(false)
+    }
+  }
+
+  async function handleHardDelete() {
+    if (!hardDeleteTarget) return
+    setHardDeleting(true)
+    try {
+      await deleteElencoPermanently(hardDeleteTarget.id)
+      setHardDeleteTarget(null)
+    } finally {
+      setHardDeleting(false)
     }
   }
 
@@ -228,21 +258,68 @@ export function Elencos() {
       )}
 
       <div className="space-y-2">
-        {filteredElencos.map(elenco => (
-          <Card key={elenco.id} className="p-0">
+        {filteredElencos.map(elenco => {
+          const canManage = isAdmin || elenco.liderUid === currentUser?.uid
+          return (
+          <Card key={elenco.id} className={cn('p-0', !elenco.ativo && 'opacity-60')}>
             <CardContent className="px-4 py-3 space-y-2.5">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{elenco.nome}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium truncate">{elenco.nome}</p>
+                    {!elenco.ativo && (
+                      <Badge variant="destructive" className="text-[10px] shrink-0">
+                        Inativo
+                      </Badge>
+                    )}
+                  </div>
                   {elenco.liderUid && <p className="text-xs text-gray-500 truncate">Líder: {nameFor(elenco.liderUid)}</p>}
+                  {!elenco.ativo && elenco.deactivatedByUid && (
+                    <p className="text-[10px] text-gray-400 truncate">Desativado por {nameFor(elenco.deactivatedByUid)}</p>
+                  )}
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  <Button variant="ghost" size="icon" onClick={() => openEditModal(elenco)} title="Editar">
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(elenco)} title="Excluir" className="text-red-600">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {elenco.ativo ? (
+                    canManage && (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => openEditModal(elenco)} title="Editar">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeactivateTarget(elenco)}
+                          title="Desativar"
+                          className="text-amber-600"
+                        >
+                          <Archive className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )
+                  ) : (
+                    isAdmin && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleReactivate(elenco)}
+                          title="Reativar"
+                          className="text-emerald-600"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setHardDeleteTarget(elenco)}
+                          title="Excluir definitivamente"
+                          className="text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )
+                  )}
                 </div>
               </div>
 
@@ -285,7 +362,8 @@ export function Elencos() {
               {elenco.observacao && <p className="text-xs text-gray-500">{elenco.observacao}</p>}
             </CardContent>
           </Card>
-        ))}
+          )
+        })}
       </div>
 
       <Dialog open={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filtros">
@@ -317,6 +395,15 @@ export function Elencos() {
               ))}
             </div>
           </div>
+          <label className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2.5">
+            <span className="text-sm text-gray-700">Mostrar inativos</span>
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={e => setShowInactive(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+            />
+          </label>
           {hasActiveFilters && (
             <Button
               variant="outline"
@@ -324,6 +411,7 @@ export function Elencos() {
               onClick={() => {
                 setPessoaFilter('')
                 setDiaFilterList([])
+                setShowInactive(false)
               }}
             >
               Limpar filtros
@@ -471,19 +559,40 @@ export function Elencos() {
         </div>
       </Dialog>
 
-      <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Excluir elenco">
-        {deleteTarget && (
+      <Dialog open={!!deactivateTarget} onClose={() => setDeactivateTarget(null)} title="Desativar elenco">
+        {deactivateTarget && (
           <div className="space-y-4">
             <p className="text-sm text-gray-700">
-              Tem certeza que quer excluir <span className="font-medium">{deleteTarget.nome}</span>? Essa ação não pode ser desfeita.
+              Desativar <span className="font-medium">{deactivateTarget.nome}</span>? Ele some da lista, mas fica guardado — só um
+              admin pode reativar depois.
             </p>
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setDeleteTarget(null)}>
+              <Button variant="outline" className="flex-1" onClick={() => setDeactivateTarget(null)}>
                 Cancelar
               </Button>
-              <Button variant="destructive" className="flex-1" onClick={handleDelete} disabled={deleting}>
-                {deleting && <Spinner size="sm" className="border-white/40 border-t-white" />}
-                Excluir
+              <Button variant="destructive" className="flex-1" onClick={handleDeactivate} disabled={deactivating}>
+                {deactivating && <Spinner size="sm" className="border-white/40 border-t-white" />}
+                Desativar
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+
+      <Dialog open={!!hardDeleteTarget} onClose={() => setHardDeleteTarget(null)} title="Excluir definitivamente">
+        {hardDeleteTarget && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700">
+              Excluir <span className="font-medium">{hardDeleteTarget.nome}</span> de vez? Essa ação apaga o registro pra sempre e não
+              pode ser desfeita.
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setHardDeleteTarget(null)}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" className="flex-1" onClick={handleHardDelete} disabled={hardDeleting}>
+                {hardDeleting && <Spinner size="sm" className="border-white/40 border-t-white" />}
+                Excluir de vez
               </Button>
             </div>
           </div>

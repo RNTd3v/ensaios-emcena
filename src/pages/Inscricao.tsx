@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { CheckCircle2, Drama, Lightbulb, Loader2, Pencil, Shirt, Users } from 'lucide-react'
+import { CheckCircle2, Loader2, Pencil } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,16 +15,10 @@ import { cn } from '@/lib/utils'
 import { getInscricao, saveInscricao } from '@/services/firebase/inscricoes'
 import { useAuthStore } from '@/stores/authStore'
 import { AREA_LABELS, DIA_SEMANA_LABELS, type Area, type DiaSemana, type Inscricao, type InscricaoStatus } from '@/types'
+import { AREA_ICONS } from '@/lib/areaIcons'
 
 const AREAS = Object.keys(AREA_LABELS) as Area[]
 const DIAS = Object.keys(DIA_SEMANA_LABELS) as DiaSemana[]
-
-const AREA_ICONS: Record<Area, React.ComponentType<{ className?: string }>> = {
-  elenco: Drama,
-  staff: Users,
-  figurino: Shirt,
-  tecnica: Lightbulb,
-}
 
 const schema = z
   .object({

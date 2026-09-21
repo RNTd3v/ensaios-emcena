@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MessageCircle, Settings, ShieldOff, ShieldCheck as ShieldCheckIcon, SlidersHorizontal } from 'lucide-react'
+import {
+  CheckCircle2,
+  Clock,
+  MessageCircle,
+  Settings,
+  ShieldOff,
+  ShieldCheck as ShieldCheckIcon,
+  SlidersHorizontal,
+  Star,
+  XCircle,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -17,25 +27,47 @@ import {
   USER_ROLE_LABELS,
   type AppUser,
   type Area,
+  type DiaSemana,
   type Inscricao,
   type InscricaoStatus,
   type UserRole,
 } from '@/types'
 import { whatsappLink } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
+import { AREA_ICONS } from '@/lib/areaIcons'
 
 type AreaFilter = 'todas' | Area
-type StatusFilter = 'todos' | InscricaoStatus
+type RoleFilter = 'todos' | UserRole
+type SortOption = 'recentes' | 'antigos' | 'nome'
+
+const SORT_LABELS: Record<SortOption, string> = {
+  recentes: 'Mais recentes',
+  antigos: 'Mais antigos',
+  nome: 'Nome (A-Z)',
+}
+
+const DIAS_ORDER = Object.keys(DIA_SEMANA_LABELS) as DiaSemana[]
+
+function sortDias(dias: DiaSemana[]): DiaSemana[] {
+  return [...dias].sort((a, b) => DIAS_ORDER.indexOf(a) - DIAS_ORDER.indexOf(b))
+}
 
 export function Admin() {
   const [inscricoes, setInscricoes] = useState<Inscricao[] | null>(null)
   const [users, setUsers] = useState<Record<string, AppUser>>({})
   const [search, setSearch] = useState('')
   const [areaFilter, setAreaFilter] = useState<AreaFilter>('todas')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos')
+  const [diaFilter, setDiaFilter] = useState<DiaSemana[]>([])
+  const [diaMatchMode, setDiaMatchMode] = useState<'any' | 'all'>('any')
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('todos')
+  const [sortBy, setSortBy] = useState<SortOption>('recentes')
   const [selected, setSelected] = useState<Inscricao | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const hasActiveFilters = areaFilter !== 'todas' || statusFilter !== 'todos'
+  const hasActiveFilters = areaFilter !== 'todas' || diaFilter.length > 0 || roleFilter !== 'todos'
+
+  function toggleDiaFilter(dia: DiaSemana) {
+    setDiaFilter(prev => (prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]))
+  }
 
   useEffect(() => subscribeToAllInscricoes(setInscricoes), [])
 
@@ -44,16 +76,31 @@ export function Admin() {
   }, [])
 
   const filtered = useMemo(() => {
-    return (inscricoes ?? []).filter(i => {
+    const result = (inscricoes ?? []).filter(i => {
       if (areaFilter !== 'todas' && !i.areas.includes(areaFilter)) return false
-      if (statusFilter !== 'todos' && i.status !== statusFilter) return false
+      if (diaFilter.length > 0) {
+        const disponivel =
+          diaMatchMode === 'all'
+            ? diaFilter.every(d => i.disponibilidade.dias.includes(d))
+            : diaFilter.some(d => i.disponibilidade.dias.includes(d))
+        if (!disponivel) return false
+      }
+      if (roleFilter !== 'todos' && (users[i.uid]?.role ?? 'participante') !== roleFilter) return false
       if (search) {
         const term = search.toLowerCase()
         if (!i.nomeCompleto.toLowerCase().includes(term) && !i.apelido?.toLowerCase().includes(term)) return false
       }
       return true
     })
-  }, [inscricoes, areaFilter, statusFilter, search])
+    if (sortBy === 'nome') {
+      result.sort((a, b) => (a.apelido || a.nomeCompleto).localeCompare(b.apelido || b.nomeCompleto, 'pt-BR'))
+    } else if (sortBy === 'antigos') {
+      result.reverse()
+    }
+    return result
+  }, [inscricoes, areaFilter, diaFilter, diaMatchMode, roleFilter, users, search, sortBy])
+
+  const pendentesCount = useMemo(() => (inscricoes ?? []).filter(i => i.status === 'pendente').length, [inscricoes])
 
   async function handleStatusChange(uid: string, status: InscricaoStatus) {
     await updateInscricaoStatus(uid, status)
@@ -77,9 +124,19 @@ export function Admin() {
       <div className="flex items-start justify-between pb-4 border-b border-white/30">
         <div>
           <h1 className="text-xl font-semibold text-white">Participantes</h1>
-          <Badge variant="outline" className="bg-white/10 text-white border-white/30 text-xs px-2 py-0.5 mt-1.5">
-            Total de participantes: {inscricoes?.length ?? 0}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+            <Badge variant="outline" className="bg-white/10 text-white border-white/30 text-xs px-2 py-0.5">
+              {hasActiveFilters || search.trim()
+                ? `Mostrando ${filtered.length} de ${inscricoes?.length ?? 0}`
+                : `Total de participantes: ${inscricoes?.length ?? 0}`}
+            </Badge>
+            {pendentesCount > 0 && (
+              <Badge variant="warning" className="gap-1 text-xs px-2 py-0.5">
+                <Clock className="h-3 w-3" />
+                {pendentesCount} pendente{pendentesCount === 1 ? '' : 's'}
+              </Badge>
+            )}
+          </div>
         </div>
         <Link to="/admin/config">
           <Button variant="outline" size="icon" title="Configurações" className="border-white/40 bg-white/10 text-white hover:bg-white/20">
@@ -134,7 +191,10 @@ export function Admin() {
                     <div className="flex items-center gap-2.5 min-w-0">
                       <Avatar photoURL={users[i.uid]?.photoURL} name={i.apelido || i.nomeCompleto} className="h-8 w-8 text-xs" />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{i.apelido || i.nomeCompleto}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium truncate">{i.apelido || i.nomeCompleto}</p>
+                          <RoleChip role={users[i.uid]?.role} />
+                        </div>
                         {i.apelido && <p className="text-xs text-gray-500 truncate">{i.nomeCompleto}</p>}
                       </div>
                     </div>
@@ -150,7 +210,7 @@ export function Admin() {
                         <MessageCircle className="h-4 w-4" />
                       </a>
                       <div className="flex flex-col items-end gap-1">
-                        <StatusBadge status={i.status} />
+                        <StatusIcon status={i.status} />
                         {!active && (
                           <Badge variant="destructive" className="text-[10px]">
                             Revogado
@@ -159,10 +219,33 @@ export function Admin() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-1 w-full pt-3 border-t border-gray-100">
-                    {i.areas.map(a => (
-                      <Badge key={a} variant="outline" className="text-[10px]">
-                        {AREA_LABELS[a]}
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 w-full pt-3 border-t border-gray-100 text-xs text-gray-600">
+                    {i.areas.map((a, idx) => {
+                      const Icon = AREA_ICONS[a]
+                      return (
+                        <span key={a} className="inline-flex items-center gap-2.5">
+                          {idx > 0 && <span className="text-gray-300">|</span>}
+                          <span className="inline-flex items-center gap-1">
+                            <Icon className="h-3.5 w-3.5 shrink-0" />
+                            {AREA_LABELS[a]}
+                          </span>
+                        </span>
+                      )
+                    })}
+                  </div>
+                  <div className="flex flex-wrap gap-1 w-full pt-2">
+                    {sortDias(i.disponibilidade.dias).map(d => (
+                      <Badge
+                        key={d}
+                        variant="outline"
+                        className={cn(
+                          'text-[10px]',
+                          diaFilter.includes(d)
+                            ? 'bg-primary/15 border-primary text-primary font-semibold'
+                            : 'bg-sky-50 border-sky-200 text-sky-700',
+                        )}
+                      >
+                        {DIA_SEMANA_LABELS[d]}
                       </Badge>
                     ))}
                   </div>
@@ -176,24 +259,80 @@ export function Admin() {
       <Dialog open={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filtros">
         <div className="space-y-4">
           <div>
-            <p className="text-sm text-muted-foreground mb-1.5">Área</p>
-            <Select value={areaFilter} onChange={e => setAreaFilter(e.target.value as AreaFilter)}>
-              <option value="todas">Todas as áreas</option>
-              {(Object.keys(AREA_LABELS) as Area[]).map(a => (
-                <option key={a} value={a}>
-                  {AREA_LABELS[a]}
+            <p className="text-sm text-muted-foreground mb-1.5">Ordenar por</p>
+            <Select value={sortBy} onChange={e => setSortBy(e.target.value as SortOption)}>
+              {(Object.keys(SORT_LABELS) as SortOption[]).map(s => (
+                <option key={s} value={s}>
+                  {SORT_LABELS[s]}
                 </option>
               ))}
             </Select>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-sm text-muted-foreground mb-1.5">Perfil</p>
+              <Select value={roleFilter} onChange={e => setRoleFilter(e.target.value as RoleFilter)}>
+                <option value="todos">Todos os perfis</option>
+                {(Object.keys(USER_ROLE_LABELS) as UserRole[]).map(r => (
+                  <option key={r} value={r}>
+                    {USER_ROLE_LABELS[r]}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground mb-1.5">Área</p>
+              <Select value={areaFilter} onChange={e => setAreaFilter(e.target.value as AreaFilter)}>
+                <option value="todas">Todas as áreas</option>
+                {(Object.keys(AREA_LABELS) as Area[]).map(a => (
+                  <option key={a} value={a}>
+                    {AREA_LABELS[a]}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
           <div>
-            <p className="text-sm text-muted-foreground mb-1.5">Status</p>
-            <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value as StatusFilter)}>
-              <option value="todos">Todos os status</option>
-              <option value="pendente">Pendente</option>
-              <option value="confirmado">Confirmado</option>
-              <option value="recusado">Recusado</option>
-            </Select>
+            <p className="text-sm text-muted-foreground mb-1.5">Disponibilidade</p>
+            <div className="grid grid-cols-6 gap-1.5">
+              {DIAS_ORDER.map(d => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => toggleDiaFilter(d)}
+                  className={cn(
+                    'rounded-lg border py-2.5 text-sm font-medium transition-colors',
+                    diaFilter.includes(d) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                  )}
+                >
+                  {DIA_SEMANA_LABELS[d]}
+                </button>
+              ))}
+            </div>
+            {diaFilter.length > 1 && (
+              <div className="grid grid-cols-2 gap-1.5 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setDiaMatchMode('any')}
+                  className={cn(
+                    'rounded-lg border py-2 text-xs font-medium transition-colors',
+                    diaMatchMode === 'any' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                  )}
+                >
+                  Qualquer um desses dias
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDiaMatchMode('all')}
+                  className={cn(
+                    'rounded-lg border py-2 text-xs font-medium transition-colors',
+                    diaMatchMode === 'all' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                  )}
+                >
+                  Todos esses dias
+                </button>
+              </div>
+            )}
           </div>
           {hasActiveFilters && (
             <Button
@@ -201,7 +340,9 @@ export function Admin() {
               className="w-full"
               onClick={() => {
                 setAreaFilter('todas')
-                setStatusFilter('todos')
+                setDiaFilter([])
+                setDiaMatchMode('any')
+                setRoleFilter('todos')
               }}
             >
               Limpar filtros
@@ -279,7 +420,7 @@ export function Admin() {
               <div className="py-3">
                 <p className="text-sm text-muted-foreground">Disponibilidade</p>
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {selected.disponibilidade.dias.map(d => (
+                  {sortDias(selected.disponibilidade.dias).map(d => (
                     <Badge key={d} variant="outline">
                       {DIA_SEMANA_LABELS[d]}
                     </Badge>
@@ -350,8 +491,37 @@ export function Admin() {
   )
 }
 
-function StatusBadge({ status }: { status: InscricaoStatus }) {
-  const variant = status === 'confirmado' ? 'success' : status === 'recusado' ? 'destructive' : 'warning'
-  const label = status === 'confirmado' ? 'Confirmado' : status === 'recusado' ? 'Recusado' : 'Pendente'
-  return <Badge variant={variant}>{label}</Badge>
+const STATUS_ICON: Record<InscricaoStatus, { icon: typeof CheckCircle2; label: string; className: string }> = {
+  confirmado: { icon: CheckCircle2, label: 'Confirmado', className: 'bg-emerald-100 text-emerald-600' },
+  pendente: { icon: Clock, label: 'Pendente', className: 'bg-amber-100 text-amber-600' },
+  recusado: { icon: XCircle, label: 'Recusado', className: 'bg-red-100 text-red-600' },
+}
+
+function StatusIcon({ status }: { status: InscricaoStatus }) {
+  const { icon: Icon, label, className } = STATUS_ICON[status]
+  return (
+    <span title={label} aria-label={label} className={cn('inline-flex h-6 w-6 items-center justify-center rounded-full', className)}>
+      <Icon className="h-4 w-4" />
+    </span>
+  )
+}
+
+function RoleChip({ role }: { role?: UserRole }) {
+  if (role === 'admin') {
+    return (
+      <Badge variant="outline" className="gap-1 border-violet-200 bg-violet-50 px-1.5 py-0 text-[10px] text-violet-700 shrink-0">
+        <ShieldCheckIcon className="h-3 w-3" />
+        Admin
+      </Badge>
+    )
+  }
+  if (role === 'lider') {
+    return (
+      <Badge variant="outline" className="gap-1 border-amber-200 bg-amber-50 px-1.5 py-0 text-[10px] text-amber-700 shrink-0">
+        <Star className="h-3 w-3" />
+        Líder
+      </Badge>
+    )
+  }
+  return null
 }

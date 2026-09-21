@@ -16,6 +16,10 @@ service cloud.firestore {
       return isAuthenticated() && userDoc().role == 'admin';
     }
 
+    function isLider() {
+      return isAuthenticated() && userDoc().role == 'lider';
+    }
+
     // Inscrito com acesso ativo (não revogado)
     function isActiveParticipant() {
       return isAuthenticated() && userDoc().active == true;
@@ -23,8 +27,9 @@ service cloud.firestore {
 
     // Usuários: o próprio usuário sempre pode ler seu documento (inclusive antes de existir,
     // ensureUserDoc verifica existência antes de criar, no primeiro login). Admin lê todos.
+    // Líder também lê todos, pra poder selecionar participantes ao montar um elenco.
     match /users/{userId} {
-      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      allow read: if isAdmin() || isLider() || (isAuthenticated() && request.auth.uid == userId);
       // Criação automática no primeiro login (ensureUserDoc), sempre como 'participante' e ativo
       allow create: if isAuthenticated()
         && request.auth.uid == userId
@@ -38,8 +43,8 @@ service cloud.firestore {
     // Inscrições: cada participante só vê/edita a própria; admin vê e gerencia todas.
     // Só pode criar/editar enquanto o acesso estiver ativo (não revogado).
     match /inscricoes/{userId} {
-      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
-      allow list: if isAdmin();
+      allow read: if isAdmin() || isLider() || (isAuthenticated() && request.auth.uid == userId);
+      allow list: if isAdmin() || isLider();
       allow create: if isAuthenticated() && request.auth.uid == userId && isActiveParticipant();
       allow update: if isAdmin() || (isAuthenticated() && request.auth.uid == userId && isActiveParticipant());
       allow delete: if isAdmin();
@@ -49,6 +54,14 @@ service cloud.firestore {
     match /settings/{id} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // Elencos/grupos de ensaio: admin vê/gerencia todos. Líder só os que ele lidera (liderUid),
+    // e só pode criar um elenco novo se colocar a si mesmo como líder.
+    match /elencos/{id} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.liderUid == request.auth.uid);
+      allow create: if isAdmin() || (isLider() && request.resource.data.liderUid == request.auth.uid);
+      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.liderUid == request.auth.uid);
     }
   }
 }

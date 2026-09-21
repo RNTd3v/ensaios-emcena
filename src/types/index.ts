@@ -66,6 +66,24 @@ export interface Inscricao {
   updatedAt?: string
 }
 
+/**
+ * Grupo de ensaio: um conjunto de participantes reunidos num dia/horário. Não tem relação com o
+ * conceito de "núcleo" (roteiro, personagens, música etc.) ainda em discussão — é deliberadamente
+ * mais simples.
+ */
+export interface Elenco {
+  id: string
+  nome: string
+  participantes: string[]
+  /** uid de um dos participantes, marcado como líder desse elenco. */
+  liderUid?: string
+  dias: DiaSemana[]
+  horario: string
+  observacao?: string
+  createdAt: string
+  updatedAt?: string
+}
+
 export interface AppSettings {
   eventName: string
   posterImageUrl?: string

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import {
+  Check,
   CheckCircle2,
   Clock,
   MessageCircle,
@@ -9,10 +10,13 @@ import {
   ShieldCheck as ShieldCheckIcon,
   SlidersHorizontal,
   Star,
+  Users,
+  X,
   XCircle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -21,6 +25,8 @@ import { Spinner } from '@/components/ui/Spinner'
 import { Avatar } from '@/components/ui/Avatar'
 import { subscribeToAllInscricoes, updateInscricaoStatus } from '@/services/firebase/inscricoes'
 import { getUsers, setUserActive, updateUserRole } from '@/services/firebase/auth'
+import { createElenco, subscribeToElencos } from '@/services/firebase/elencos'
+import { useAuthStore } from '@/stores/authStore'
 import {
   AREA_LABELS,
   DIA_SEMANA_LABELS,
@@ -28,6 +34,7 @@ import {
   type AppUser,
   type Area,
   type DiaSemana,
+  type Elenco,
   type Inscricao,
   type InscricaoStatus,
   type UserRole,
@@ -35,6 +42,7 @@ import {
 import { whatsappLink } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import { AREA_ICONS } from '@/lib/areaIcons'
+import { useSelectionStore } from '@/stores/selectionStore'
 
 type AreaFilter = 'todas' | Area
 type RoleFilter = 'todos' | UserRole
@@ -53,8 +61,11 @@ function sortDias(dias: DiaSemana[]): DiaSemana[] {
 }
 
 export function Admin() {
+  const navigate = useNavigate()
+  const currentUser = useAuthStore(s => s.user)
   const [inscricoes, setInscricoes] = useState<Inscricao[] | null>(null)
   const [users, setUsers] = useState<Record<string, AppUser>>({})
+  const [elencos, setElencos] = useState<Elenco[] | null>(null)
   const [search, setSearch] = useState('')
   const [areaFilter, setAreaFilter] = useState<AreaFilter>('todas')
   const [diaFilter, setDiaFilter] = useState<DiaSemana[]>([])
@@ -65,15 +76,102 @@ export function Admin() {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const hasActiveFilters = areaFilter !== 'todas' || diaFilter.length > 0 || roleFilter !== 'todos'
 
+  const [selectedUids, setSelectedUids] = useState<Set<string>>(new Set())
+  const [elencoModalOpen, setElencoModalOpen] = useState(false)
+  const [elencoNome, setElencoNome] = useState('')
+  const [elencoDias, setElencoDias] = useState<DiaSemana[]>([])
+  const [elencoHorario, setElencoHorario] = useState('')
+  const [elencoObservacao, setElencoObservacao] = useState('')
+  const [elencoLiderUid, setElencoLiderUid] = useState('')
+  const [savingElenco, setSavingElenco] = useState(false)
+  const [elencoError, setElencoError] = useState('')
+  const [savedElenco, setSavedElenco] = useState<{ nome: string; pessoas: Inscricao[] } | null>(null)
+
   function toggleDiaFilter(dia: DiaSemana) {
     setDiaFilter(prev => (prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]))
   }
+
+  function toggleSelectUid(uid: string) {
+    setSelectedUids(prev => {
+      const next = new Set(prev)
+      if (next.has(uid)) next.delete(uid)
+      else next.add(uid)
+      return next
+    })
+  }
+
+  function selectAllFiltered() {
+    setSelectedUids(new Set(filtered.map(i => i.uid)))
+  }
+
+  function toggleElencoDia(dia: DiaSemana) {
+    setElencoDias(prev => (prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]))
+  }
+
+  function openElencoModal() {
+    setElencoNome('')
+    setElencoDias(diaFilter.length > 0 ? sortDias(diaFilter) : [])
+    setElencoHorario('')
+    setElencoObservacao('')
+    setElencoLiderUid('')
+    setElencoError('')
+    setSavedElenco(null)
+    setElencoModalOpen(true)
+  }
+
+  function closeElencoModal() {
+    setElencoModalOpen(false)
+    setSavedElenco(null)
+  }
+
+  async function handleSaveElenco() {
+    if (!elencoNome.trim() || elencoDias.length === 0 || !elencoHorario || selectedUids.size === 0) {
+      setElencoError('Preencha nome, dia(s) e horário.')
+      return
+    }
+    setSavingElenco(true)
+    setElencoError('')
+    try {
+      const nome = elencoNome.trim()
+      await createElenco({
+        nome,
+        participantes: [...selectedUids],
+        liderUid: elencoLiderUid || undefined,
+        dias: elencoDias,
+        horario: elencoHorario,
+        observacao: elencoObservacao.trim() || undefined,
+      })
+      if (elencoLiderUid && (users[elencoLiderUid]?.role ?? 'participante') === 'participante') {
+        await handleRoleChange(elencoLiderUid, 'lider')
+      }
+      setSavedElenco({ nome, pessoas: selectedInscricoes })
+      setSelectedUids(new Set())
+    } catch {
+      setElencoError('Não foi possível salvar. Tente de novo.')
+    } finally {
+      setSavingElenco(false)
+    }
+  }
+
+  useEffect(() => {
+    useSelectionStore.setState({ hasSelection: selectedUids.size > 0 })
+    setElencoLiderUid(prev => (prev && !selectedUids.has(prev) ? '' : prev))
+  }, [selectedUids])
+
+  useEffect(() => {
+    return () => useSelectionStore.setState({ hasSelection: false })
+  }, [])
 
   useEffect(() => subscribeToAllInscricoes(setInscricoes), [])
 
   useEffect(() => {
     getUsers().then(list => setUsers(Object.fromEntries(list.map(u => [u.uid, u]))))
   }, [])
+
+  useEffect(() => {
+    if (!currentUser) return
+    return subscribeToElencos(currentUser.role, currentUser.uid, setElencos)
+  }, [currentUser])
 
   const filtered = useMemo(() => {
     const result = (inscricoes ?? []).filter(i => {
@@ -101,6 +199,44 @@ export function Admin() {
   }, [inscricoes, areaFilter, diaFilter, diaMatchMode, roleFilter, users, search, sortBy])
 
   const pendentesCount = useMemo(() => (inscricoes ?? []).filter(i => i.status === 'pendente').length, [inscricoes])
+
+  const selectedInscricoes = useMemo(
+    () => (inscricoes ?? []).filter(i => selectedUids.has(i.uid)),
+    [inscricoes, selectedUids],
+  )
+
+  const elencosByUid = useMemo(() => {
+    const map: Record<string, Elenco[]> = {}
+    for (const elenco of elencos ?? []) {
+      for (const uid of elenco.participantes) {
+        ;(map[uid] ??= []).push(elenco)
+      }
+    }
+    return map
+  }, [elencos])
+
+  const [avatarRowWidth, setAvatarRowWidth] = useState(0)
+  const avatarRowObserverRef = useRef<ResizeObserver | null>(null)
+
+  // Ref-callback (em vez de useRef + useEffect com deps []): esse <div> só existe no DOM
+  // quando há seleção, então precisamos (re)conectar o observer toda vez que ele monta/desmonta,
+  // não só uma vez no mount do componente Admin.
+  const avatarRowRef = useCallback((el: HTMLDivElement | null) => {
+    avatarRowObserverRef.current?.disconnect()
+    avatarRowObserverRef.current = null
+    if (!el) return
+    const observer = new ResizeObserver(entries => setAvatarRowWidth(entries[0].contentRect.width))
+    observer.observe(el)
+    avatarRowObserverRef.current = observer
+  }, [])
+
+  const AVATAR_SIZE = 28
+  const AVATAR_STEP = 20 // 28px de avatar menos 8px de sobreposição (-space-x-2)
+  const maxVisibleAvatars =
+    avatarRowWidth > 0 ? Math.max(1, Math.floor((avatarRowWidth - AVATAR_SIZE) / AVATAR_STEP) + 1) : selectedInscricoes.length
+  const visibleAvatarsCount =
+    selectedInscricoes.length <= maxVisibleAvatars ? selectedInscricoes.length : maxVisibleAvatars - 1
+  const hiddenAvatarsCount = selectedInscricoes.length - visibleAvatarsCount
 
   async function handleStatusChange(uid: string, status: InscricaoStatus) {
     await updateInscricaoStatus(uid, status)
@@ -159,6 +295,17 @@ export function Admin() {
         </Button>
       </div>
 
+      <div className="flex items-center justify-between text-xs px-0.5">
+        <button type="button" onClick={selectAllFiltered} className="font-medium text-white/90 hover:text-white">
+          Selecionar todos{filtered.length > 0 ? ` (${filtered.length})` : ''}
+        </button>
+        {selectedUids.size > 0 && (
+          <button type="button" onClick={() => setSelectedUids(new Set())} className="text-white/70 hover:text-white">
+            Limpar
+          </button>
+        )}
+      </div>
+
       {!inscricoes && (
         <div className="flex justify-center py-10">
           <Spinner />
@@ -173,7 +320,7 @@ export function Admin() {
         </Card>
       )}
 
-      <div className="space-y-2">
+      <div className={cn('space-y-2', selectedUids.size > 0 && 'pb-32')}>
         {filtered.map(i => {
           const active = users[i.uid]?.active !== false
           return (
@@ -181,14 +328,22 @@ export function Admin() {
               key={i.uid}
               role="button"
               tabIndex={0}
-              onClick={() => setSelected(i)}
-              onKeyDown={e => e.key === 'Enter' && setSelected(i)}
+              onClick={() => toggleSelectUid(i.uid)}
+              onKeyDown={e => e.key === 'Enter' && toggleSelectUid(i.uid)}
               className="w-full text-left cursor-pointer"
             >
-              <Card className={cn('p-0', !active && 'opacity-60')}>
+              <Card className={cn('p-0', !active && 'opacity-60', selectedUids.has(i.uid) && 'ring-2 ring-primary')}>
                 <CardContent className="px-4 py-3">
                   <div className="flex items-center justify-between gap-3 pb-3">
                     <div className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className={cn(
+                          'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
+                          selectedUids.has(i.uid) ? 'border-primary bg-primary text-white' : 'border-gray-300',
+                        )}
+                      >
+                        {selectedUids.has(i.uid) && <Check className="h-3 w-3" />}
+                      </span>
                       <Avatar photoURL={users[i.uid]?.photoURL} name={i.apelido || i.nomeCompleto} className="h-8 w-8 text-xs" />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
@@ -222,32 +377,50 @@ export function Admin() {
                   <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 w-full pt-3 border-t border-gray-100 text-xs text-gray-600">
                     {i.areas.map((a, idx) => {
                       const Icon = AREA_ICONS[a]
+                      const elencosCount = a === 'elenco' ? (elencosByUid[i.uid]?.length ?? 0) : 0
                       return (
                         <span key={a} className="inline-flex items-center gap-2.5">
                           {idx > 0 && <span className="text-gray-300">|</span>}
                           <span className="inline-flex items-center gap-1">
                             <Icon className="h-3.5 w-3.5 shrink-0" />
                             {AREA_LABELS[a]}
+                            {elencosCount > 0 && (
+                              <Badge variant="outline" className="ml-0.5 h-4 min-w-4 justify-center rounded-full px-1 text-[10px] leading-none">
+                                {elencosCount}
+                              </Badge>
+                            )}
                           </span>
                         </span>
                       )
                     })}
                   </div>
-                  <div className="flex flex-wrap gap-1 w-full pt-2">
-                    {sortDias(i.disponibilidade.dias).map(d => (
-                      <Badge
-                        key={d}
-                        variant="outline"
-                        className={cn(
-                          'text-[10px]',
-                          diaFilter.includes(d)
-                            ? 'bg-primary/15 border-primary text-primary font-semibold'
-                            : 'bg-sky-50 border-sky-200 text-sky-700',
-                        )}
-                      >
-                        {DIA_SEMANA_LABELS[d]}
-                      </Badge>
-                    ))}
+                  <div className="flex items-end justify-between gap-2 pt-2">
+                    <div className="flex flex-wrap gap-1">
+                      {sortDias(i.disponibilidade.dias).map(d => (
+                        <Badge
+                          key={d}
+                          variant="outline"
+                          className={cn(
+                            'text-[10px]',
+                            diaFilter.includes(d)
+                              ? 'bg-primary/15 border-primary text-primary font-semibold'
+                              : 'bg-sky-50 border-sky-200 text-sky-700',
+                          )}
+                        >
+                          {DIA_SEMANA_LABELS[d]}
+                        </Badge>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.stopPropagation()
+                        setSelected(i)
+                      }}
+                      className="shrink-0 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 hover:text-gray-700"
+                    >
+                      Detalhes
+                    </button>
                   </div>
                 </CardContent>
               </Card>
@@ -255,6 +428,37 @@ export function Admin() {
           )
         })}
       </div>
+
+      {selectedUids.size > 0 && (
+        <div className="fixed inset-x-0 bottom-0 left-0 z-30 px-4 pt-10 pb-4 bg-gradient-to-t from-black/70 via-black/40 to-transparent">
+          <div className="flex flex-col gap-2.5 rounded-2xl bg-white border border-gray-200 shadow-xl px-3 py-2.5">
+            <div ref={avatarRowRef} className="flex -space-x-2 w-full">
+              {selectedInscricoes.slice(0, visibleAvatarsCount).map(i => (
+                <Avatar
+                  key={i.uid}
+                  photoURL={users[i.uid]?.photoURL}
+                  name={i.apelido || i.nomeCompleto}
+                  className="h-7 w-7 text-[10px] ring-2 ring-white shrink-0"
+                />
+              ))}
+              {hiddenAvatarsCount > 0 && (
+                <div className="h-7 w-7 rounded-full bg-gray-200 ring-2 ring-white flex items-center justify-center text-[10px] font-medium text-gray-600 shrink-0">
+                  +{hiddenAvatarsCount}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              <Button size="sm" className="w-full gap-1.5" onClick={openElencoModal}>
+                <Users className="h-4 w-4" />
+                Cadastrar Elenco
+              </Button>
+              <Button variant="ghost" size="sm" className="text-gray-500" onClick={() => setSelectedUids(new Set())}>
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Dialog open={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filtros">
         <div className="space-y-4">
@@ -351,6 +555,114 @@ export function Admin() {
         </div>
       </Dialog>
 
+      <Dialog open={elencoModalOpen} onClose={closeElencoModal} title={savedElenco ? 'Elenco criado' : 'Cadastrar Elenco'}>
+        {savedElenco ? (
+          <div className="space-y-4 text-center">
+            <div className="flex justify-center">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                <CheckCircle2 className="h-7 w-7" />
+              </span>
+            </div>
+            <div>
+              <p className="text-base font-semibold">{savedElenco.nome}</p>
+              <p className="text-sm text-emerald-600">Elenco cadastrado com sucesso!</p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {savedElenco.pessoas.map(p => (
+                <Avatar key={p.uid} photoURL={users[p.uid]?.photoURL} name={p.apelido || p.nomeCompleto} className="h-9 w-9 text-xs" />
+              ))}
+            </div>
+            <p className="text-sm text-muted-foreground">Deseja criar uma cena para esse elenco ou vincular a uma cena já criada?</p>
+            <div className="flex flex-col gap-2">
+              <Button className="w-full" onClick={() => navigate('/admin/em-construcao')}>
+                Criar cena
+              </Button>
+              <Button variant="outline" className="w-full" onClick={() => navigate('/admin/em-construcao')}>
+                Vincular a cena existente
+              </Button>
+              <Button variant="ghost" className="w-full text-gray-500" onClick={closeElencoModal}>
+                Agora não
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="elenco-nome">Nome</Label>
+              <Input id="elenco-nome" value={elencoNome} onChange={e => setElencoNome(e.target.value)} placeholder="Ex.: Ensaio geral" />
+            </div>
+
+            <div>
+              <p className="text-sm text-muted-foreground mb-1.5">
+                Pessoas selecionadas ({selectedInscricoes.length})
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedInscricoes.map(i => (
+                  <Badge key={i.uid} variant="outline" className="gap-1.5 pl-1 pr-2 py-1">
+                    <Avatar photoURL={users[i.uid]?.photoURL} name={i.apelido || i.nomeCompleto} className="h-5 w-5 text-[10px]" />
+                    {i.apelido || i.nomeCompleto}
+                    <button type="button" onClick={() => toggleSelectUid(i.uid)} className="text-gray-400 hover:text-gray-700">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="elenco-lider">Líder</Label>
+              <Select id="elenco-lider" value={elencoLiderUid} onChange={e => setElencoLiderUid(e.target.value)}>
+                <option value="">Sem líder definido</option>
+                {selectedInscricoes.map(i => (
+                  <option key={i.uid} value={i.uid}>
+                    {i.apelido || i.nomeCompleto}
+                  </option>
+                ))}
+              </Select>
+              {elencoLiderUid && (users[elencoLiderUid]?.role ?? 'participante') === 'participante' && (
+                <p className="text-xs text-muted-foreground mt-1">Essa pessoa vai virar Líder ao salvar.</p>
+              )}
+            </div>
+
+            <div>
+              <Label>Dia(s)</Label>
+              <div className="grid grid-cols-6 gap-1.5 mt-1.5">
+                {DIAS_ORDER.map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => toggleElencoDia(d)}
+                    className={cn(
+                      'rounded-lg border py-2.5 text-sm font-medium transition-colors',
+                      elencoDias.includes(d) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                    )}
+                  >
+                    {DIA_SEMANA_LABELS[d]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="elenco-horario">Horário</Label>
+              <Input id="elenco-horario" type="time" value={elencoHorario} onChange={e => setElencoHorario(e.target.value)} />
+            </div>
+
+            <div>
+              <Label htmlFor="elenco-observacao">Observação (opcional)</Label>
+              <Input id="elenco-observacao" value={elencoObservacao} onChange={e => setElencoObservacao(e.target.value)} />
+            </div>
+
+            {elencoError && <p className="text-sm text-red-600">{elencoError}</p>}
+
+            <Button className="w-full" onClick={handleSaveElenco} disabled={savingElenco}>
+              {savingElenco && <Spinner size="sm" className="border-white/40 border-t-white" />}
+              Salvar
+            </Button>
+          </div>
+        )}
+      </Dialog>
+
       <Dialog
         open={!!selected}
         onClose={() => setSelected(null)}
@@ -417,6 +729,18 @@ export function Admin() {
                   ))}
                 </div>
               </div>
+              {!!elencosByUid[selected.uid]?.length && (
+                <div className="py-3">
+                  <p className="text-sm text-muted-foreground">Elencos</p>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {elencosByUid[selected.uid].map(elenco => (
+                      <Badge key={elenco.id} variant="outline">
+                        {elenco.nome}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="py-3">
                 <p className="text-sm text-muted-foreground">Disponibilidade</p>
                 <div className="flex flex-wrap gap-1.5 mt-1">

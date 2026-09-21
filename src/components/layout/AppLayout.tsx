@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { ClipboardList, LogOut, Menu, ShieldCheck, X } from 'lucide-react'
+import { ClipboardList, LogOut, Menu, ShieldCheck, Users, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useSelectionStore } from '@/stores/selectionStore'
 import { PhoneMockup } from '@/components/layout/PhoneMockup'
 import { cn } from '@/lib/utils'
 
@@ -12,7 +13,9 @@ const NAV_ITEMS = [{ to: '/', label: 'Minha inscrição', icon: ClipboardList, e
 export function AppLayout() {
   const user = useAuthStore(s => s.user)
   const isAdmin = user?.role === 'admin'
+  const isAdminOrLider = user?.role === 'admin' || user?.role === 'lider'
   const { settings, loaded, refresh } = useSettingsStore()
+  const hasSelection = useSelectionStore(s => s.hasSelection)
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -45,7 +48,7 @@ export function AppLayout() {
         <Outlet />
       </main>
 
-      <footer className="relative z-10 flex shrink-0 items-center justify-center py-4">
+      <footer className={cn('relative z-10 flex shrink-0 items-center justify-center py-4', hasSelection && 'hidden')}>
         <img src="/logo-emcena.png" alt="EmCena 575" className="w-full max-w-[120px] h-auto opacity-90" />
       </footer>
 
@@ -80,6 +83,7 @@ export function AppLayout() {
                 <MenuItem key={item.to} {...item} onClick={() => setMenuOpen(false)} />
               ))}
               {isAdmin && <MenuItem to="/admin" label="Admin" icon={ShieldCheck} onClick={() => setMenuOpen(false)} />}
+              {isAdminOrLider && <MenuItem to="/elencos" label="Elencos" icon={Users} onClick={() => setMenuOpen(false)} />}
             </div>
             <button
               onClick={() => logout()}

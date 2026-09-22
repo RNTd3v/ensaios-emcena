@@ -7,14 +7,14 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/Spinner'
-import { SelectAllRow } from '@/components/elenco/SelectAllRow'
-import { SelectionFloatingBar } from '@/components/elenco/SelectionFloatingBar'
-import { CreateElencoModal } from '@/components/elenco/CreateElencoModal'
+import { SelectAllRow } from '@/components/cena/SelectAllRow'
+import { SelectionFloatingBar } from '@/components/cena/SelectionFloatingBar'
+import { CreateCenaModal } from '@/components/cena/CreateCenaModal'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers } from '@/services/firebase/auth'
-import { subscribeToElencos } from '@/services/firebase/elencos'
+import { subscribeToCenas } from '@/services/firebase/cenas'
 import { useAuthStore } from '@/stores/authStore'
-import { AREA_LABELS, DIA_SEMANA_LABELS, type Area, type AppUser, type DiaSemana, type Elenco, type Inscricao } from '@/types'
+import { AREA_LABELS, DIA_SEMANA_LABELS, type Area, type AppUser, type Cena, type DiaSemana, type Inscricao } from '@/types'
 import { AREA_ICONS } from '@/lib/areaIcons'
 import { DIAS_ORDER } from '@/lib/dias'
 import { cn } from '@/lib/utils'
@@ -26,15 +26,16 @@ type AreaFilter = 'todas' | Area
 
 export function Disponibilidade() {
   const currentUser = useAuthStore(s => s.user)
+  const isAdmin = currentUser?.role === 'admin'
   const [inscricoes, setInscricoes] = useState<Inscricao[] | null>(null)
   const [users, setUsers] = useState<Record<string, AppUser>>({})
-  const [elencos, setElencos] = useState<Elenco[] | null>(null)
+  const [cenas, setCenas] = useState<Cena[] | null>(null)
   const [search, setSearch] = useState('')
   const [areaFilter, setAreaFilter] = useState<AreaFilter>('todas')
   const [openDay, setOpenDay] = useState<DiaSemana | null>(null)
 
   const [selectedUids, setSelectedUids] = useState<Set<string>>(new Set())
-  const [elencoModalOpen, setElencoModalOpen] = useState(false)
+  const [cenaModalOpen, setCenaModalOpen] = useState(false)
 
   useSelectionVisibility(selectedUids.size > 0)
 
@@ -46,7 +47,7 @@ export function Disponibilidade() {
 
   useEffect(() => {
     if (!currentUser) return
-    return subscribeToElencos(currentUser.role, currentUser.uid, setElencos)
+    return subscribeToCenas(currentUser.role, currentUser.uid, setCenas)
   }, [currentUser])
 
   const filtered = useMemo(() => {
@@ -79,16 +80,16 @@ export function Disponibilidade() {
     [inscricoes, selectedUids],
   )
 
-  const elencoCountByUid = useMemo(() => {
+  const cenaCountByUid = useMemo(() => {
     const map: Record<string, number> = {}
-    for (const elenco of elencos ?? []) {
-      if (!elenco.ativo) continue
-      for (const uid of elenco.participantes) {
+    for (const cena of cenas ?? []) {
+      if (!cena.ativo) continue
+      for (const uid of cena.participantes) {
         map[uid] = (map[uid] ?? 0) + 1
       }
     }
     return map
-  }, [elencos])
+  }, [cenas])
 
   function toggleSelectUid(uid: string) {
     setSelectedUids(prev => {
@@ -146,12 +147,14 @@ export function Disponibilidade() {
         })}
       </div>
 
-      <SelectAllRow
-        totalCount={filtered.length}
-        hasSelection={selectedUids.size > 0}
-        onSelectAll={selectAllFiltered}
-        onClear={() => setSelectedUids(new Set())}
-      />
+      {isAdmin && (
+        <SelectAllRow
+          totalCount={filtered.length}
+          hasSelection={selectedUids.size > 0}
+          onSelectAll={selectAllFiltered}
+          onClear={() => setSelectedUids(new Set())}
+        />
+      )}
 
       {!inscricoes && (
         <div className="flex justify-center py-10">
@@ -202,13 +205,14 @@ export function Disponibilidade() {
               <div className="grid grid-cols-3 gap-3">
                 {byDia[openDay].map(i => {
                   const isSelected = selectedUids.has(i.uid)
-                  const elencoCount = elencoCountByUid[i.uid] ?? 0
+                  const cenaCount = cenaCountByUid[i.uid] ?? 0
                   return (
                     <button
                       key={i.uid}
                       type="button"
+                      disabled={!isAdmin}
                       onClick={() => toggleSelectUid(i.uid)}
-                      className="flex flex-col items-center gap-1 text-center"
+                      className="flex flex-col items-center gap-1 text-center disabled:cursor-default"
                     >
                       <div className="relative">
                         <Avatar
@@ -216,12 +220,12 @@ export function Disponibilidade() {
                           name={i.apelido || i.nomeCompleto}
                           className={cn('h-10 w-10 text-xs', isSelected && 'ring-2 ring-primary ring-offset-2')}
                         />
-                        {elencoCount > 0 && (
+                        {cenaCount > 0 && (
                           <span
-                            title={`${elencoCount} elenco${elencoCount === 1 ? '' : 's'}`}
+                            title={`${cenaCount} cena${cenaCount === 1 ? '' : 's'}`}
                             className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-violet-600 px-1 text-[10px] font-medium text-white ring-2 ring-white"
                           >
-                            {elencoCount}
+                            {cenaCount}
                           </span>
                         )}
                         {isSelected && (
@@ -240,23 +244,26 @@ export function Disponibilidade() {
         </Card>
       )}
 
-      <SelectionFloatingBar
-        selectedInscricoes={selectedInscricoes}
-        users={users}
-        onCreateElenco={() => setElencoModalOpen(true)}
-        onClear={() => setSelectedUids(new Set())}
-      />
+      {isAdmin && (
+        <>
+          <SelectionFloatingBar
+            selectedInscricoes={selectedInscricoes}
+            users={users}
+            onCreateCena={() => setCenaModalOpen(true)}
+            onClear={() => setSelectedUids(new Set())}
+          />
 
-      <CreateElencoModal
-        open={elencoModalOpen}
-        onOpenChange={setElencoModalOpen}
-        selectedInscricoes={selectedInscricoes}
-        users={users}
-        onToggleParticipant={toggleSelectUid}
-        defaultDias={openDay ? [openDay] : []}
-        onCreated={() => setSelectedUids(new Set())}
-        onLiderPromoted={uid => setUsers(prev => ({ ...prev, [uid]: { ...prev[uid], role: 'lider' } }))}
-      />
+          <CreateCenaModal
+            open={cenaModalOpen}
+            onOpenChange={setCenaModalOpen}
+            selectedInscricoes={selectedInscricoes}
+            users={users}
+            onToggleParticipant={toggleSelectUid}
+            defaultDias={openDay ? [openDay] : []}
+            onCreated={() => setSelectedUids(new Set())}
+          />
+        </>
+      )}
     </div>
   )
 }

@@ -107,6 +107,27 @@ export function AdminConfig() {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader>
+            <CardTitle>Ensaios</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="checkinLimiteHoras">Limite de horas pro check-in de presença</Label>
+              <Input
+                id="checkinLimiteHoras"
+                type="number"
+                min={0}
+                step={0.5}
+                {...register('checkinLimiteHoras', { valueAsNumber: true })}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                O elenco só pode confirmar presença no dia do ensaio, até esse tanto de horas antes do horário.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
         <Button type="submit" className="w-full" disabled={saving}>
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
           {saved && <Check className="h-4 w-4" />}

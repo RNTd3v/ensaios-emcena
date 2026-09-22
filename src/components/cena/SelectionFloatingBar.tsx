@@ -7,7 +7,7 @@ import type { AppUser, Inscricao } from '@/types'
 interface Props {
   selectedInscricoes: Inscricao[]
   users: Record<string, AppUser>
-  onCreateElenco: () => void
+  onCreateCena: () => void
   onClear: () => void
 }
 
@@ -18,7 +18,7 @@ const AVATAR_STEP = 20 // 28px de avatar menos 8px de sobreposição (-space-x-2
  * Barra flutuante fixa no fundo da tela (fora do fluxo de scroll), com os avatares das pessoas
  * selecionadas se sobrepondo até o limite da largura do card — o que não cabe vira "+N".
  */
-export function SelectionFloatingBar({ selectedInscricoes, users, onCreateElenco, onClear }: Props) {
+export function SelectionFloatingBar({ selectedInscricoes, users, onCreateCena, onClear }: Props) {
   const [avatarRowWidth, setAvatarRowWidth] = useState(0)
   const avatarRowObserverRef = useRef<ResizeObserver | null>(null)
 
@@ -59,9 +59,9 @@ export function SelectionFloatingBar({ selectedInscricoes, users, onCreateElenco
           )}
         </div>
         <div className="flex flex-col gap-1">
-          <Button size="sm" className="w-full gap-1.5" onClick={onCreateElenco}>
+          <Button size="sm" className="w-full gap-1.5" onClick={onCreateCena}>
             <Users className="h-4 w-4" />
-            Cadastrar Elenco
+            Cadastrar Cena
           </Button>
           <Button variant="ghost" size="sm" className="text-gray-500" onClick={onClear}>
             Cancelar

@@ -1,0 +1,710 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import {
+  Archive,
+  ArrowLeft,
+  Check,
+  CheckCircle2,
+  Clock,
+  Crown,
+  Drama,
+  MessageCircle,
+  Pencil,
+  Plus,
+  RotateCcw,
+  SlidersHorizontal,
+  Trash2,
+} from 'lucide-react'
+import { Avatar } from '@/components/ui/Avatar'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Dialog } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Spinner } from '@/components/ui/Spinner'
+import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
+import { getUsers } from '@/services/firebase/auth'
+import {
+  createCena,
+  deactivateCena,
+  deleteCenaPermanently,
+  reactivateCena,
+  subscribeToCenas,
+  updateCena,
+  type CenaInput,
+} from '@/services/firebase/cenas'
+import { subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
+import { useAuthStore } from '@/stores/authStore'
+import { DIA_SEMANA_LABELS, type AppUser, type Cena, type DiaSemana, type Ensaio, type Inscricao } from '@/types'
+import { DIAS_ORDER, sortDias } from '@/lib/dias'
+import { formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
+import { formatRelativeDia, toDateKey } from '@/lib/agenda'
+import { whatsappLink } from '@/lib/formatters'
+import { cn } from '@/lib/utils'
+
+/** Próximo ensaio confirmado dessa cena (qualquer data futura, sem paginação) + quantos confirmaram presença. */
+function ProximoEnsaio({ cena }: { cena: Cena }) {
+  const [ensaios, setEnsaios] = useState<Ensaio[] | null>(null)
+
+  useEffect(() => subscribeToEnsaiosDaCena(cena.id, setEnsaios), [cena.id])
+
+  const todayKey = toDateKey(new Date())
+  const proximo = useMemo(() => {
+    if (!ensaios) return undefined
+    const agora = new Date().toTimeString().slice(0, 5)
+    return ensaios
+      .filter(e => !e.canceledByUid && (e.data > todayKey || (e.data === todayKey && e.horario >= agora)))
+      .sort((a, b) => a.data.localeCompare(b.data) || a.horario.localeCompare(b.horario))[0]
+  }, [ensaios, todayKey])
+
+  if (!ensaios) return null
+  if (!proximo) return <p className="text-xs text-gray-400">Nenhum ensaio confirmado.</p>
+
+  const elencoCount = cena.personagens.filter(p => p.participanteUid).length
+
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-gray-600">
+      <Clock className="h-3 w-3 text-primary shrink-0" />
+      <span className="truncate">
+        Próximo: {formatRelativeDia(proximo.data, todayKey)} · {formatHoraCompacta(proximo.horario)}
+      </span>
+      {elencoCount > 0 && (
+        <span className="ml-auto flex shrink-0 items-center gap-1 text-gray-400">
+          <Check className="h-3 w-3" />
+          {proximo.presencas?.length ?? 0}/{elencoCount}
+        </span>
+      )}
+    </div>
+  )
+}
+
+export function Cenas() {
+  const navigate = useNavigate()
+  const currentUser = useAuthStore(s => s.user)
+  const isAdmin = currentUser?.role === 'admin'
+  const [cenas, setCenas] = useState<Cena[] | null>(null)
+  const [inscricoes, setInscricoes] = useState<Inscricao[] | null>(null)
+  const [users, setUsers] = useState<Record<string, AppUser>>({})
+  const [search, setSearch] = useState('')
+
+  const [nomeFilter, setNomeFilter] = useState('')
+  const [pessoaFilter, setPessoaFilter] = useState('')
+  const [diaFilterList, setDiaFilterList] = useState<DiaSemana[]>([])
+  const [showInactive, setShowInactive] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const hasActiveFilters = pessoaFilter.trim() !== '' || diaFilterList.length > 0 || showInactive
+
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [nome, setNome] = useState('')
+  const [participantesUids, setParticipantesUids] = useState<Set<string>>(new Set())
+  const [dias, setDias] = useState<DiaSemana[]>([])
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState('')
+  const [createdCena, setCreatedCena] = useState<Cena | null>(null)
+
+  const [deactivateTarget, setDeactivateTarget] = useState<Cena | null>(null)
+  const [deactivating, setDeactivating] = useState(false)
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<Cena | null>(null)
+  const [liderModalCena, setLiderModalCena] = useState<Cena | null>(null)
+  const [hardDeleting, setHardDeleting] = useState(false)
+
+  useEffect(() => {
+    if (!currentUser) return
+    return subscribeToCenas(currentUser.role, currentUser.uid, setCenas)
+  }, [currentUser])
+
+  useEffect(() => subscribeToAllInscricoes(setInscricoes), [])
+
+  useEffect(() => {
+    getUsers().then(list => setUsers(Object.fromEntries(list.map(u => [u.uid, u]))))
+  }, [])
+
+  const inscricoesByUid = useMemo(() => Object.fromEntries((inscricoes ?? []).map(i => [i.uid, i])), [inscricoes])
+
+  function nameFor(uid: string) {
+    return inscricoesByUid[uid]?.apelido || inscricoesByUid[uid]?.nomeCompleto || users[uid]?.displayName || 'Sem nome'
+  }
+
+  function toggleDiaFilterList(dia: DiaSemana) {
+    setDiaFilterList(prev => (prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]))
+  }
+
+  const filteredCenas = useMemo(() => {
+    return (cenas ?? []).filter(cena => {
+      if (!showInactive && !cena.ativo) return false
+      if (nomeFilter.trim() && !cena.nome.toLowerCase().includes(nomeFilter.trim().toLowerCase())) return false
+      if (diaFilterList.length > 0 && !cena.dias.some(d => diaFilterList.includes(d))) return false
+      if (pessoaFilter.trim()) {
+        const term = pessoaFilter.trim().toLowerCase()
+        if (!cena.participantes.some(uid => nameFor(uid).toLowerCase().includes(term))) return false
+      }
+      return true
+    })
+  }, [cenas, nomeFilter, diaFilterList, pessoaFilter, showInactive, inscricoesByUid, users])
+
+  const filteredParticipantes = useMemo(() => {
+    if (!inscricoes) return []
+    if (!search.trim()) return inscricoes
+    const term = search.toLowerCase()
+    return inscricoes.filter(i => i.nomeCompleto.toLowerCase().includes(term) || i.apelido?.toLowerCase().includes(term))
+  }, [inscricoes, search])
+
+  function toggleParticipante(uid: string) {
+    setParticipantesUids(prev => {
+      const next = new Set(prev)
+      if (next.has(uid)) next.delete(uid)
+      else next.add(uid)
+      return next
+    })
+  }
+
+  function toggleDia(dia: DiaSemana) {
+    setDias(prev => (prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]))
+  }
+
+  function openCreateModal() {
+    setEditingId(null)
+    setNome('')
+    setParticipantesUids(new Set())
+    setDias([])
+    setSearch('')
+    setFormError('')
+    setCreatedCena(null)
+    setModalOpen(true)
+  }
+
+  function openEditModal(cena: Cena) {
+    setEditingId(cena.id)
+    setNome(cena.nome)
+    setParticipantesUids(new Set(cena.participantes))
+    setDias(cena.dias)
+    setSearch('')
+    setFormError('')
+    setCreatedCena(null)
+    setModalOpen(true)
+  }
+
+  function handleCardClick(cena: Cena) {
+    navigate(`/cenas/${cena.id}`)
+  }
+
+  async function handleSave() {
+    if (!nome.trim() || dias.length === 0 || participantesUids.size === 0) {
+      setFormError('Preencha nome, participantes e dia(s).')
+      return
+    }
+    if (!currentUser) return
+    setSaving(true)
+    setFormError('')
+    // Editar preserva os campos que ainda não têm UI aqui (líder, horário, personagens,
+    // observação) — essas "detalhes" são geridas na tela de detalhe da cena.
+    const editingCena = editingId ? (cenas ?? []).find(c => c.id === editingId) : null
+    const stillParticipant = (uid?: string) => !!uid && participantesUids.has(uid)
+    const input: CenaInput = {
+      nome: nome.trim(),
+      participantes: [...participantesUids],
+      liderUid: stillParticipant(editingCena?.liderUid) ? editingCena?.liderUid : undefined,
+      personagens: (editingCena?.personagens ?? []).map(p =>
+        stillParticipant(p.participanteUid) ? p : { ...p, participanteUid: undefined },
+      ),
+      dias,
+      horario: editingCena?.horario,
+      horarios: editingCena?.horarios,
+      observacao: editingCena?.observacao,
+    }
+    try {
+      if (editingId) {
+        await updateCena(editingId, input, currentUser.uid)
+        setModalOpen(false)
+      } else {
+        const id = await createCena(input, currentUser.uid)
+        setCreatedCena({ ...input, id, ativo: true, createdAt: new Date().toISOString() })
+      }
+    } catch {
+      setFormError('Não foi possível salvar. Tente de novo.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleAddDetails() {
+    if (!createdCena) return
+    navigate(`/cenas/${createdCena.id}`)
+  }
+
+  async function handleReactivate(cena: Cena) {
+    if (!currentUser) return
+    await reactivateCena(cena.id, currentUser.uid)
+  }
+
+  async function handleDeactivate() {
+    if (!deactivateTarget || !currentUser) return
+    setDeactivating(true)
+    try {
+      await deactivateCena(deactivateTarget.id, currentUser.uid)
+      setDeactivateTarget(null)
+    } finally {
+      setDeactivating(false)
+    }
+  }
+
+  async function handleHardDelete() {
+    if (!hardDeleteTarget) return
+    setHardDeleting(true)
+    try {
+      await deleteCenaPermanently(hardDeleteTarget.id)
+      setHardDeleteTarget(null)
+    } finally {
+      setHardDeleting(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Link to="/">
+          <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+        <h1 className="text-xl font-semibold text-white flex-1">Cenas</h1>
+        {isAdmin && (
+          <Button size="icon" onClick={openCreateModal} title="Nova cena">
+            <Plus className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <Input placeholder="Buscar por nome da cena" value={nomeFilter} onChange={e => setNomeFilter(e.target.value)} className="flex-1" />
+        <Button
+          variant="outline"
+          size="icon"
+          title="Filtros"
+          onClick={() => setFiltersOpen(true)}
+          className="relative border-white/40 bg-white/10 text-white hover:bg-white/20 shrink-0"
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+          {hasActiveFilters && <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary border-2 border-white" />}
+        </Button>
+      </div>
+
+      {!cenas && (
+        <div className="flex justify-center py-10">
+          <Spinner />
+        </div>
+      )}
+
+      {cenas && cenas.length === 0 && (
+        <Card>
+          <CardContent className="text-center text-sm text-muted-foreground py-6">Nenhuma cena cadastrada ainda.</CardContent>
+        </Card>
+      )}
+
+      {cenas && cenas.length > 0 && filteredCenas.length === 0 && (
+        <Card>
+          <CardContent className="text-center text-sm text-muted-foreground py-6">Nenhuma cena encontrada com esse filtro.</CardContent>
+        </Card>
+      )}
+
+      <div className="space-y-2">
+        {filteredCenas.map(cena => {
+          const canManage = isAdmin || cena.liderUid === currentUser?.uid
+          return (
+          <Card
+            key={cena.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => handleCardClick(cena)}
+            onKeyDown={e => e.key === 'Enter' && handleCardClick(cena)}
+            className={cn('p-0 cursor-pointer', !cena.ativo && 'opacity-60')}
+          >
+            <CardContent className="px-4 py-3 space-y-2.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <Drama className="h-4 w-4 shrink-0 text-primary" />
+                    <p className="min-w-0 flex-1 truncate text-base font-semibold">{cena.nome}</p>
+                    {!cena.ativo && (
+                      <Badge variant="destructive" className="text-[10px] shrink-0">
+                        Inativo
+                      </Badge>
+                    )}
+                  </div>
+                  {!cena.ativo && cena.deactivatedByUid && (
+                    <p className="text-[10px] text-gray-400 truncate">Desativado por {nameFor(cena.deactivatedByUid)}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {cena.ativo ? (
+                    canManage && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={e => {
+                            e.stopPropagation()
+                            openEditModal(cena)
+                          }}
+                          title="Editar"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={e => {
+                            e.stopPropagation()
+                            setDeactivateTarget(cena)
+                          }}
+                          title="Desativar"
+                          className="text-amber-600"
+                        >
+                          <Archive className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )
+                  ) : (
+                    isAdmin && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={e => {
+                            e.stopPropagation()
+                            handleReactivate(cena)
+                          }}
+                          title="Reativar"
+                          className="text-emerald-600"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={e => {
+                            e.stopPropagation()
+                            setHardDeleteTarget(cena)
+                          }}
+                          title="Excluir definitivamente"
+                          className="text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )
+                  )}
+                </div>
+              </div>
+
+              {(() => {
+                const outrosParticipantes = cena.participantes.filter(uid => uid !== cena.liderUid)
+                if (outrosParticipantes.length === 0 && !cena.liderUid) return null
+                return (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex -space-x-2">
+                      {outrosParticipantes.slice(0, 8).map(uid => (
+                        <Avatar key={uid} photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-7 w-7 shrink-0 text-[10px] ring-2 ring-white" />
+                      ))}
+                      {outrosParticipantes.length > 8 && (
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-200 text-[10px] font-medium text-gray-600 ring-2 ring-white">
+                          +{outrosParticipantes.length - 8}
+                        </div>
+                      )}
+                    </div>
+                    {cena.liderUid && (
+                      <button
+                        type="button"
+                        className="relative shrink-0"
+                        title={`Líder: ${nameFor(cena.liderUid)}`}
+                        onClick={e => {
+                          e.stopPropagation()
+                          setLiderModalCena(cena)
+                        }}
+                      >
+                        <Avatar
+                          photoURL={users[cena.liderUid]?.photoURL}
+                          name={nameFor(cena.liderUid)}
+                          className="h-7 w-7 text-[10px] ring-2 ring-amber-400"
+                        />
+                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 ring-2 ring-white">
+                          <Crown className="h-2.5 w-2.5 text-white" />
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                )
+              })()}
+
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-600">
+                {sortDias(cena.dias).map(d => {
+                  const horario = horarioDoDia(cena, d)
+                  return (
+                    <Badge key={d} variant="outline" className="bg-sky-50 border-sky-200 text-sky-700 text-[10px]">
+                      {DIA_SEMANA_LABELS[d]}
+                      {horario && ` | ${formatHoraCompacta(horario)}`}
+                    </Badge>
+                  )
+                })}
+              </div>
+
+              <ProximoEnsaio cena={cena} />
+
+              {cena.observacao && <p className="text-xs text-gray-500">{cena.observacao}</p>}
+            </CardContent>
+          </Card>
+          )
+        })}
+      </div>
+
+      <Dialog open={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filtros">
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="filtro-pessoa">Pessoa</Label>
+            <Input
+              id="filtro-pessoa"
+              placeholder="Buscar por participante"
+              value={pessoaFilter}
+              onChange={e => setPessoaFilter(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label>Dia(s)</Label>
+            <div className="grid grid-cols-6 gap-1.5 mt-1.5">
+              {DIAS_ORDER.map(d => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => toggleDiaFilterList(d)}
+                  className={cn(
+                    'rounded-lg border py-2.5 text-sm font-medium transition-colors',
+                    diaFilterList.includes(d) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                  )}
+                >
+                  {DIA_SEMANA_LABELS[d]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2.5">
+            <span className="text-sm text-gray-700">Mostrar inativos</span>
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={e => setShowInactive(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+            />
+          </label>
+          {hasActiveFilters && (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                setPessoaFilter('')
+                setDiaFilterList([])
+                setShowInactive(false)
+              }}
+            >
+              Limpar filtros
+            </Button>
+          )}
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={createdCena ? 'Cena criada' : editingId ? 'Editar cena' : 'Nova cena'}
+      >
+        {createdCena ? (
+          <div className="space-y-4 text-center">
+            <div className="flex justify-center">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                <CheckCircle2 className="h-7 w-7" />
+              </span>
+            </div>
+            <div>
+              <p className="text-base font-semibold">{createdCena.nome}</p>
+              <p className="text-sm text-emerald-600">Cena cadastrada com sucesso!</p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {createdCena.participantes.map(uid => (
+                <Avatar key={uid} photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-9 w-9 text-xs" />
+              ))}
+            </div>
+            <div className="flex flex-col gap-2">
+              <Button className="w-full" onClick={handleAddDetails}>
+                Cadastrar mais detalhes da cena
+              </Button>
+              <Button variant="ghost" className="w-full text-gray-500" onClick={() => setModalOpen(false)}>
+                Agora não
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="cena-nome">Nome</Label>
+              <Input id="cena-nome" value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex.: Cena 1 - Abertura" />
+            </div>
+
+            <div>
+              <Label>Participantes ({participantesUids.size})</Label>
+              <Input placeholder="Buscar por nome" value={search} onChange={e => setSearch(e.target.value)} className="mt-1.5 mb-2" />
+              <div className="max-h-48 overflow-y-auto space-y-1 border border-gray-200 rounded-lg p-1.5">
+                {!inscricoes && (
+                  <div className="flex justify-center py-4">
+                    <Spinner size="sm" />
+                  </div>
+                )}
+                {inscricoes && filteredParticipantes.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-3">Ninguém encontrado.</p>
+                )}
+                {filteredParticipantes.map(i => (
+                  <button
+                    key={i.uid}
+                    type="button"
+                    onClick={() => toggleParticipante(i.uid)}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm',
+                      participantesUids.has(i.uid) ? 'bg-primary/10' : 'hover:bg-gray-50',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2',
+                        participantesUids.has(i.uid) ? 'border-primary bg-primary text-white' : 'border-gray-300',
+                      )}
+                    >
+                      {participantesUids.has(i.uid) && <Check className="h-2.5 w-2.5" />}
+                    </span>
+                    <Avatar photoURL={users[i.uid]?.photoURL} name={i.apelido || i.nomeCompleto} className="h-6 w-6 text-[10px]" />
+                    <span className="truncate">{i.apelido || i.nomeCompleto}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label>Dia(s)</Label>
+              <div className="grid grid-cols-6 gap-1.5 mt-1.5">
+                {DIAS_ORDER.map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => toggleDia(d)}
+                    className={cn(
+                      'rounded-lg border py-2.5 text-sm font-medium transition-colors',
+                      dias.includes(d) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                    )}
+                  >
+                    {DIA_SEMANA_LABELS[d]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {formError && <p className="text-sm text-red-600">{formError}</p>}
+
+            <Button className="w-full" onClick={handleSave} disabled={saving}>
+              {saving && <Spinner size="sm" className="border-white/40 border-t-white" />}
+              Salvar
+            </Button>
+          </div>
+        )}
+      </Dialog>
+
+      <Dialog open={!!deactivateTarget} onClose={() => setDeactivateTarget(null)} title="Desativar cena">
+        {deactivateTarget && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700">
+              Desativar <span className="font-medium">{deactivateTarget.nome}</span>? Ela some da lista, mas fica guardada — só um
+              admin pode reativar depois.
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setDeactivateTarget(null)}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" className="flex-1" onClick={handleDeactivate} disabled={deactivating}>
+                {deactivating && <Spinner size="sm" className="border-white/40 border-t-white" />}
+                Desativar
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+
+      <Dialog open={!!hardDeleteTarget} onClose={() => setHardDeleteTarget(null)} title="Excluir definitivamente">
+        {hardDeleteTarget && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700">
+              Excluir <span className="font-medium">{hardDeleteTarget.nome}</span> de vez? Essa ação apaga o registro pra sempre e não
+              pode ser desfeita.
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setHardDeleteTarget(null)}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" className="flex-1" onClick={handleHardDelete} disabled={hardDeleting}>
+                {hardDeleting && <Spinner size="sm" className="border-white/40 border-t-white" />}
+                Excluir de vez
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+
+      {liderModalCena?.liderUid && (
+        <Dialog
+          open={!!liderModalCena}
+          onClose={() => setLiderModalCena(null)}
+          title={
+            <span className="flex items-center gap-2.5">
+              <Avatar
+                photoURL={users[liderModalCena.liderUid]?.photoURL}
+                name={nameFor(liderModalCena.liderUid)}
+                className="h-9 w-9 text-sm"
+              />
+              {nameFor(liderModalCena.liderUid)}
+            </span>
+          }
+        >
+          {(() => {
+            const liderInscricao = inscricoesByUid[liderModalCena.liderUid]
+            return (
+              <div className="divide-y divide-gray-100">
+                <div className="py-3 first:pt-0">
+                  <p className="text-sm text-muted-foreground">Papel</p>
+                  <p className="text-base">Líder da cena</p>
+                </div>
+                {liderInscricao?.telefone && (
+                  <div className="py-3">
+                    <p className="text-sm text-muted-foreground">Telefone (WhatsApp)</p>
+                    <a
+                      href={whatsappLink(liderInscricao.telefone)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-base text-primary hover:underline"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      {liderInscricao.telefone}
+                    </a>
+                  </div>
+                )}
+                {liderInscricao?.email && (
+                  <div className="py-3">
+                    <p className="text-sm text-muted-foreground">Email</p>
+                    <p className="text-base">{liderInscricao.email}</p>
+                  </div>
+                )}
+                {!liderInscricao && <p className="py-3 text-sm text-muted-foreground">Sem dados de contato cadastrados.</p>}
+              </div>
+            )
+          })()}
+        </Dialog>
+      )}
+    </div>
+  )
+}

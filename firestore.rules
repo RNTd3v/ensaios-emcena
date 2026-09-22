@@ -25,11 +25,10 @@ service cloud.firestore {
       return isAuthenticated() && userDoc().active == true;
     }
 
-    // Usuários: o próprio usuário sempre pode ler seu documento (inclusive antes de existir,
-    // ensureUserDoc verifica existência antes de criar, no primeiro login). Admin lê todos.
-    // Líder também lê todos, pra poder selecionar participantes ao montar um elenco.
+    // Usuários: qualquer autenticado lê todos os perfis — é o que alimenta foto/nome em toda a
+    // UI (cenas, personagens, participantes etc.), não só quem gerencia a cena.
     match /users/{userId} {
-      allow read: if isAdmin() || isLider() || (isAuthenticated() && request.auth.uid == userId);
+      allow read: if isAuthenticated();
       // Criação automática no primeiro login (ensureUserDoc), sempre como 'participante' e ativo
       allow create: if isAuthenticated()
         && request.auth.uid == userId
@@ -56,17 +55,50 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Elencos/grupos de ensaio: admin vê/gerencia todos. Líder só os que ele lidera (liderUid),
-    // e só pode criar um elenco novo se colocar a si mesmo como líder.
-    // "Excluir" é soft delete (ativo=false) via update; líder pode desativar o próprio elenco mas
-    // não reativar (só admin) nem excluir de verdade (delete é ação separada, só admin).
-    match /elencos/{id} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.liderUid == request.auth.uid);
-      allow create: if isAdmin() || (isLider() && request.resource.data.liderUid == request.auth.uid);
+    // Cenas: todo mundo autenticado pode ver, mas cada um só as cenas que dizem respeito a ele —
+    // admin vê todas; líder só as que ele lidera (liderUid); participante só as que participa
+    // (array-contains). Só admin cria. "Excluir" é soft delete (ativo=false) via update; líder
+    // pode desativar a própria cena mas não reativar (só admin) nem excluir de verdade (delete é
+    // ação separada, só admin).
+    match /cenas/{id} {
+      allow read: if isAdmin()
+        || (isAuthenticated() && resource.data.liderUid == request.auth.uid)
+        || (isAuthenticated() && request.auth.uid in resource.data.participantes);
+      allow create: if isAdmin();
       allow update: if isAdmin()
         || (isAuthenticated() && resource.data.liderUid == request.auth.uid
             && !(resource.data.ativo == false && request.resource.data.ativo == true));
       allow delete: if isAdmin();
+    }
+
+    // Ensaios: uma ocorrência (data+horário) de uma cena, confirmada ou cancelada. Mesma
+    // visibilidade da cena correspondente (checada via get() na cena referenciada); confirmar
+    // (create), cancelar/reconfirmar (update completo) é admin ou o líder daquela cena — cancelar
+    // não apaga o documento, só marca `canceledByUid`/`canceledAt`, pra manter o histórico visível.
+    // Participante da cena também pode dar update, mas só pra check-in: só pode se adicionar em
+    // `presencas` (nunca remover outro nem mexer em outro campo). A regra não valida se a pessoa
+    // tem personagem nem a janela de horário — isso é responsabilidade do cliente (regras do
+    // Firestore não conseguem inspecionar o array `personagens` pra achar `participanteUid`).
+    match /ensaios/{id} {
+      allow read: if isAdmin()
+        || (isAuthenticated()
+            && get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.liderUid == request.auth.uid)
+        || (isAuthenticated()
+            && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.participantes);
+      allow create: if isAdmin()
+        || (isAuthenticated()
+            && get(/databases/$(database)/documents/cenas/$(request.resource.data.cenaId)).data.liderUid == request.auth.uid);
+      allow update: if isAdmin()
+        || (isAuthenticated()
+            && get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.liderUid == request.auth.uid)
+        || (isAuthenticated()
+            && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.participantes
+            && !(request.auth.uid in resource.data.presencas)
+            && request.resource.data.presencas == resource.data.presencas.concat([request.auth.uid])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presencas']));
+      allow delete: if isAdmin()
+        || (isAuthenticated()
+            && get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.liderUid == request.auth.uid);
     }
   }
 }

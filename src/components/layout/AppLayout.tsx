@@ -1,17 +1,12 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { CalendarDays, ClipboardList, Home, LogOut, Menu, ShieldCheck, Users, X } from 'lucide-react'
+import { CalendarDays, Clapperboard, ClipboardList, Home, LogOut, Menu, ShieldCheck, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useSelectionStore } from '@/stores/selectionStore'
 import { PhoneMockup } from '@/components/layout/PhoneMockup'
 import { cn } from '@/lib/utils'
-
-const NAV_ITEMS = [
-  { to: '/', label: 'Início', icon: Home, end: true },
-  { to: '/inscricao', label: 'Minha inscrição', icon: ClipboardList, end: true },
-]
 
 export function AppLayout() {
   const user = useAuthStore(s => s.user)
@@ -82,14 +77,13 @@ export function AppLayout() {
               </button>
             </div>
             <div className="space-y-2">
-              {NAV_ITEMS.map(item => (
-                <MenuItem key={item.to} {...item} onClick={() => setMenuOpen(false)} />
-              ))}
-              {isAdmin && <MenuItem to="/admin" label="Admin" icon={ShieldCheck} onClick={() => setMenuOpen(false)} />}
-              {isAdminOrLider && <MenuItem to="/elencos" label="Elencos" icon={Users} onClick={() => setMenuOpen(false)} />}
+              <MenuItem to="/" label="Início" icon={Home} end onClick={() => setMenuOpen(false)} />
+              <MenuItem to="/cenas" label={isAdmin ? 'Cenas' : 'Minhas Cenas'} icon={Clapperboard} onClick={() => setMenuOpen(false)} />
               {isAdminOrLider && (
                 <MenuItem to="/disponibilidade" label="Disponibilidade" icon={CalendarDays} onClick={() => setMenuOpen(false)} />
               )}
+              <MenuItem to="/inscricao" label="Minha inscrição" icon={ClipboardList} end onClick={() => setMenuOpen(false)} />
+              {isAdmin && <MenuItem to="/admin" label="Admin" icon={ShieldCheck} onClick={() => setMenuOpen(false)} />}
             </div>
             <button
               onClick={() => logout()}

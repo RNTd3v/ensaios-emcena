@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   eventDate: '',
   callToActionText: 'Quero participar',
   welcomeMessage: 'Sua participação na Vila é um presente. Que o Senhor use você pra levar esperança e transformar vidas através dessa história.',
+  checkinLimiteHoras: 2,
 }
 
 export async function getSettings(): Promise<AppSettings> {

@@ -20,12 +20,12 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/Spinner'
 import { Avatar } from '@/components/ui/Avatar'
-import { SelectAllRow } from '@/components/elenco/SelectAllRow'
-import { SelectionFloatingBar } from '@/components/elenco/SelectionFloatingBar'
-import { CreateElencoModal } from '@/components/elenco/CreateElencoModal'
+import { SelectAllRow } from '@/components/cena/SelectAllRow'
+import { SelectionFloatingBar } from '@/components/cena/SelectionFloatingBar'
+import { CreateCenaModal } from '@/components/cena/CreateCenaModal'
 import { subscribeToAllInscricoes, updateInscricaoStatus } from '@/services/firebase/inscricoes'
 import { getUsers, setUserActive, updateUserRole } from '@/services/firebase/auth'
-import { subscribeToElencos } from '@/services/firebase/elencos'
+import { subscribeToCenas } from '@/services/firebase/cenas'
 import { useAuthStore } from '@/stores/authStore'
 import {
   AREA_LABELS,
@@ -33,8 +33,8 @@ import {
   USER_ROLE_LABELS,
   type AppUser,
   type Area,
+  type Cena,
   type DiaSemana,
-  type Elenco,
   type Inscricao,
   type InscricaoStatus,
   type UserRole,
@@ -59,7 +59,7 @@ export function Admin() {
   const currentUser = useAuthStore(s => s.user)
   const [inscricoes, setInscricoes] = useState<Inscricao[] | null>(null)
   const [users, setUsers] = useState<Record<string, AppUser>>({})
-  const [elencos, setElencos] = useState<Elenco[] | null>(null)
+  const [cenas, setCenas] = useState<Cena[] | null>(null)
   const [search, setSearch] = useState('')
   const [areaFilter, setAreaFilter] = useState<AreaFilter>('todas')
   const [diaFilter, setDiaFilter] = useState<DiaSemana[]>([])
@@ -71,7 +71,7 @@ export function Admin() {
   const hasActiveFilters = areaFilter !== 'todas' || diaFilter.length > 0 || roleFilter !== 'todos'
 
   const [selectedUids, setSelectedUids] = useState<Set<string>>(new Set())
-  const [elencoModalOpen, setElencoModalOpen] = useState(false)
+  const [cenaModalOpen, setCenaModalOpen] = useState(false)
 
   useSelectionVisibility(selectedUids.size > 0)
 
@@ -100,7 +100,7 @@ export function Admin() {
 
   useEffect(() => {
     if (!currentUser) return
-    return subscribeToElencos(currentUser.role, currentUser.uid, setElencos)
+    return subscribeToCenas(currentUser.role, currentUser.uid, setCenas)
   }, [currentUser])
 
   const filtered = useMemo(() => {
@@ -135,16 +135,16 @@ export function Admin() {
     [inscricoes, selectedUids],
   )
 
-  const elencosByUid = useMemo(() => {
-    const map: Record<string, Elenco[]> = {}
-    for (const elenco of elencos ?? []) {
-      if (!elenco.ativo) continue
-      for (const uid of elenco.participantes) {
-        ;(map[uid] ??= []).push(elenco)
+  const cenasByUid = useMemo(() => {
+    const map: Record<string, Cena[]> = {}
+    for (const cena of cenas ?? []) {
+      if (!cena.ativo) continue
+      for (const uid of cena.participantes) {
+        ;(map[uid] ??= []).push(cena)
       }
     }
     return map
-  }, [elencos])
+  }, [cenas])
 
   async function handleStatusChange(uid: string, status: InscricaoStatus) {
     await updateInscricaoStatus(uid, status)
@@ -282,16 +282,16 @@ export function Admin() {
                   <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 w-full pt-3 border-t border-gray-100 text-xs text-gray-600">
                     {i.areas.map((a, idx) => {
                       const Icon = AREA_ICONS[a]
-                      const elencosCount = a === 'elenco' ? (elencosByUid[i.uid]?.length ?? 0) : 0
+                      const cenasCount = a === 'elenco' ? (cenasByUid[i.uid]?.length ?? 0) : 0
                       return (
                         <span key={a} className="inline-flex items-center gap-2.5">
                           {idx > 0 && <span className="text-gray-300">|</span>}
                           <span className="inline-flex items-center gap-1">
                             <Icon className="h-3.5 w-3.5 shrink-0" />
                             {AREA_LABELS[a]}
-                            {elencosCount > 0 && (
+                            {cenasCount > 0 && (
                               <Badge variant="outline" className="ml-0.5 h-4 min-w-4 justify-center rounded-full px-1 text-[10px] leading-none">
-                                {elencosCount}
+                                {cenasCount}
                               </Badge>
                             )}
                           </span>
@@ -337,7 +337,7 @@ export function Admin() {
       <SelectionFloatingBar
         selectedInscricoes={selectedInscricoes}
         users={users}
-        onCreateElenco={() => setElencoModalOpen(true)}
+        onCreateCena={() => setCenaModalOpen(true)}
         onClear={() => setSelectedUids(new Set())}
       />
 
@@ -436,15 +436,14 @@ export function Admin() {
         </div>
       </Dialog>
 
-      <CreateElencoModal
-        open={elencoModalOpen}
-        onOpenChange={setElencoModalOpen}
+      <CreateCenaModal
+        open={cenaModalOpen}
+        onOpenChange={setCenaModalOpen}
         selectedInscricoes={selectedInscricoes}
         users={users}
         onToggleParticipant={toggleSelectUid}
         defaultDias={diaFilter}
         onCreated={() => setSelectedUids(new Set())}
-        onLiderPromoted={uid => setUsers(prev => ({ ...prev, [uid]: { ...prev[uid], role: 'lider' } }))}
       />
 
       <Dialog
@@ -513,13 +512,13 @@ export function Admin() {
                   ))}
                 </div>
               </div>
-              {!!elencosByUid[selected.uid]?.length && (
+              {!!cenasByUid[selected.uid]?.length && (
                 <div className="py-3">
-                  <p className="text-sm text-muted-foreground">Elencos</p>
+                  <p className="text-sm text-muted-foreground">Cenas</p>
                   <div className="flex flex-wrap gap-1.5 mt-1">
-                    {elencosByUid[selected.uid].map(elenco => (
-                      <Badge key={elenco.id} variant="outline">
-                        {elenco.nome}
+                    {cenasByUid[selected.uid].map(cena => (
+                      <Badge key={cena.id} variant="outline">
+                        {cena.nome}
                       </Badge>
                     ))}
                   </div>

@@ -11,7 +11,9 @@ import { Inscricao } from '@/pages/Inscricao'
 import { Admin } from '@/pages/Admin'
 import { AdminConfig } from '@/pages/AdminConfig'
 import { EmConstrucao } from '@/pages/EmConstrucao'
-import { Elencos } from '@/pages/Elencos'
+import { Cenas } from '@/pages/Cenas'
+import { CenaDetalhe } from '@/pages/CenaDetalhe'
+import { PersonagemDetalhe } from '@/pages/PersonagemDetalhe'
 import { Disponibilidade } from '@/pages/Disponibilidade'
 import { initAuth } from '@/stores/authStore'
 
@@ -59,14 +61,10 @@ function App() {
               </AdminGuard>
             }
           />
-          <Route
-            path="elencos"
-            element={
-              <AdminOrLiderGuard>
-                <Elencos />
-              </AdminOrLiderGuard>
-            }
-          />
+          <Route path="cenas" element={<Cenas />} />
+          <Route path="cenas/:id" element={<CenaDetalhe />} />
+          <Route path="cenas/:id/iniciar-ensaio" element={<EmConstrucao />} />
+          <Route path="cenas/:cenaId/personagens/:personagemId" element={<PersonagemDetalhe />} />
           <Route
             path="disponibilidade"
             element={

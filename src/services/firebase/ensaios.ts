@@ -83,3 +83,8 @@ export function subscribeToEnsaiosDaCena(cenaId: string, callback: (ensaios: Ens
   const q = query(collection(db, 'ensaios'), where('cenaId', '==', cenaId))
   return onSnapshot(q, snap => callback(snap.docs.map(d => fromSnap(d.id, d.data()))))
 }
+
+/** Todos os ensaios (de todas as cenas), em tempo real — sem paginação. */
+export function subscribeToAllEnsaios(callback: (ensaios: Ensaio[]) => void) {
+  return onSnapshot(collection(db, 'ensaios'), snap => callback(snap.docs.map(d => fromSnap(d.id, d.data()))))
+}

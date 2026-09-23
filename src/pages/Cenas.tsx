@@ -5,6 +5,8 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Crown,
   Drama,
@@ -16,12 +18,14 @@ import {
   Trash2,
 } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
+import { AvatarStack } from '@/components/ui/AvatarStack'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers } from '@/services/firebase/auth'
@@ -34,7 +38,7 @@ import {
   updateCena,
   type CenaInput,
 } from '@/services/firebase/cenas'
-import { subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
+import { subscribeToAllEnsaios, subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
 import { DIA_SEMANA_LABELS, type AppUser, type Cena, type DiaSemana, type Ensaio, type Inscricao } from '@/types'
 import { DIAS_ORDER, sortDias } from '@/lib/dias'
@@ -43,8 +47,8 @@ import { formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { whatsappLink } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 
-/** Próximo ensaio confirmado dessa cena (qualquer data futura, sem paginação) + quantos confirmaram presença. */
-function ProximoEnsaio({ cena }: { cena: Cena }) {
+/** Próximo ensaio confirmado dessa cena (qualquer data futura, sem paginação). */
+function useProximoEnsaio(cena: Cena) {
   const [ensaios, setEnsaios] = useState<Ensaio[] | null>(null)
 
   useEffect(() => subscribeToEnsaiosDaCena(cena.id, setEnsaios), [cena.id])
@@ -57,6 +61,13 @@ function ProximoEnsaio({ cena }: { cena: Cena }) {
       .filter(e => !e.canceledByUid && (e.data > todayKey || (e.data === todayKey && e.horario >= agora)))
       .sort((a, b) => a.data.localeCompare(b.data) || a.horario.localeCompare(b.horario))[0]
   }, [ensaios, todayKey])
+
+  return { ensaios, proximo, todayKey }
+}
+
+/** Próximo ensaio confirmado + quantos confirmaram presença, pro card aberto. */
+function ProximoEnsaio({ cena }: { cena: Cena }) {
+  const { ensaios, proximo, todayKey } = useProximoEnsaio(cena)
 
   if (!ensaios) return null
   if (!proximo) return <p className="text-xs text-gray-400">Nenhum ensaio confirmado.</p>
@@ -79,6 +90,54 @@ function ProximoEnsaio({ cena }: { cena: Cena }) {
   )
 }
 
+/** Chip com o próximo ensaio + status do check-in do usuário logado, pro card fechado. */
+function ProximoEnsaioChip({ cena }: { cena: Cena }) {
+  const currentUser = useAuthStore(s => s.user)
+  const { ensaios, proximo, todayKey } = useProximoEnsaio(cena)
+
+  if (!ensaios || !proximo) return null
+
+  const jaConfirmou = !!currentUser && !!proximo.presencas?.includes(currentUser.uid)
+
+  return (
+    <Badge variant="outline" className="w-fit max-w-full gap-1.5 border-gray-200 bg-gray-50 text-[11px] font-normal text-gray-600">
+      <span className="truncate">
+        Próximo ensaio: {formatRelativeDia(proximo.data, todayKey)} às {formatHoraCompacta(proximo.horario)}
+      </span>
+      {jaConfirmou ? (
+        <span title="Check-in realizado" className="shrink-0">
+          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+        </span>
+      ) : (
+        <span title="Aguardando check-in" className="shrink-0">
+          <Clock className="h-3.5 w-3.5 text-amber-500" />
+        </span>
+      )}
+    </Badge>
+  )
+}
+
+type OrdenacaoCenas = 'nome-asc' | 'nome-desc' | 'recente' | 'antiga' | 'proximo-ensaio'
+
+const ORDENACAO_STORAGE_KEY = 'cenas-ordenacao'
+const ORDENACAO_LABELS: Record<OrdenacaoCenas, string> = {
+  'nome-asc': 'Nome (A-Z)',
+  'nome-desc': 'Nome (Z-A)',
+  recente: 'Mais recentes',
+  antiga: 'Mais antigas',
+  'proximo-ensaio': 'Próximo ensaio',
+}
+
+function loadOrdenacao(): OrdenacaoCenas {
+  try {
+    const saved = localStorage.getItem(ORDENACAO_STORAGE_KEY)
+    if (saved && saved in ORDENACAO_LABELS) return saved as OrdenacaoCenas
+  } catch {
+    // localStorage indisponível (modo privado etc.) — usa o padrão
+  }
+  return 'recente'
+}
+
 export function Cenas() {
   const navigate = useNavigate()
   const currentUser = useAuthStore(s => s.user)
@@ -91,9 +150,29 @@ export function Cenas() {
   const [nomeFilter, setNomeFilter] = useState('')
   const [pessoaFilter, setPessoaFilter] = useState('')
   const [diaFilterList, setDiaFilterList] = useState<DiaSemana[]>([])
+  const [liderFilter, setLiderFilter] = useState('')
   const [showInactive, setShowInactive] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const hasActiveFilters = pessoaFilter.trim() !== '' || diaFilterList.length > 0 || showInactive
+  const [ordenacao, setOrdenacao] = useState<OrdenacaoCenas>(loadOrdenacao)
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
+  const hasActiveFilters = pessoaFilter.trim() !== '' || diaFilterList.length > 0 || liderFilter !== '' || showInactive
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ORDENACAO_STORAGE_KEY, ordenacao)
+    } catch {
+      // localStorage indisponível (modo privado etc.) — ignora
+    }
+  }, [ordenacao])
+
+  function toggleCardCollapsed(id: string) {
+    setCollapsedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -121,6 +200,26 @@ export function Cenas() {
     getUsers().then(list => setUsers(Object.fromEntries(list.map(u => [u.uid, u]))))
   }, [])
 
+  const [ensaiosAll, setEnsaiosAll] = useState<Ensaio[] | null>(null)
+  useEffect(() => subscribeToAllEnsaios(setEnsaiosAll), [])
+
+  /** Data+horário do próximo ensaio futuro (não cancelado) de cada cena, pra ordenação "Próximo ensaio". */
+  const proximoEnsaioPorCena = useMemo(() => {
+    const map = new Map<string, { data: string; horario: string }>()
+    if (!ensaiosAll) return map
+    const todayKey = toDateKey(new Date())
+    const agora = new Date().toTimeString().slice(0, 5)
+    for (const e of ensaiosAll) {
+      if (e.canceledByUid) continue
+      if (!(e.data > todayKey || (e.data === todayKey && e.horario >= agora))) continue
+      const atual = map.get(e.cenaId)
+      if (!atual || e.data < atual.data || (e.data === atual.data && e.horario < atual.horario)) {
+        map.set(e.cenaId, { data: e.data, horario: e.horario })
+      }
+    }
+    return map
+  }, [ensaiosAll])
+
   const inscricoesByUid = useMemo(() => Object.fromEntries((inscricoes ?? []).map(i => [i.uid, i])), [inscricoes])
 
   function nameFor(uid: string) {
@@ -131,18 +230,44 @@ export function Cenas() {
     setDiaFilterList(prev => (prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]))
   }
 
+  const lideres = useMemo(() => {
+    const uids = new Set((cenas ?? []).map(c => c.liderUid).filter((uid): uid is string => !!uid))
+    return [...uids].map(uid => ({ uid, nome: nameFor(uid) })).sort((a, b) => a.nome.localeCompare(b.nome, undefined, { sensitivity: 'base' }))
+  }, [cenas, inscricoesByUid, users])
+
   const filteredCenas = useMemo(() => {
-    return (cenas ?? []).filter(cena => {
+    const filtered = (cenas ?? []).filter(cena => {
       if (!showInactive && !cena.ativo) return false
       if (nomeFilter.trim() && !cena.nome.toLowerCase().includes(nomeFilter.trim().toLowerCase())) return false
       if (diaFilterList.length > 0 && !cena.dias.some(d => diaFilterList.includes(d))) return false
+      if (liderFilter && cena.liderUid !== liderFilter) return false
       if (pessoaFilter.trim()) {
         const term = pessoaFilter.trim().toLowerCase()
         if (!cena.participantes.some(uid => nameFor(uid).toLowerCase().includes(term))) return false
       }
       return true
     })
-  }, [cenas, nomeFilter, diaFilterList, pessoaFilter, showInactive, inscricoesByUid, users])
+    return [...filtered].sort((a, b) => {
+      switch (ordenacao) {
+        case 'nome-desc':
+          return b.nome.localeCompare(a.nome, undefined, { numeric: true, sensitivity: 'base' })
+        case 'recente':
+          return b.createdAt.localeCompare(a.createdAt)
+        case 'antiga':
+          return a.createdAt.localeCompare(b.createdAt)
+        case 'proximo-ensaio': {
+          const pa = proximoEnsaioPorCena.get(a.id)
+          const pb = proximoEnsaioPorCena.get(b.id)
+          if (!pa && !pb) return 0
+          if (!pa) return 1
+          if (!pb) return -1
+          return pa.data.localeCompare(pb.data) || pa.horario.localeCompare(pb.horario)
+        }
+        default:
+          return a.nome.localeCompare(b.nome, undefined, { numeric: true, sensitivity: 'base' })
+      }
+    })
+  }, [cenas, nomeFilter, diaFilterList, liderFilter, pessoaFilter, showInactive, ordenacao, proximoEnsaioPorCena, inscricoesByUid, users])
 
   const filteredParticipantes = useMemo(() => {
     if (!inscricoes) return []
@@ -312,6 +437,7 @@ export function Cenas() {
       <div className="space-y-2">
         {filteredCenas.map(cena => {
           const canManage = isAdmin || cena.liderUid === currentUser?.uid
+          const isCollapsed = collapsedIds.has(cena.id)
           return (
           <Card
             key={cena.id}
@@ -322,7 +448,7 @@ export function Cenas() {
             className={cn('p-0 cursor-pointer', !cena.ativo && 'opacity-60')}
           >
             <CardContent className="px-4 py-3 space-y-2.5">
-              <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <Drama className="h-4 w-4 shrink-0 text-primary" />
@@ -396,63 +522,76 @@ export function Cenas() {
                       </>
                     )
                   )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={e => {
+                      e.stopPropagation()
+                      toggleCardCollapsed(cena.id)
+                    }}
+                    title={isCollapsed ? 'Expandir' : 'Recolher'}
+                  >
+                    {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                  </Button>
                 </div>
               </div>
 
-              {(() => {
-                const outrosParticipantes = cena.participantes.filter(uid => uid !== cena.liderUid)
-                if (outrosParticipantes.length === 0 && !cena.liderUid) return null
-                return (
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex -space-x-2">
-                      {outrosParticipantes.slice(0, 8).map(uid => (
-                        <Avatar key={uid} photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-7 w-7 shrink-0 text-[10px] ring-2 ring-white" />
-                      ))}
-                      {outrosParticipantes.length > 8 && (
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-200 text-[10px] font-medium text-gray-600 ring-2 ring-white">
-                          +{outrosParticipantes.length - 8}
-                        </div>
-                      )}
-                    </div>
-                    {cena.liderUid && (
-                      <button
-                        type="button"
-                        className="relative shrink-0"
-                        title={`Líder: ${nameFor(cena.liderUid)}`}
-                        onClick={e => {
-                          e.stopPropagation()
-                          setLiderModalCena(cena)
-                        }}
-                      >
-                        <Avatar
-                          photoURL={users[cena.liderUid]?.photoURL}
-                          name={nameFor(cena.liderUid)}
-                          className="h-7 w-7 text-[10px] ring-2 ring-amber-400"
+              {isCollapsed && <ProximoEnsaioChip cena={cena} />}
+
+              {!isCollapsed && (
+                <>
+                  <div className="h-px bg-gray-100" />
+
+                  {(() => {
+                    const outrosParticipantes = cena.participantes.filter(uid => uid !== cena.liderUid)
+                    if (outrosParticipantes.length === 0 && !cena.liderUid) return null
+                    return (
+                      <div className="flex items-center justify-between gap-2">
+                        <AvatarStack
+                          items={outrosParticipantes.map(uid => ({ key: uid, photoURL: users[uid]?.photoURL, name: nameFor(uid) }))}
+                          className="flex-1"
                         />
-                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 ring-2 ring-white">
-                          <Crown className="h-2.5 w-2.5 text-white" />
-                        </span>
-                      </button>
-                    )}
+                        {cena.liderUid && (
+                          <button
+                            type="button"
+                            className="relative shrink-0"
+                            title={`Líder: ${nameFor(cena.liderUid)}`}
+                            onClick={e => {
+                              e.stopPropagation()
+                              setLiderModalCena(cena)
+                            }}
+                          >
+                            <Avatar
+                              photoURL={users[cena.liderUid]?.photoURL}
+                              name={nameFor(cena.liderUid)}
+                              className="h-7 w-7 text-[10px] ring-2 ring-amber-400"
+                            />
+                            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 ring-2 ring-white">
+                              <Crown className="h-2.5 w-2.5 text-white" />
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-600">
+                    {sortDias(cena.dias).map(d => {
+                      const horario = horarioDoDia(cena, d)
+                      return (
+                        <Badge key={d} variant="outline" className="bg-sky-50 border-sky-200 text-sky-700 text-[10px]">
+                          {DIA_SEMANA_LABELS[d]}
+                          {horario && ` | ${formatHoraCompacta(horario)}`}
+                        </Badge>
+                      )
+                    })}
                   </div>
-                )
-              })()}
 
-              <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-600">
-                {sortDias(cena.dias).map(d => {
-                  const horario = horarioDoDia(cena, d)
-                  return (
-                    <Badge key={d} variant="outline" className="bg-sky-50 border-sky-200 text-sky-700 text-[10px]">
-                      {DIA_SEMANA_LABELS[d]}
-                      {horario && ` | ${formatHoraCompacta(horario)}`}
-                    </Badge>
-                  )
-                })}
-              </div>
+                  <ProximoEnsaio cena={cena} />
 
-              <ProximoEnsaio cena={cena} />
-
-              {cena.observacao && <p className="text-xs text-gray-500">{cena.observacao}</p>}
+                  {cena.observacao && <p className="text-xs text-gray-500">{cena.observacao}</p>}
+                </>
+              )}
             </CardContent>
           </Card>
           )
@@ -462,6 +601,21 @@ export function Cenas() {
       <Dialog open={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filtros">
         <div className="space-y-4">
           <div>
+            <Label htmlFor="ordenacao-cenas">Ordenar por</Label>
+            <Select
+              id="ordenacao-cenas"
+              value={ordenacao}
+              onChange={e => setOrdenacao(e.target.value as OrdenacaoCenas)}
+              className="mt-1.5"
+            >
+              {(Object.keys(ORDENACAO_LABELS) as OrdenacaoCenas[]).map(key => (
+                <option key={key} value={key}>
+                  {ORDENACAO_LABELS[key]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
             <Label htmlFor="filtro-pessoa">Pessoa</Label>
             <Input
               id="filtro-pessoa"
@@ -469,6 +623,17 @@ export function Cenas() {
               value={pessoaFilter}
               onChange={e => setPessoaFilter(e.target.value)}
             />
+          </div>
+          <div>
+            <Label htmlFor="filtro-lider">Líder</Label>
+            <Select id="filtro-lider" value={liderFilter} onChange={e => setLiderFilter(e.target.value)} className="mt-1.5">
+              <option value="">Todos</option>
+              {lideres.map(l => (
+                <option key={l.uid} value={l.uid}>
+                  {l.nome}
+                </option>
+              ))}
+            </Select>
           </div>
           <div>
             <Label>Dia(s)</Label>
@@ -504,6 +669,7 @@ export function Cenas() {
               onClick={() => {
                 setPessoaFilter('')
                 setDiaFilterList([])
+                setLiderFilter('')
                 setShowInactive(false)
               }}
             >

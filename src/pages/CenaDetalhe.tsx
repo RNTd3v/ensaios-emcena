@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
+import { AvatarStack } from '@/components/ui/AvatarStack'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -859,21 +860,14 @@ export function CenaDetalhe() {
               </div>
 
               {!personagensOpen && cena.personagens.length > 0 && (
-                <div className="mt-2 flex -space-x-2">
-                  {cena.personagens.slice(0, 8).map(p => (
-                    <Avatar
-                      key={p.id}
-                      photoURL={p.participanteUid ? users[p.participanteUid]?.photoURL : undefined}
-                      name={p.nome}
-                      className="h-7 w-7 shrink-0 text-[10px] ring-2 ring-white"
-                    />
-                  ))}
-                  {cena.personagens.length > 8 && (
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-200 text-[10px] font-semibold text-gray-600 ring-2 ring-white">
-                      +{cena.personagens.length - 8}
-                    </div>
-                  )}
-                </div>
+                <AvatarStack
+                  items={cena.personagens.map(p => ({
+                    key: p.id,
+                    photoURL: p.participanteUid ? users[p.participanteUid]?.photoURL : undefined,
+                    name: p.nome,
+                  }))}
+                  className="mt-2"
+                />
               )}
 
               {personagensOpen &&
@@ -932,16 +926,10 @@ export function CenaDetalhe() {
 
               {!participantesOpen && (outrosParticipantes.length > 0 || cena.liderUid) && (
                 <div className="mt-2 flex items-center justify-between gap-2">
-                  <div className="flex -space-x-2">
-                    {outrosParticipantes.slice(0, 8).map(uid => (
-                      <Avatar key={uid} photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-7 w-7 shrink-0 text-[10px] ring-2 ring-white" />
-                    ))}
-                    {outrosParticipantes.length > 8 && (
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-200 text-[10px] font-semibold text-gray-600 ring-2 ring-white">
-                        +{outrosParticipantes.length - 8}
-                      </div>
-                    )}
-                  </div>
+                  <AvatarStack
+                    items={outrosParticipantes.map(uid => ({ key: uid, photoURL: users[uid]?.photoURL, name: nameFor(uid) }))}
+                    className="flex-1"
+                  />
                   {cena.liderUid && (
                     <button
                       type="button"

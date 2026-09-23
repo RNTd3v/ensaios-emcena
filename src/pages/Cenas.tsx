@@ -179,6 +179,9 @@ export function Cenas() {
   const [nome, setNome] = useState('')
   const [participantesUids, setParticipantesUids] = useState<Set<string>>(new Set())
   const [dias, setDias] = useState<DiaSemana[]>([])
+  const [horarioMode, setHorarioMode] = useState<'comum' | 'porDia'>('comum')
+  const [horarioDraft, setHorarioDraft] = useState('')
+  const [horariosPorDiaDraft, setHorariosPorDiaDraft] = useState<Partial<Record<DiaSemana, string>>>({})
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [createdCena, setCreatedCena] = useState<Cena | null>(null)
@@ -271,10 +274,17 @@ export function Cenas() {
 
   const filteredParticipantes = useMemo(() => {
     if (!inscricoes) return []
-    if (!search.trim()) return inscricoes
+    const elegiveis = inscricoes.filter(i => {
+      if (!i.areas.some(a => a === 'elenco' || a === 'tecnica')) return false
+      // Quem já está selecionado continua na lista mesmo sem disponibilidade nos dias atuais,
+      // pra não sumir o checkbox e impedir de desmarcar (ex.: depois de trocar os dias da cena).
+      if (participantesUids.has(i.uid)) return true
+      return dias.length === 0 || dias.every(d => i.disponibilidade.dias.includes(d))
+    })
+    if (!search.trim()) return elegiveis
     const term = search.toLowerCase()
-    return inscricoes.filter(i => i.nomeCompleto.toLowerCase().includes(term) || i.apelido?.toLowerCase().includes(term))
-  }, [inscricoes, search])
+    return elegiveis.filter(i => i.nomeCompleto.toLowerCase().includes(term) || i.apelido?.toLowerCase().includes(term))
+  }, [inscricoes, search, dias, participantesUids])
 
   function toggleParticipante(uid: string) {
     setParticipantesUids(prev => {
@@ -294,6 +304,9 @@ export function Cenas() {
     setNome('')
     setParticipantesUids(new Set())
     setDias([])
+    setHorarioMode('comum')
+    setHorarioDraft('')
+    setHorariosPorDiaDraft({})
     setSearch('')
     setFormError('')
     setCreatedCena(null)
@@ -305,6 +318,9 @@ export function Cenas() {
     setNome(cena.nome)
     setParticipantesUids(new Set(cena.participantes))
     setDias(cena.dias)
+    setHorarioMode(cena.horarios ? 'porDia' : 'comum')
+    setHorarioDraft(cena.horario ?? '')
+    setHorariosPorDiaDraft(cena.horarios ?? {})
     setSearch('')
     setFormError('')
     setCreatedCena(null)
@@ -323,8 +339,8 @@ export function Cenas() {
     if (!currentUser) return
     setSaving(true)
     setFormError('')
-    // Editar preserva os campos que ainda não têm UI aqui (líder, horário, personagens,
-    // observação) — essas "detalhes" são geridas na tela de detalhe da cena.
+    // Editar preserva os campos que ainda não têm UI aqui (líder, personagens, observação) —
+    // essas "detalhes" são geridas na tela de detalhe da cena.
     const editingCena = editingId ? (cenas ?? []).find(c => c.id === editingId) : null
     const stillParticipant = (uid?: string) => !!uid && participantesUids.has(uid)
     const input: CenaInput = {
@@ -335,8 +351,11 @@ export function Cenas() {
         stillParticipant(p.participanteUid) ? p : { ...p, participanteUid: undefined },
       ),
       dias,
-      horario: editingCena?.horario,
-      horarios: editingCena?.horarios,
+      horario: horarioMode === 'comum' ? horarioDraft.trim() || undefined : undefined,
+      horarios:
+        horarioMode === 'porDia'
+          ? Object.fromEntries(dias.filter(d => horariosPorDiaDraft[d]).map(d => [d, horariosPorDiaDraft[d] as string]))
+          : undefined,
       observacao: editingCena?.observacao,
     }
     try {
@@ -770,6 +789,51 @@ export function Cenas() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div>
+              <Label>Horário</Label>
+              <div className="grid grid-cols-2 gap-1.5 mt-1.5 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setHorarioMode('comum')}
+                  className={cn(
+                    'rounded-lg border py-2 text-xs font-medium transition-colors',
+                    horarioMode === 'comum' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                  )}
+                >
+                  Horário comum
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHorarioMode('porDia')}
+                  className={cn(
+                    'rounded-lg border py-2 text-xs font-medium transition-colors',
+                    horarioMode === 'porDia' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                  )}
+                >
+                  Horário por dia
+                </button>
+              </div>
+              {horarioMode === 'comum' ? (
+                <Input type="time" value={horarioDraft} onChange={e => setHorarioDraft(e.target.value)} />
+              ) : dias.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Selecione ao menos um dia primeiro.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {sortDias(dias).map(d => (
+                    <div key={d} className="flex items-center gap-2">
+                      <span className="w-10 shrink-0 text-xs font-medium text-gray-600">{DIA_SEMANA_LABELS[d]}</span>
+                      <Input
+                        type="time"
+                        value={horariosPorDiaDraft[d] ?? ''}
+                        onChange={e => setHorariosPorDiaDraft(prev => ({ ...prev, [d]: e.target.value }))}
+                        className="flex-1"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {formError && <p className="text-sm text-red-600">{formError}</p>}

@@ -61,7 +61,7 @@ export function SelectionFloatingBar({ selectedInscricoes, users, onCreateCena, 
         <div className="flex flex-col gap-1">
           <Button size="sm" className="w-full gap-1.5" onClick={onCreateCena}>
             <Users className="h-4 w-4" />
-            Cadastrar Cena
+            Adicionar à cena
           </Button>
           <Button variant="ghost" size="sm" className="text-gray-500" onClick={onClear}>
             Cancelar

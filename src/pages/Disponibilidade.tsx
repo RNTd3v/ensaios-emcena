@@ -260,6 +260,7 @@ export function Disponibilidade() {
             users={users}
             onToggleParticipant={toggleSelectUid}
             defaultDias={openDay ? [openDay] : []}
+            cenas={cenas ?? []}
             onCreated={() => setSelectedUids(new Set())}
           />
         </>

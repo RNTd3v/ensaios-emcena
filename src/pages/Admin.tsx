@@ -443,6 +443,7 @@ export function Admin() {
         users={users}
         onToggleParticipant={toggleSelectUid}
         defaultDias={diaFilter}
+        cenas={cenas ?? []}
         onCreated={() => setSelectedUids(new Set())}
       />
 

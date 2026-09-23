@@ -224,8 +224,10 @@ export function CenaDetalhe() {
     () =>
       (inscricoes ?? [])
         .filter(i => !cena?.participantes.includes(i.uid))
+        .filter(i => i.areas.some(a => a === 'elenco' || a === 'tecnica'))
+        .filter(i => !cena?.dias.length || cena.dias.every(d => i.disponibilidade.dias.includes(d)))
         .sort((a, b) => (a.apelido || a.nomeCompleto).localeCompare(b.apelido || b.nomeCompleto)),
-    [inscricoes, cena?.participantes],
+    [inscricoes, cena?.participantes, cena?.dias],
   )
 
   function openEditModal() {

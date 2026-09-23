@@ -7,12 +7,15 @@ import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
-import { createCena } from '@/services/firebase/cenas'
+import { createCena, updateCenaParticipantes } from '@/services/firebase/cenas'
 import { useAuthStore } from '@/stores/authStore'
-import { DIA_SEMANA_LABELS, type AppUser, type DiaSemana, type Inscricao } from '@/types'
+import { DIA_SEMANA_LABELS, type AppUser, type Cena, type DiaSemana, type Inscricao } from '@/types'
 import { DIAS_ORDER, sortDias } from '@/lib/dias'
 import { cn } from '@/lib/utils'
+
+type Modo = 'nova' | 'existente'
 
 interface Props {
   open: boolean
@@ -21,28 +24,45 @@ interface Props {
   users: Record<string, AppUser>
   onToggleParticipant: (uid: string) => void
   defaultDias?: DiaSemana[]
+  /** Cenas ativas disponíveis pra vincular os selecionados, em vez de criar uma nova. */
+  cenas?: Cena[]
   /** Chamado assim que a cena é salva com sucesso (antes de mostrar a tela de sucesso) — usado pra limpar a seleção do host. */
   onCreated: () => void
 }
 
 /** Modal de "Cadastrar Cena": mesmo fluxo de seleção usado na tela Admin, reutilizável em qualquer página. */
-export function CreateCenaModal({ open, onOpenChange, selectedInscricoes, users, onToggleParticipant, defaultDias, onCreated }: Props) {
+export function CreateCenaModal({
+  open,
+  onOpenChange,
+  selectedInscricoes,
+  users,
+  onToggleParticipant,
+  defaultDias,
+  cenas,
+  onCreated,
+}: Props) {
   const navigate = useNavigate()
   const currentUser = useAuthStore(s => s.user)
+  const [modo, setModo] = useState<Modo>('nova')
   const [nome, setNome] = useState('')
   const [dias, setDias] = useState<DiaSemana[]>([])
+  const [cenaExistenteId, setCenaExistenteId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [savedCena, setSavedCena] = useState<{ id: string; nome: string; pessoas: Inscricao[] } | null>(null)
+  const [savedCena, setSavedCena] = useState<{ id: string; nome: string; pessoas: Inscricao[]; vinculado: boolean } | null>(null)
+
+  const cenasAtivas = (cenas ?? []).filter(c => c.ativo).sort((a, b) => a.nome.localeCompare(b.nome, undefined, { numeric: true }))
 
   const defaultDiasRef = useRef(defaultDias)
   defaultDiasRef.current = defaultDias
 
   useEffect(() => {
     if (!open) return
+    setModo('nova')
     setNome('')
     const d = defaultDiasRef.current
     setDias(d && d.length > 0 ? sortDias(d) : [])
+    setCenaExistenteId('')
     setError('')
     setSavedCena(null)
   }, [open])
@@ -57,13 +77,37 @@ export function CreateCenaModal({ open, onOpenChange, selectedInscricoes, users,
   }
 
   async function handleSave() {
-    if (!nome.trim() || dias.length === 0 || selectedInscricoes.length === 0) {
+    if (!currentUser) return
+    if (selectedInscricoes.length === 0) {
+      setError('Selecione ao menos uma pessoa.')
+      return
+    }
+    if (modo === 'existente') {
+      const cenaExistente = cenasAtivas.find(c => c.id === cenaExistenteId)
+      if (!cenaExistente) {
+        setError('Selecione uma cena.')
+        return
+      }
+      setSaving(true)
+      setError('')
+      try {
+        const participantes = new Set([...cenaExistente.participantes, ...selectedInscricoes.map(i => i.uid)])
+        await updateCenaParticipantes(cenaExistente.id, [...participantes], currentUser.uid)
+        setSavedCena({ id: cenaExistente.id, nome: cenaExistente.nome, pessoas: selectedInscricoes, vinculado: true })
+        onCreated()
+      } catch {
+        setError('Não foi possível salvar. Tente de novo.')
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
+    if (!nome.trim() || dias.length === 0) {
       setError('Preencha nome, pessoas e dia(s).')
       return
     }
     setSaving(true)
     setError('')
-    if (!currentUser) return
     try {
       const finalNome = nome.trim()
       const id = await createCena(
@@ -75,7 +119,7 @@ export function CreateCenaModal({ open, onOpenChange, selectedInscricoes, users,
         },
         currentUser.uid,
       )
-      setSavedCena({ id, nome: finalNome, pessoas: selectedInscricoes })
+      setSavedCena({ id, nome: finalNome, pessoas: selectedInscricoes, vinculado: false })
       onCreated()
     } catch {
       setError('Não foi possível salvar. Tente de novo.')
@@ -90,7 +134,19 @@ export function CreateCenaModal({ open, onOpenChange, selectedInscricoes, users,
   }
 
   return (
-    <Dialog open={open} onClose={handleClose} title={savedCena ? 'Cena criada' : 'Cadastrar Cena'}>
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      title={
+        savedCena
+          ? savedCena.vinculado
+            ? 'Participantes vinculados'
+            : 'Cena criada'
+          : modo === 'existente'
+            ? 'Vincular a uma cena'
+            : 'Cadastrar Cena'
+      }
+    >
       {savedCena ? (
         <div className="space-y-4 text-center">
           <div className="flex justify-center">
@@ -100,7 +156,9 @@ export function CreateCenaModal({ open, onOpenChange, selectedInscricoes, users,
           </div>
           <div>
             <p className="text-base font-semibold">{savedCena.nome}</p>
-            <p className="text-sm text-emerald-600">Cena cadastrada com sucesso!</p>
+            <p className="text-sm text-emerald-600">
+              {savedCena.vinculado ? 'Participantes vinculados com sucesso!' : 'Cena cadastrada com sucesso!'}
+            </p>
           </div>
           <div className="flex flex-wrap justify-center gap-1.5">
             {savedCena.pessoas.map(p => (
@@ -109,7 +167,7 @@ export function CreateCenaModal({ open, onOpenChange, selectedInscricoes, users,
           </div>
           <div className="flex flex-col gap-2">
             <Button className="w-full" onClick={handleAddDetails}>
-              Cadastrar mais detalhes da cena
+              {savedCena.vinculado ? 'Ver detalhes da cena' : 'Cadastrar mais detalhes da cena'}
             </Button>
             <Button variant="ghost" className="w-full text-gray-500" onClick={handleClose}>
               Agora não
@@ -118,10 +176,47 @@ export function CreateCenaModal({ open, onOpenChange, selectedInscricoes, users,
         </div>
       ) : (
         <div className="space-y-4">
-          <div>
-            <Label htmlFor="cena-nome">Nome</Label>
-            <Input id="cena-nome" value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex.: Cena 1 - Abertura" />
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => setModo('nova')}
+              className={cn(
+                'rounded-lg border py-2 text-sm font-medium transition-colors',
+                modo === 'nova' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+              )}
+            >
+              Nova cena
+            </button>
+            <button
+              type="button"
+              onClick={() => setModo('existente')}
+              className={cn(
+                'rounded-lg border py-2 text-sm font-medium transition-colors',
+                modo === 'existente' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+              )}
+            >
+              Cena existente
+            </button>
           </div>
+
+          {modo === 'existente' ? (
+            <div>
+              <Label htmlFor="cena-existente">Cena</Label>
+              <Select id="cena-existente" value={cenaExistenteId} onChange={e => setCenaExistenteId(e.target.value)} className="mt-1.5">
+                <option value="">Selecione uma cena</option>
+                {cenasAtivas.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          ) : (
+            <div>
+              <Label htmlFor="cena-nome">Nome</Label>
+              <Input id="cena-nome" value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex.: Cena 1 - Abertura" />
+            </div>
+          )}
 
           <div>
             <p className="text-sm text-muted-foreground mb-1.5">Pessoas selecionadas ({selectedInscricoes.length})</p>
@@ -138,30 +233,32 @@ export function CreateCenaModal({ open, onOpenChange, selectedInscricoes, users,
             </div>
           </div>
 
-          <div>
-            <Label>Dia(s)</Label>
-            <div className="grid grid-cols-6 gap-1.5 mt-1.5">
-              {DIAS_ORDER.map(d => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => toggleDia(d)}
-                  className={cn(
-                    'rounded-lg border py-2.5 text-sm font-medium transition-colors',
-                    dias.includes(d) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
-                  )}
-                >
-                  {DIA_SEMANA_LABELS[d]}
-                </button>
-              ))}
+          {modo === 'nova' && (
+            <div>
+              <Label>Dia(s)</Label>
+              <div className="grid grid-cols-6 gap-1.5 mt-1.5">
+                {DIAS_ORDER.map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => toggleDia(d)}
+                    className={cn(
+                      'rounded-lg border py-2.5 text-sm font-medium transition-colors',
+                      dias.includes(d) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                    )}
+                  >
+                    {DIA_SEMANA_LABELS[d]}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
           <Button className="w-full" onClick={handleSave} disabled={saving}>
             {saving && <Spinner size="sm" className="border-white/40 border-t-white" />}
-            Salvar
+            {modo === 'existente' ? 'Vincular participantes' : 'Salvar'}
           </Button>
         </div>
       )}

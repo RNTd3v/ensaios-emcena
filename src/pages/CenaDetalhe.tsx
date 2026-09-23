@@ -115,6 +115,7 @@ export function CenaDetalhe() {
   const [liderUidDraft, setLiderUidDraft] = useState('')
   const [roteiroReferenciaDraft, setRoteiroReferenciaDraft] = useState('')
   const [roteiroUrlDraft, setRoteiroUrlDraft] = useState('')
+  const [editPersonagensRecorrentesSelecionados, setEditPersonagensRecorrentesSelecionados] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState('')
 
@@ -253,12 +254,14 @@ export function CenaDetalhe() {
    */
   const personagensRecorrentes = useMemo(() => {
     if (!cena) return []
+    const nomesJaNaCena = new Set(cena.personagens.map(p => p.nome.trim().toLowerCase()))
     const porNome = new Map<string, { nome: string; participanteUid?: string }>()
     for (const c of todasCenas ?? []) {
       if (c.id === cena.id) continue
       for (const p of c.personagens) {
         if (!p.recorrente) continue
         const key = p.nome.trim().toLowerCase()
+        if (nomesJaNaCena.has(key)) continue
         const atual = porNome.get(key)
         if (!atual || (!atual.participanteUid && p.participanteUid)) {
           porNome.set(key, { nome: p.nome, participanteUid: p.participanteUid })
@@ -274,8 +277,18 @@ export function CenaDetalhe() {
     setLiderUidDraft(cena.liderUid ?? '')
     setRoteiroReferenciaDraft(cena.roteiroReferencia ?? '')
     setRoteiroUrlDraft(cena.roteiroUrl ?? '')
+    setEditPersonagensRecorrentesSelecionados(new Set())
     setEditError('')
     setEditModalOpen(true)
+  }
+
+  function toggleEditPersonagemRecorrente(key: string) {
+    setEditPersonagensRecorrentesSelecionados(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   }
 
   async function handleSaveEdit() {
@@ -293,10 +306,25 @@ export function CenaDetalhe() {
     setSaving(true)
     setEditError('')
     try {
+      const novosPersonagens = [...editPersonagensRecorrentesSelecionados].flatMap(key => {
+        const origem = personagensRecorrentes.find(o => o.nome.trim().toLowerCase() === key)
+        if (!origem) return []
+        return [
+          {
+            id: crypto.randomUUID(),
+            nome: origem.nome,
+            recorrente: true,
+            participanteUid: origem.participanteUid && cena.participantes.includes(origem.participanteUid) ? origem.participanteUid : undefined,
+          },
+        ]
+      })
       await Promise.all([
         nome !== cena.nome ? updateCenaNome(cena.id, nome, currentUser.uid) : Promise.resolve(),
         liderUidDraft !== (cena.liderUid ?? '') ? updateCenaLider(cena.id, liderUidDraft || undefined, currentUser.uid) : Promise.resolve(),
         updateCenaRoteiro(cena.id, { referencia: roteiroReferenciaDraft.trim() || undefined, url: url || undefined }, currentUser.uid),
+        novosPersonagens.length
+          ? updateCenaPersonagens(cena.id, [...cena.personagens, ...novosPersonagens], currentUser.uid)
+          : Promise.resolve(),
       ])
       if (liderUidDraft && liderUidDraft !== cena.liderUid && (users[liderUidDraft]?.role ?? 'participante') === 'participante') {
         await updateUserRole(liderUidDraft, 'lider')
@@ -382,6 +410,8 @@ export function CenaDetalhe() {
       } else {
         setPersonagemModalOpen(false)
       }
+    } catch {
+      setPersonagemError('Não foi possível salvar. Tente de novo.')
     } finally {
       setSavingPersonagem(false)
     }
@@ -1139,6 +1169,52 @@ export function CenaDetalhe() {
                 <p className="text-xs text-muted-foreground mt-1">Essa pessoa vai virar Líder ao salvar.</p>
               )}
             </div>
+
+            {personagensRecorrentes.length > 0 && (
+              <div>
+                <Label>Personagens recorrentes ({editPersonagensRecorrentesSelecionados.size})</Label>
+                <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
+                  Já cadastrados em outras cenas — selecione pra reaproveitar nessa.
+                </p>
+                <div className="max-h-48 overflow-y-auto space-y-1 border border-gray-200 rounded-lg p-1.5">
+                  {personagensRecorrentes.map(o => {
+                    const key = o.nome.trim().toLowerCase()
+                    const selecionado = editPersonagensRecorrentesSelecionados.has(key)
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => toggleEditPersonagemRecorrente(key)}
+                        className={cn(
+                          'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm',
+                          selecionado ? 'bg-primary/10' : 'hover:bg-gray-50',
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2',
+                            selecionado ? 'border-primary bg-primary text-white' : 'border-gray-300',
+                          )}
+                        >
+                          {selecionado && <Check className="h-2.5 w-2.5" />}
+                        </span>
+                        <Avatar
+                          photoURL={o.participanteUid ? users[o.participanteUid]?.photoURL : undefined}
+                          name={o.nome}
+                          className="h-6 w-6 shrink-0 text-[10px]"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate">{o.nome}</p>
+                          {o.participanteUid && (
+                            <p className="truncate text-[11px] text-muted-foreground">{nameFor(o.participanteUid)}</p>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             <div>
               <Label htmlFor="roteiro-referencia">Referência do roteiro (opcional)</Label>

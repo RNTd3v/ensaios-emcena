@@ -19,7 +19,15 @@ export const auth = getAuth(app)
  * o SDK detecta isso e cai para long polling automaticamente. `persistentLocalCache` mantém um
  * cache em IndexedDB para que leituras já feitas sobrevivam a quedas momentâneas de conexão.
  */
+/**
+ * `ignoreUndefinedProperties` é necessário porque o app usa `campo: undefined` pra "limpar" um
+ * campo dentro de objetos aninhados em arrays (ex.: personagens de uma cena) — `deleteField()` só
+ * funciona em campos de topo do documento, não dentro de elementos de array. Sem essa opção, o
+ * Firestore recusa qualquer `undefined` aninhado e o `updateDoc` falha silenciosamente (sem catch
+ * em vários call sites), dando a impressão de que "não salva".
+ */
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) }),
   experimentalAutoDetectLongPolling: true,
+  ignoreUndefinedProperties: true,
 })

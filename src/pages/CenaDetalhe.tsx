@@ -13,6 +13,7 @@ import {
   Info,
   MessageCircle,
   Pencil,
+  Pin,
   Play,
   Plus,
   Shirt,
@@ -34,6 +35,7 @@ import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers, updateUserRole } from '@/services/firebase/auth'
 import {
   subscribeToCena,
+  subscribeToCenas,
   updateCenaAgenda,
   updateCenaLider,
   updateCenaNome,
@@ -103,6 +105,7 @@ export function CenaDetalhe() {
   const [inscricoes, setInscricoes] = useState<Inscricao[] | null>(null)
   const [users, setUsers] = useState<Record<string, AppUser>>({})
   const [ensaios, setEnsaios] = useState<Ensaio[] | null>(null)
+  const [todasCenas, setTodasCenas] = useState<Cena[] | null>(null)
 
   const canManageAgenda = isAdmin || (!!cena && cena.liderUid === currentUser?.uid)
 
@@ -119,8 +122,11 @@ export function CenaDetalhe() {
   const [personagensOpen, setPersonagensOpen] = useState(false)
   const [personagemModalOpen, setPersonagemModalOpen] = useState(false)
   const [editingPersonagemId, setEditingPersonagemId] = useState<string | null>(null)
+  const [personagemModo, setPersonagemModo] = useState<'novo' | 'existente'>('novo')
   const [personagemNomeDraft, setPersonagemNomeDraft] = useState('')
   const [personagemParticipanteDraft, setPersonagemParticipanteDraft] = useState('')
+  const [personagemRecorrenteDraft, setPersonagemRecorrenteDraft] = useState(false)
+  const [personagemOrigemKey, setPersonagemOrigemKey] = useState('')
   const [personagensBase, setPersonagensBase] = useState<Personagem[]>([])
   const [savingPersonagem, setSavingPersonagem] = useState(false)
   const [personagemError, setPersonagemError] = useState('')
@@ -179,6 +185,11 @@ export function CenaDetalhe() {
   }, [])
 
   useEffect(() => {
+    if (!currentUser) return
+    return subscribeToCenas(currentUser.role, currentUser.uid, setTodasCenas)
+  }, [currentUser])
+
+  useEffect(() => {
     if (!cena) return
     return subscribeToEnsaiosDaCena(cena.id, setEnsaios)
   }, [cena?.id])
@@ -220,6 +231,12 @@ export function CenaDetalhe() {
     [cena?.participantes, cena?.liderUid],
   )
 
+  /** Personagens recorrentes primeiro, na exibição da lista. */
+  const personagensOrdenados = useMemo(
+    () => [...(cena?.personagens ?? [])].sort((a, b) => Number(!!b.recorrente) - Number(!!a.recorrente)),
+    [cena?.personagens],
+  )
+
   const availableParaAdicionar = useMemo(
     () =>
       (inscricoes ?? [])
@@ -229,6 +246,27 @@ export function CenaDetalhe() {
         .sort((a, b) => (a.apelido || a.nomeCompleto).localeCompare(b.apelido || b.nomeCompleto)),
     [inscricoes, cena?.participantes, cena?.dias],
   )
+
+  /**
+   * Personagens marcados como recorrentes em outras cenas — pra reaproveitar em vez de recadastrar
+   * do zero. Deduplicado por nome: a mesma personagem recorrente em várias cenas aparece uma única vez.
+   */
+  const personagensRecorrentes = useMemo(() => {
+    if (!cena) return []
+    const porNome = new Map<string, { nome: string; participanteUid?: string }>()
+    for (const c of todasCenas ?? []) {
+      if (c.id === cena.id) continue
+      for (const p of c.personagens) {
+        if (!p.recorrente) continue
+        const key = p.nome.trim().toLowerCase()
+        const atual = porNome.get(key)
+        if (!atual || (!atual.participanteUid && p.participanteUid)) {
+          porNome.set(key, { nome: p.nome, participanteUid: p.participanteUid })
+        }
+      }
+    }
+    return [...porNome.values()].sort((a, b) => a.nome.localeCompare(b.nome, undefined, { numeric: true }))
+  }, [todasCenas, cena])
 
   function openEditModal() {
     if (!cena) return
@@ -274,8 +312,11 @@ export function CenaDetalhe() {
 
   function openAddPersonagem() {
     setEditingPersonagemId(null)
+    setPersonagemModo('novo')
     setPersonagemNomeDraft('')
     setPersonagemParticipanteDraft('')
+    setPersonagemRecorrenteDraft(false)
+    setPersonagemOrigemKey('')
     setPersonagemError('')
     setPersonagensBase(cena?.personagens ?? [])
     setPersonagemModalOpen(true)
@@ -283,11 +324,25 @@ export function CenaDetalhe() {
 
   function openEditPersonagem(p: Personagem) {
     setEditingPersonagemId(p.id)
+    setPersonagemModo('novo')
     setPersonagemNomeDraft(p.nome)
     setPersonagemParticipanteDraft(p.participanteUid ?? '')
+    setPersonagemRecorrenteDraft(!!p.recorrente)
+    setPersonagemOrigemKey('')
     setPersonagemError('')
     setPersonagensBase(cena?.personagens ?? [])
     setPersonagemModalOpen(true)
+  }
+
+  /** Preenche nome/recorrente a partir do personagem de outra cena escolhido em `personagemOrigemKey`. */
+  function selecionarPersonagemOrigem(key: string) {
+    setPersonagemOrigemKey(key)
+    const origem = personagensRecorrentes.find(o => o.nome.trim().toLowerCase() === key)
+    if (!origem) return
+    setPersonagemNomeDraft(origem.nome)
+    setPersonagemRecorrenteDraft(true)
+    const participanteUid = origem.participanteUid
+    setPersonagemParticipanteDraft(participanteUid && cena?.participantes.includes(participanteUid) ? participanteUid : '')
   }
 
   /**
@@ -298,6 +353,10 @@ export function CenaDetalhe() {
    */
   async function handleSavePersonagem(keepOpen: boolean) {
     if (!cena || !currentUser) return
+    if (!editingPersonagemId && personagemModo === 'existente' && !personagemOrigemKey) {
+      setPersonagemError('Selecione um personagem.')
+      return
+    }
     const nome = personagemNomeDraft.trim()
     if (!nome) {
       setPersonagemError('Preencha o nome do personagem.')
@@ -307,14 +366,18 @@ export function CenaDetalhe() {
     setPersonagemError('')
     try {
       const participanteUid = personagemParticipanteDraft || undefined
+      const recorrente = personagemRecorrenteDraft || undefined
       const next = editingPersonagemId
-        ? personagensBase.map(p => (p.id === editingPersonagemId ? { ...p, nome, participanteUid } : p))
-        : [...personagensBase, { id: crypto.randomUUID(), nome, participanteUid }]
+        ? personagensBase.map(p => (p.id === editingPersonagemId ? { ...p, nome, participanteUid, recorrente } : p))
+        : [...personagensBase, { id: crypto.randomUUID(), nome, participanteUid, recorrente }]
       await updateCenaPersonagens(cena.id, next, currentUser.uid)
       setPersonagensBase(next)
       if (keepOpen) {
+        setPersonagemModo('novo')
         setPersonagemNomeDraft('')
         setPersonagemParticipanteDraft('')
+        setPersonagemRecorrenteDraft(false)
+        setPersonagemOrigemKey('')
         personagemNomeInputRef.current?.focus()
       } else {
         setPersonagemModalOpen(false)
@@ -863,7 +926,7 @@ export function CenaDetalhe() {
 
               {!personagensOpen && cena.personagens.length > 0 && (
                 <AvatarStack
-                  items={cena.personagens.map(p => ({
+                  items={personagensOrdenados.map(p => ({
                     key: p.id,
                     photoURL: p.participanteUid ? users[p.participanteUid]?.photoURL : undefined,
                     name: p.nome,
@@ -875,7 +938,7 @@ export function CenaDetalhe() {
               {personagensOpen &&
                 (cena.personagens?.length ? (
                   <div className="space-y-1 pt-2">
-                    {cena.personagens.map(p => (
+                    {personagensOrdenados.map(p => (
                       <div key={p.id} className="flex items-center gap-2.5 rounded-lg px-1 py-1.5">
                         <Avatar
                           photoURL={p.participanteUid ? users[p.participanteUid]?.photoURL : undefined}
@@ -883,7 +946,14 @@ export function CenaDetalhe() {
                           className="h-9 w-9 text-xs"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate">{p.nome}</p>
+                          <p className="flex items-center gap-1 text-sm font-medium">
+                            <span className="min-w-0 truncate">{p.nome}</span>
+                            {p.recorrente && (
+                              <span title="Personagem recorrente em outras cenas" className="shrink-0 text-primary">
+                                <Pin className="h-3 w-3" />
+                              </span>
+                            )}
+                          </p>
                           {p.participanteUid && <p className="text-xs text-gray-500 truncate">{nameFor(p.participanteUid)}</p>}
                         </div>
                         {isAdmin ? (
@@ -1107,17 +1177,62 @@ export function CenaDetalhe() {
           title={editingPersonagemId ? 'Editar personagem' : 'Novo personagem'}
         >
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="personagem-nome">Nome</Label>
-              <Input
-                ref={personagemNomeInputRef}
-                id="personagem-nome"
-                value={personagemNomeDraft}
-                onChange={e => setPersonagemNomeDraft(e.target.value)}
-                placeholder="Nome do personagem"
-                autoFocus
-              />
-            </div>
+            {!editingPersonagemId && personagensRecorrentes.length > 0 && (
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setPersonagemModo('novo')}
+                  className={cn(
+                    'rounded-lg border py-2 text-sm font-medium transition-colors',
+                    personagemModo === 'novo' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                  )}
+                >
+                  Novo personagem
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPersonagemModo('existente')}
+                  className={cn(
+                    'rounded-lg border py-2 text-sm font-medium transition-colors',
+                    personagemModo === 'existente' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                  )}
+                >
+                  De outra cena
+                </button>
+              </div>
+            )}
+
+            {!editingPersonagemId && personagemModo === 'existente' ? (
+              <div>
+                <Label htmlFor="personagem-origem">Personagem</Label>
+                <Select
+                  id="personagem-origem"
+                  value={personagemOrigemKey}
+                  onChange={e => selecionarPersonagemOrigem(e.target.value)}
+                  className="mt-1.5"
+                >
+                  <option value="">Selecione um personagem</option>
+                  {personagensRecorrentes.map(o => (
+                    <option key={o.nome.trim().toLowerCase()} value={o.nome.trim().toLowerCase()}>
+                      {o.nome}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            ) : (
+              <div>
+                <Label htmlFor="personagem-nome">Nome</Label>
+                <Input
+                  ref={personagemNomeInputRef}
+                  id="personagem-nome"
+                  value={personagemNomeDraft}
+                  onChange={e => setPersonagemNomeDraft(e.target.value)}
+                  placeholder="Nome do personagem"
+                  autoFocus
+                />
+              </div>
+            )}
+
             <div>
               <Label htmlFor="personagem-participante">Participante</Label>
               <Select
@@ -1133,6 +1248,16 @@ export function CenaDetalhe() {
                 ))}
               </Select>
             </div>
+
+            <label className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2.5">
+              <span className="text-sm text-gray-700">Personagem recorrente em outras cenas</span>
+              <input
+                type="checkbox"
+                checked={personagemRecorrenteDraft}
+                onChange={e => setPersonagemRecorrenteDraft(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+            </label>
 
             {personagemError && <p className="text-sm text-red-600">{personagemError}</p>}
 

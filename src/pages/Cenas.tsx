@@ -182,6 +182,7 @@ export function Cenas() {
   const [horarioMode, setHorarioMode] = useState<'comum' | 'porDia'>('comum')
   const [horarioDraft, setHorarioDraft] = useState('')
   const [horariosPorDiaDraft, setHorariosPorDiaDraft] = useState<Partial<Record<DiaSemana, string>>>({})
+  const [personagensRecorrentesSelecionados, setPersonagensRecorrentesSelecionados] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [createdCena, setCreatedCena] = useState<Cena | null>(null)
@@ -299,6 +300,39 @@ export function Cenas() {
     setDias(prev => (prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]))
   }
 
+  /**
+   * Personagens marcados como recorrentes em outras cenas — pra já incluir na cena nova/editada.
+   * Deduplicado por nome: a mesma personagem recorrente em várias cenas aparece uma única vez.
+   */
+  const personagensRecorrentes = useMemo(() => {
+    const nomesJaNaCena = new Set(
+      (editingId ? (cenas ?? []).find(c => c.id === editingId)?.personagens : [])?.map(p => p.nome.trim().toLowerCase()) ?? [],
+    )
+    const porNome = new Map<string, { nome: string; participanteUid?: string }>()
+    for (const c of cenas ?? []) {
+      if (c.id === editingId) continue
+      for (const p of c.personagens) {
+        if (!p.recorrente) continue
+        const key = p.nome.trim().toLowerCase()
+        if (nomesJaNaCena.has(key)) continue
+        const atual = porNome.get(key)
+        if (!atual || (!atual.participanteUid && p.participanteUid)) {
+          porNome.set(key, { nome: p.nome, participanteUid: p.participanteUid })
+        }
+      }
+    }
+    return [...porNome.values()].sort((a, b) => a.nome.localeCompare(b.nome, undefined, { numeric: true }))
+  }, [cenas, editingId])
+
+  function togglePersonagemRecorrente(key: string) {
+    setPersonagensRecorrentesSelecionados(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   function openCreateModal() {
     setEditingId(null)
     setNome('')
@@ -307,6 +341,7 @@ export function Cenas() {
     setHorarioMode('comum')
     setHorarioDraft('')
     setHorariosPorDiaDraft({})
+    setPersonagensRecorrentesSelecionados(new Set())
     setSearch('')
     setFormError('')
     setCreatedCena(null)
@@ -321,6 +356,7 @@ export function Cenas() {
     setHorarioMode(cena.horarios ? 'porDia' : 'comum')
     setHorarioDraft(cena.horario ?? '')
     setHorariosPorDiaDraft(cena.horarios ?? {})
+    setPersonagensRecorrentesSelecionados(new Set())
     setSearch('')
     setFormError('')
     setCreatedCena(null)
@@ -339,17 +375,31 @@ export function Cenas() {
     if (!currentUser) return
     setSaving(true)
     setFormError('')
-    // Editar preserva os campos que ainda não têm UI aqui (líder, personagens, observação) —
-    // essas "detalhes" são geridas na tela de detalhe da cena.
+    // Editar preserva os campos que ainda não têm UI completa aqui (líder, observação) — essas
+    // "detalhes" são geridas na tela de detalhe da cena. Personagens só ganham entradas novas
+    // aqui (os recorrentes escolhidos); editar os já existentes também é lá.
     const editingCena = editingId ? (cenas ?? []).find(c => c.id === editingId) : null
     const stillParticipant = (uid?: string) => !!uid && participantesUids.has(uid)
+    const novosPersonagens = [...personagensRecorrentesSelecionados].flatMap(key => {
+      const origem = personagensRecorrentes.find(o => o.nome.trim().toLowerCase() === key)
+      if (!origem) return []
+      return [
+        {
+          id: crypto.randomUUID(),
+          nome: origem.nome,
+          recorrente: true,
+          participanteUid: stillParticipant(origem.participanteUid) ? origem.participanteUid : undefined,
+        },
+      ]
+    })
     const input: CenaInput = {
       nome: nome.trim(),
       participantes: [...participantesUids],
       liderUid: stillParticipant(editingCena?.liderUid) ? editingCena?.liderUid : undefined,
-      personagens: (editingCena?.personagens ?? []).map(p =>
-        stillParticipant(p.participanteUid) ? p : { ...p, participanteUid: undefined },
-      ),
+      personagens: [
+        ...(editingCena?.personagens ?? []).map(p => (stillParticipant(p.participanteUid) ? p : { ...p, participanteUid: undefined })),
+        ...novosPersonagens,
+      ],
       dias,
       horario: horarioMode === 'comum' ? horarioDraft.trim() || undefined : undefined,
       horarios:
@@ -736,6 +786,25 @@ export function Cenas() {
             </div>
 
             <div>
+              <Label>Dia(s)</Label>
+              <div className="grid grid-cols-6 gap-1.5 mt-1.5">
+                {DIAS_ORDER.map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => toggleDia(d)}
+                    className={cn(
+                      'rounded-lg border py-2.5 text-sm font-medium transition-colors',
+                      dias.includes(d) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                    )}
+                  >
+                    {DIA_SEMANA_LABELS[d]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
               <Label>Participantes ({participantesUids.size})</Label>
               <Input placeholder="Buscar por nome" value={search} onChange={e => setSearch(e.target.value)} className="mt-1.5 mb-2" />
               <div className="max-h-48 overflow-y-auto space-y-1 border border-gray-200 rounded-lg p-1.5">
@@ -772,24 +841,51 @@ export function Cenas() {
               </div>
             </div>
 
-            <div>
-              <Label>Dia(s)</Label>
-              <div className="grid grid-cols-6 gap-1.5 mt-1.5">
-                {DIAS_ORDER.map(d => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => toggleDia(d)}
-                    className={cn(
-                      'rounded-lg border py-2.5 text-sm font-medium transition-colors',
-                      dias.includes(d) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
-                    )}
-                  >
-                    {DIA_SEMANA_LABELS[d]}
-                  </button>
-                ))}
+            {personagensRecorrentes.length > 0 && (
+              <div>
+                <Label>Personagens recorrentes ({personagensRecorrentesSelecionados.size})</Label>
+                <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
+                  Já cadastrados em outras cenas — selecione pra reaproveitar nessa.
+                </p>
+                <div className="max-h-48 overflow-y-auto space-y-1 border border-gray-200 rounded-lg p-1.5">
+                  {personagensRecorrentes.map(o => {
+                    const key = o.nome.trim().toLowerCase()
+                    const selecionado = personagensRecorrentesSelecionados.has(key)
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => togglePersonagemRecorrente(key)}
+                        className={cn(
+                          'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm',
+                          selecionado ? 'bg-primary/10' : 'hover:bg-gray-50',
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2',
+                            selecionado ? 'border-primary bg-primary text-white' : 'border-gray-300',
+                          )}
+                        >
+                          {selecionado && <Check className="h-2.5 w-2.5" />}
+                        </span>
+                        <Avatar
+                          photoURL={o.participanteUid ? users[o.participanteUid]?.photoURL : undefined}
+                          name={o.nome}
+                          className="h-6 w-6 shrink-0 text-[10px]"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate">{o.nome}</p>
+                          {o.participanteUid && (
+                            <p className="truncate text-[11px] text-muted-foreground">{nameFor(o.participanteUid)}</p>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
             <div>
               <Label>Horário</Label>

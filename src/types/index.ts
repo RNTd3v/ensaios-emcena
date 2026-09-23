@@ -80,6 +80,8 @@ export interface Personagem {
   nome: string
   /** uid de um dos participantes da cena que interpreta esse personagem. */
   participanteUid?: string
+  /** Se true, esse personagem pode ser reaproveitado (por nome) ao cadastrar personagens em outras cenas. */
+  recorrente?: boolean
 }
 
 /**

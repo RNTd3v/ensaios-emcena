@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { AuthGuard } from '@/components/layout/AuthGuard'
+import { InscricaoGuard } from '@/components/layout/InscricaoGuard'
 import { AdminGuard } from '@/components/layout/AdminGuard'
 import { AdminOrLiderGuard } from '@/components/layout/AdminOrLiderGuard'
 import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt'
@@ -40,7 +41,9 @@ function App() {
           path="/"
           element={
             <AuthGuard>
-              <AppLayout />
+              <InscricaoGuard>
+                <AppLayout />
+              </InscricaoGuard>
             </AuthGuard>
           }
         >

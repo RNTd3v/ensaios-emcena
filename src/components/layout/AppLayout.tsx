@@ -5,6 +5,7 @@ import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useSelectionStore } from '@/stores/selectionStore'
+import { useInscricaoStore } from '@/stores/inscricaoStore'
 import { PhoneMockup } from '@/components/layout/PhoneMockup'
 import { cn } from '@/lib/utils'
 
@@ -14,6 +15,8 @@ export function AppLayout() {
   const isAdminOrLider = user?.role === 'admin' || user?.role === 'lider'
   const { settings, loaded, refresh } = useSettingsStore()
   const hasSelection = useSelectionStore(s => s.hasSelection)
+  /** Sem inscrição (e não admin): o menu só mostra "Minha inscrição" — o resto fica bloqueado. */
+  const semInscricao = useInscricaoStore(s => s.existe === false) && !isAdmin
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -78,30 +81,34 @@ export function AppLayout() {
             </div>
             {/* Lista rola sozinha quando não cabe; o "Sair" fica fixo embaixo. */}
             <div className="-mx-1 min-h-0 flex-1 space-y-2 overflow-y-auto px-1 pb-2">
-              <MenuItem to="/" label="Início" icon={Home} end onClick={() => setMenuOpen(false)} />
-              <MenuItem to="/cenas" label={isAdmin ? 'Cenas' : 'Minhas Cenas'} icon={Clapperboard} onClick={() => setMenuOpen(false)} />
-              <MenuItem to="/equipes" label="Equipes" icon={UsersRound} onClick={() => setMenuOpen(false)} />
-              <MenuItem to="/oracao" label="Relógio de oração" icon={HandHeart} onClick={() => setMenuOpen(false)} />
-
-              <MenuDivider />
-              <MenuItem to="/musicas" label="Músicas" icon={Music} onClick={() => setMenuOpen(false)} />
-              <MenuItem to="/figurinos" label="Figurinos" icon={Shirt} onClick={() => setMenuOpen(false)} />
-
-              {isAdminOrLider && (
+              {!semInscricao && (
                 <>
-                  <MenuDivider label="Admin" />
-                  <MenuItem to="/disponibilidade" label="Disponibilidade" icon={CalendarDays} onClick={() => setMenuOpen(false)} />
-                  {isAdmin && (
+                  <MenuItem to="/" label="Início" icon={Home} end onClick={() => setMenuOpen(false)} />
+                  <MenuItem to="/cenas" label={isAdmin ? 'Cenas' : 'Minhas Cenas'} icon={Clapperboard} onClick={() => setMenuOpen(false)} />
+                  <MenuItem to="/equipes" label="Equipes" icon={UsersRound} onClick={() => setMenuOpen(false)} />
+                  <MenuItem to="/oracao" label="Relógio de oração" icon={HandHeart} onClick={() => setMenuOpen(false)} />
+
+                  <MenuDivider />
+                  <MenuItem to="/musicas" label="Músicas" icon={Music} onClick={() => setMenuOpen(false)} />
+                  <MenuItem to="/figurinos" label="Figurinos" icon={Shirt} onClick={() => setMenuOpen(false)} />
+
+                  {isAdminOrLider && (
                     <>
-                      <MenuItem to="/personagens" label="Personagens" icon={Drama} onClick={() => setMenuOpen(false)} />
-                      <MenuItem to="/calendario" label="Calendário geral de ensaios" icon={CalendarClock} onClick={() => setMenuOpen(false)} />
-                      <MenuItem to="/admin" label="Admin" icon={ShieldCheck} onClick={() => setMenuOpen(false)} />
+                      <MenuDivider label="Admin" />
+                      <MenuItem to="/disponibilidade" label="Disponibilidade" icon={CalendarDays} onClick={() => setMenuOpen(false)} />
+                      {isAdmin && (
+                        <>
+                          <MenuItem to="/personagens" label="Personagens" icon={Drama} onClick={() => setMenuOpen(false)} />
+                          <MenuItem to="/calendario" label="Calendário geral de ensaios" icon={CalendarClock} onClick={() => setMenuOpen(false)} />
+                          <MenuItem to="/admin" label="Gerenciamento" icon={ShieldCheck} onClick={() => setMenuOpen(false)} />
+                        </>
+                      )}
                     </>
                   )}
                 </>
               )}
 
-              <MenuDivider />
+              {!semInscricao && <MenuDivider />}
               <MenuItem to="/inscricao" label="Minha inscrição" icon={ClipboardList} end onClick={() => setMenuOpen(false)} />
             </div>
             <button

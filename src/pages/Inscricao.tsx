@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { useNavigate } from 'react-router-dom'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { CheckCircle2, Loader2, Pencil } from 'lucide-react'
@@ -67,6 +68,7 @@ const STATUS_VARIANT: Record<InscricaoStatus, 'warning' | 'success' | 'destructi
 
 export function Inscricao() {
   const user = useAuthStore(s => s.user)
+  const navigate = useNavigate()
   const [inscricao, setInscricao] = useState<Inscricao | null | undefined>(undefined)
   const [editing, setEditing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -159,9 +161,15 @@ export function Inscricao() {
         },
         !inscricao,
       )
+      const eraNova = !inscricao
       const updated = await getInscricao(user.uid)
       setInscricao(updated)
       setEditing(false)
+      // Primeira inscrição: o app acabou de ser liberado — leva pro início.
+      if (eraNova) {
+        navigate('/', { replace: true })
+        return
+      }
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } finally {
@@ -268,6 +276,14 @@ export function Inscricao() {
 
   return (
     <div className="space-y-4">
+      {!inscricao && (
+        <div className="rounded-2xl bg-white/15 px-4 py-3 text-white backdrop-blur-md">
+          <p className="text-base font-semibold">Boas-vindas{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!</p>
+          <p className="mt-0.5 text-sm text-white/85">
+            Antes de começar, preencha sua inscrição. Depois de enviar, o resto do app fica liberado.
+          </p>
+        </div>
+      )}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">{inscricao ? 'Editar inscrição' : 'Nova inscrição'}</CardTitle>

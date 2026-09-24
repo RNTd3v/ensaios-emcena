@@ -11,6 +11,7 @@ import {
   ShieldOff,
   ShieldCheck as ShieldCheckIcon,
   SlidersHorizontal,
+  UserX,
   Star,
   XCircle,
 } from 'lucide-react'
@@ -132,6 +133,19 @@ export function Admin() {
 
   const pendentesCount = useMemo(() => (inscricoes ?? []).filter(i => i.status === 'pendente').length, [inscricoes])
 
+  /**
+   * Quem já entrou no app (tem doc em `users`) mas nunca enviou a inscrição — comparando as duas
+   * coleções. Contas com acesso revogado ficam de fora.
+   */
+  const semInscricao = useMemo(() => {
+    if (!inscricoes) return []
+    const inscritos = new Set(inscricoes.map(i => i.uid))
+    return Object.values(users)
+      .filter(u => u.active !== false && !inscritos.has(u.uid))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }, [users, inscricoes])
+  const [semInscricaoOpen, setSemInscricaoOpen] = useState(false)
+
   const selectedInscricoes = useMemo(
     () => (inscricoes ?? []).filter(i => selectedUids.has(i.uid)),
     [inscricoes, selectedUids],
@@ -170,7 +184,7 @@ export function Admin() {
     >
       <div className="flex items-start justify-between pb-4 border-b border-white/30">
         <div>
-          <h1 className="text-xl font-semibold text-white">Participantes</h1>
+          <h1 className="text-xl font-semibold text-white">Gerenciamento</h1>
           <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
             <Badge variant="outline" className="bg-white/10 text-white border-white/30 text-xs px-2 py-0.5">
               {hasActiveFilters || search.trim()
@@ -182,6 +196,14 @@ export function Admin() {
                 <Clock className="h-3 w-3" />
                 {pendentesCount} pendente{pendentesCount === 1 ? '' : 's'}
               </Badge>
+            )}
+            {semInscricao.length > 0 && (
+              <button type="button" onClick={() => setSemInscricaoOpen(true)} title="Ver quem entrou e não se inscreveu">
+                <Badge variant="outline" className="gap-1 border-white/30 bg-white/10 px-2 py-0.5 text-xs text-white hover:bg-white/20">
+                  <UserX className="h-3 w-3" />
+                  {semInscricao.length} sem inscrição
+                </Badge>
+              </button>
             )}
           </div>
         </div>
@@ -354,6 +376,29 @@ export function Admin() {
         onCreateCena={() => setCenaModalOpen(true)}
         onClear={() => setSelectedUids(new Set())}
       />
+
+      <Dialog open={semInscricaoOpen} onClose={() => setSemInscricaoOpen(false)} title="Sem inscrição">
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Entraram no app mas ainda não enviaram a inscrição ({semInscricao.length}). Da próxima vez que entrarem, vão direto
+            pro formulário.
+          </p>
+          <div className="divide-y divide-gray-100">
+            {semInscricao.map(u => (
+              <div key={u.uid} className="flex items-center gap-2.5 py-2">
+                <Avatar photoURL={u.photoURL} name={u.displayName} className="h-9 w-9 text-xs" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{u.displayName || 'Sem nome'}</p>
+                  <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+                </div>
+                <span className="shrink-0 text-[11px] text-muted-foreground">
+                  desde {new Date(u.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Dialog>
 
       <Dialog open={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filtros">
         <div className="space-y-4">

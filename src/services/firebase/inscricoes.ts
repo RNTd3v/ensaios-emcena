@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import { db } from './config'
 import type { Inscricao, InscricaoStatus } from '@/types'
 
@@ -49,10 +49,14 @@ export async function saveInscricao(input: InscricaoInput, isNew: boolean): Prom
   )
 }
 
+/**
+ * Todas as inscrições, mais recentes primeiro. A ordenação é feita aqui e não com `orderBy` na
+ * query: o Firestore deixa de fora do resultado qualquer doc sem o campo ordenado, então uma
+ * inscrição sem `createdAt` sumiria da lista do admin sem aviso.
+ */
 export function subscribeToAllInscricoes(callback: (inscricoes: Inscricao[]) => void) {
-  const q = query(collection(db, 'inscricoes'), orderBy('createdAt', 'desc'))
-  return onSnapshot(q, snap => {
-    callback(snap.docs.map(d => fromSnap(d.data())))
+  return onSnapshot(collection(db, 'inscricoes'), snap => {
+    callback(snap.docs.map(d => fromSnap(d.data())).sort((a, b) => b.createdAt.localeCompare(a.createdAt)))
   })
 }
 
@@ -63,4 +67,16 @@ export async function getAllInscricoesOnce(): Promise<Inscricao[]> {
 
 export async function updateInscricaoStatus(uid: string, status: InscricaoStatus): Promise<void> {
   await updateDoc(doc(db, 'inscricoes', uid), { status, updatedAt: serverTimestamp() })
+}
+
+/**
+ * Se a própria pessoa já tem inscrição, em tempo real (`null` = ainda não tem). Em caso de erro
+ * (rede, permissão) chama com `undefined` — "não sei", quem usa não deve bloquear por isso.
+ */
+export function subscribeToMinhaInscricaoExiste(uid: string, callback: (existe: boolean | undefined) => void) {
+  return onSnapshot(
+    doc(db, 'inscricoes', uid),
+    snap => callback(snap.exists()),
+    () => callback(undefined),
+  )
 }

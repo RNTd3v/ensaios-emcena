@@ -789,14 +789,11 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
     try {
       // Só regrava presenças se mudaram — ao vivo, outras pessoas podem estar fazendo check-in ao mesmo tempo.
       const presencasMudaram = JSON.stringify([...presencas].sort()) !== JSON.stringify([...(ensaio.presencas ?? [])].sort())
-      await updateEnsaioInfo(ensaio.id, {
-        horario,
-        local,
-        geral,
-        comFigurino,
-        obrigatorios,
-        presencas: presencasMudaram ? presencas : undefined,
-      })
+      await updateEnsaioInfo(
+        ensaio.id,
+        { horario, local, geral, comFigurino, obrigatorios, presencas: presencasMudaram ? presencas : undefined },
+        currentUser.uid,
+      )
       const registroMudou = duracao !== duracaoInicial || anotacoes !== (ensaio.anotacoes ?? '')
       if (comRegistro && registroMudou) {
         await salvarRegistroEnsaio(ensaio.id, { anotacoes, duracaoSegundos: (parseInt(duracao, 10) || 0) * 60 }, currentUser.uid)

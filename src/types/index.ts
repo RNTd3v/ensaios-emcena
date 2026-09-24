@@ -431,6 +431,19 @@ export interface Gasto {
   createdAt: string
 }
 
+/** Notificação de uma pessoa (coleção `notificacoes`) — criada pelas Cloud Functions. */
+export interface Notificacao {
+  id: string
+  uid: string
+  titulo: string
+  corpo: string
+  /** Rota dentro do app pra onde a notificação leva. */
+  link?: string | null
+  tipo: 'ensaio' | 'figurino' | 'tarefa' | 'aviso'
+  lida: boolean
+  createdAt: string
+}
+
 export interface AppSettings {
   eventName: string
   posterImageUrl?: string

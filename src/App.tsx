@@ -24,6 +24,7 @@ import { Equipes } from '@/pages/Equipes'
 import { EquipeDetalhe } from '@/pages/EquipeDetalhe'
 import { FigurinosPage, MusicasPage } from '@/pages/Midias'
 import { MetasGastos } from '@/pages/MetasGastos'
+import { Notificacoes } from '@/pages/Notificacoes'
 import { AdminLocais } from '@/pages/AdminLocais'
 import { AdminVersiculos } from '@/pages/AdminVersiculos'
 import { Disponibilidade } from '@/pages/Disponibilidade'
@@ -119,6 +120,7 @@ function App() {
           <Route path="equipes" element={<Equipes />} />
           <Route path="equipes/:id" element={<EquipeDetalhe />} />
           <Route path="metas-gastos" element={<MetasGastos />} />
+          <Route path="notificacoes" element={<Notificacoes />} />
           <Route path="musicas" element={<MusicasPage />} />
           <Route path="figurinos" element={<FigurinosPage />} />
           <Route path="cenas" element={<Cenas />} />

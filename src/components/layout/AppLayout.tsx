@@ -9,6 +9,8 @@ import { useInscricaoStore } from '@/stores/inscricaoStore'
 import { useOracaoVisivel } from '@/hooks/useOracaoVisivel'
 import { APP_DOCES_URL, APP_RIFAS_URL } from '@/services/externo/vendas'
 import { PhoneMockup } from '@/components/layout/PhoneMockup'
+import { SinoNotificacoes } from '@/components/layout/SinoNotificacoes'
+import { ativarPush } from '@/services/firebase/notificacoes'
 import { cn } from '@/lib/utils'
 
 export function AppLayout() {
@@ -25,6 +27,14 @@ export function AppLayout() {
   useEffect(() => {
     if (!loaded) refresh()
   }, [loaded, refresh])
+
+  // Aparelho que já liberou notificações: renova o token do push ao abrir o app (ele pode mudar
+  // com o tempo) — sem pedir nada, já que a permissão foi dada.
+  const uid = user?.uid
+  useEffect(() => {
+    if (!uid || !('Notification' in window) || Notification.permission !== 'granted') return
+    ativarPush(uid).catch(() => {})
+  }, [uid])
 
   return (
     <PhoneMockup>
@@ -43,6 +53,8 @@ export function AppLayout() {
         >
           <Menu className="h-5 w-5" />
         </button>
+        {/* Sem inscrição ainda: nada além do formulário (o sino levaria pra fora dele). */}
+        {!semInscricao && <SinoNotificacoes />}
         <div className="flex justify-center">
           <img src="/logo-musical.png" alt={settings.eventName} className="w-full max-w-[80vw] h-auto mt-8" />
         </div>

@@ -58,8 +58,11 @@ export async function updateEnsaioHorario(id: string, horario: string): Promise<
 export async function updateEnsaioInfo(
   id: string,
   info: { horario: string; local: string; geral: boolean; comFigurino: boolean; obrigatorios: string[]; presencas?: string[] },
+  byUid?: string,
 ): Promise<void> {
   await updateDoc(doc(db, 'ensaios', id), {
+    // Quem mexeu por último — as Cloud Functions usam pra não notificar a própria pessoa.
+    ...(byUid ? { atualizadoPorUid: byUid } : {}),
     horario: info.horario,
     local: info.local.trim() || deleteField(),
     geral: info.geral || deleteField(),

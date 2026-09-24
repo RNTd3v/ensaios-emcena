@@ -221,6 +221,37 @@ service cloud.firestore {
             && resource.data.get('aprovacao', null) != 'aprovado');
     }
 
+    // Notificações: um doc por destinatário, criado só pelas Cloud Functions (functions/). Cada um
+    // lê as suas e só pode marcar como lida (ou apagar).
+    match /notificacoes/{id} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.uid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lida', 'lidaEm']);
+      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if false;
+    }
+
+    // Tokens de push (id = token do aparelho): cada um registra/remove os próprios.
+    match /fcmTokens/{token} {
+      allow read, delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create, update: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+    }
+
+    // Avisos manuais: admin manda pra todos/qualquer grupo; líder da cena ou da equipe, só pro
+    // grupo dele. O envio (notificações + push) é feito pela Cloud Function `avisoCriado`.
+    match /avisos/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+        && request.resource.data.enviadoPorUid == request.auth.uid
+        && request.resource.data.titulo is string && request.resource.data.titulo.size() > 0
+        && (isAdmin()
+            || (request.resource.data.escopo == 'cena'
+                && get(/databases/$(database)/documents/cenas/$(request.resource.data.escopoId)).data.get('liderUid', '') == request.auth.uid)
+            || (request.resource.data.escopo == 'equipe'
+                && get(/databases/$(database)/documents/equipes/$(request.resource.data.escopoId)).data.get('liderUid', '') == request.auth.uid));
+      allow update, delete: if isAdmin();
+    }
+
     // Metas e gastos. `financeiro/config` guarda líder, assistentes e a meta; `financeiro/resumo`
     // é o formato antigo (só lido pra importar e depois apagado). Todos leem; admin define a
     // equipe; líder/assistentes mexem na meta e nos lançamentos.

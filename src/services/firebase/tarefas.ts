@@ -71,6 +71,8 @@ export async function createTarefa(equipeId: string, input: TarefaInput, byUid: 
 /** Admin, líder ou assistente da equipe — edição completa. */
 export async function updateTarefa(tarefa: Tarefa, input: TarefaInput, byUid: string): Promise<void> {
   const data = limpar(input, true)
+  // Quem editou por último — as Cloud Functions usam pra não notificar a própria pessoa.
+  data.atualizadoPorUid = byUid
   if (input.status !== tarefa.status || (input.justificativa ?? '') !== (tarefa.justificativa ?? '')) {
     data.statusAtualizadoPorUid = byUid
     data.statusAtualizadoEm = serverTimestamp()

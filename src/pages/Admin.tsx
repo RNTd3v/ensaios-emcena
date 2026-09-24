@@ -44,7 +44,7 @@ import {
 import { whatsappLink } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import { AREA_ICONS } from '@/lib/areaIcons'
-import { DIAS_ORDER, sortDias } from '@/lib/dias'
+import { DIAS_ORDER, diasDisponiveis } from '@/lib/dias'
 import { useSelectionVisibility } from '@/hooks/useSelectionVisibility'
 
 type AreaFilter = 'todas' | Area
@@ -111,8 +111,8 @@ export function Admin() {
       if (diaFilter.length > 0) {
         const disponivel =
           diaMatchMode === 'all'
-            ? diaFilter.every(d => i.disponibilidade.dias.includes(d))
-            : diaFilter.some(d => i.disponibilidade.dias.includes(d))
+            ? diaFilter.every(d => diasDisponiveis(i.disponibilidade.dias).includes(d))
+            : diaFilter.some(d => diasDisponiveis(i.disponibilidade.dias).includes(d))
         if (!disponivel) return false
       }
       if (roleFilter !== 'todos' && (users[i.uid]?.role ?? 'participante') !== roleFilter) return false
@@ -315,7 +315,7 @@ export function Admin() {
                   </div>
                   <div className="flex items-end justify-between gap-2 pt-2">
                     <div className="flex flex-wrap gap-1">
-                      {sortDias(i.disponibilidade.dias).map(d => (
+                      {diasDisponiveis(i.disponibilidade.dias).map(d => (
                         <Badge
                           key={d}
                           variant="outline"
@@ -542,7 +542,7 @@ export function Admin() {
               <div className="py-3">
                 <p className="text-sm text-muted-foreground">Disponibilidade</p>
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {sortDias(selected.disponibilidade.dias).map(d => (
+                  {diasDisponiveis(selected.disponibilidade.dias).map(d => (
                     <Badge key={d} variant="outline">
                       {DIA_SEMANA_LABELS[d]}
                     </Badge>

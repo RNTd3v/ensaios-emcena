@@ -16,6 +16,7 @@ import { getInscricao, saveInscricao } from '@/services/firebase/inscricoes'
 import { useAuthStore } from '@/stores/authStore'
 import { AREA_LABELS, DIA_SEMANA_LABELS, type Area, type DiaSemana, type Inscricao, type InscricaoStatus } from '@/types'
 import { AREA_ICONS } from '@/lib/areaIcons'
+import { DIAS_OBRIGATORIOS, diasDisponiveis } from '@/lib/dias'
 
 const AREAS = Object.keys(AREA_LABELS) as Area[]
 const DIAS = Object.keys(DIA_SEMANA_LABELS) as DiaSemana[]
@@ -43,8 +44,9 @@ const schema = z
         ctx.addIssue({ code: 'custom', path: ['responsavelTelefone'], message: 'Telefone do responsável incompleto' })
       }
     }
-    // Disponibilidade mínima de 3 dias só é exigida de quem se candidata ao elenco.
-    if (data.areas.includes('elenco') && data.dias.length < 3) {
+    // Disponibilidade mínima de 3 dias só é exigida de quem se candidata ao elenco — o sábado
+    // (obrigatório pra todos) conta como um deles.
+    if (data.areas.includes('elenco') && diasDisponiveis(data.dias).length < 3) {
       ctx.addIssue({ code: 'custom', path: ['dias'], message: 'Elenco precisa de pelo menos 3 dias de disponibilidade' })
     }
   })
@@ -224,7 +226,7 @@ export function Inscricao() {
               <div className="py-3">
                 <p className="text-sm text-gray-500">Disponibilidade</p>
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {inscricao.disponibilidade.dias.map(d => (
+                  {diasDisponiveis(inscricao.disponibilidade.dias).map(d => (
                     <Badge key={d} variant="outline">
                       {DIA_SEMANA_LABELS[d]}
                     </Badge>
@@ -357,21 +359,33 @@ export function Inscricao() {
                 <div>
                   <Label>Disponibilidade (dias da semana{requiresMinDias ? ', mínimo 3' : ''})</Label>
                   <div className="grid grid-cols-6 gap-1.5 mt-2">
-                    {DIAS.map(dia => (
-                      <button
-                        key={dia}
-                        type="button"
-                        onClick={() => toggleDia(dia)}
-                        className={cn(
-                          'rounded-lg border py-2.5 text-sm font-medium transition-colors',
-                          dias.includes(dia) ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
-                        )}
-                      >
-                        {DIA_SEMANA_LABELS[dia]}
-                      </button>
-                    ))}
+                    {DIAS.map(dia => {
+                      const obrigatorio = DIAS_OBRIGATORIOS.includes(dia)
+                      return (
+                        <button
+                          key={dia}
+                          type="button"
+                          disabled={obrigatorio}
+                          onClick={() => toggleDia(dia)}
+                          title={obrigatorio ? 'Obrigatório pra todos' : undefined}
+                          className={cn(
+                            'rounded-lg border py-2.5 text-sm font-medium transition-colors disabled:cursor-default',
+                            obrigatorio || dias.includes(dia)
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-gray-300 bg-white text-gray-700',
+                          )}
+                        >
+                          {DIA_SEMANA_LABELS[dia]}
+                        </button>
+                      )
+                    })}
                   </div>
-                  {requiresMinDias && <p className="text-sm text-gray-500 mt-1">{dias.length} de 3 selecionados</p>}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {DIAS_OBRIGATORIOS.map(d => DIA_SEMANA_LABELS[d]).join(', ')} é obrigatório pra todos.
+                  </p>
+                  {requiresMinDias && (
+                    <p className="text-sm text-gray-500 mt-1">{diasDisponiveis(dias).length} de 3 selecionados</p>
+                  )}
                   {requiresMinDias && errors.dias && <p className="text-xs text-red-600 mt-1">{errors.dias.message}</p>}
                 </div>
 
@@ -400,7 +414,7 @@ export function Inscricao() {
                   Cancelar
                 </Button>
               )}
-              <Button type="submit" className="w-full" disabled={submitting || (!isConfirmed && requiresMinDias && dias.length < 3)}>
+              <Button type="submit" className="w-full" disabled={submitting || (!isConfirmed && requiresMinDias && diasDisponiveis(dias).length < 3)}>
                 {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 {submitting ? 'Enviando...' : inscricao ? 'Salvar alterações' : 'Enviar inscrição'}
               </Button>

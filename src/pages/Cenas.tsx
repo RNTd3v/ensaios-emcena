@@ -42,7 +42,7 @@ import { preservarPersonagensNoCatalogo } from '@/services/firebase/personagens'
 import { subscribeToAllEnsaios, subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
 import { DIA_SEMANA_LABELS, type AppUser, type Cena, type DiaSemana, type Ensaio, type Inscricao } from '@/types'
-import { DIAS_ORDER, sortDias } from '@/lib/dias'
+import { DIAS_ORDER, diasDisponiveis, sortDias } from '@/lib/dias'
 import { formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { whatsappLink } from '@/lib/formatters'
@@ -281,7 +281,7 @@ export function Cenas() {
       // Quem já está selecionado continua na lista mesmo sem disponibilidade nos dias atuais,
       // pra não sumir o checkbox e impedir de desmarcar (ex.: depois de trocar os dias da cena).
       if (participantesUids.has(i.uid)) return true
-      return dias.length === 0 || dias.every(d => i.disponibilidade.dias.includes(d))
+      return dias.length === 0 || dias.every(d => diasDisponiveis(i.disponibilidade.dias).includes(d))
     })
     if (!search.trim()) return elegiveis
     const term = search.toLowerCase()

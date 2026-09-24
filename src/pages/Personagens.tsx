@@ -23,7 +23,7 @@ import {
 } from '@/services/firebase/personagens'
 import { useAuthStore } from '@/stores/authStore'
 import { DIA_SEMANA_LABELS, type AppUser, type Cena, type DiaSemana, type Inscricao, type PersonagemCatalogo } from '@/types'
-import { DIAS_ORDER, sortDias } from '@/lib/dias'
+import { DIAS_ORDER, diasDisponiveis, sortDias } from '@/lib/dias'
 import { agregarPersonagens, cenaCabeNaDisponibilidade, isCoro, personagemKey, type PersonagemAgregado } from '@/lib/personagens'
 import { cn } from '@/lib/utils'
 
@@ -60,7 +60,7 @@ export function Personagens() {
   }
 
   function diasDe(uid: string | undefined): DiaSemana[] | undefined {
-    return uid ? (inscricoesByUid[uid]?.disponibilidade.dias ?? []) : undefined
+    return uid ? diasDisponiveis(inscricoesByUid[uid]?.disponibilidade.dias ?? []) : undefined
   }
 
   /** Papéis de coro repetem o nome — dentro do mesmo nome, ordena pela pessoa (sem pessoa por último). */
@@ -198,7 +198,7 @@ export function Personagens() {
 }
 
 function PessoaOption({ i }: { i: Inscricao }) {
-  const dias = sortDias(i.disponibilidade.dias).map(d => DIA_SEMANA_LABELS[d])
+  const dias = diasDisponiveis(i.disponibilidade.dias).map(d => DIA_SEMANA_LABELS[d])
   return (
     <option value={i.uid}>
       {i.apelido || i.nomeCompleto}

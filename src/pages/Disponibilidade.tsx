@@ -16,7 +16,7 @@ import { subscribeToCenas } from '@/services/firebase/cenas'
 import { useAuthStore } from '@/stores/authStore'
 import { AREA_LABELS, DIA_SEMANA_LABELS, type Area, type AppUser, type Cena, type DiaSemana, type Inscricao } from '@/types'
 import { AREA_ICONS } from '@/lib/areaIcons'
-import { DIAS_ORDER } from '@/lib/dias'
+import { DIAS_ORDER, diasDisponiveis } from '@/lib/dias'
 import { cn } from '@/lib/utils'
 import { useSelectionVisibility } from '@/hooks/useSelectionVisibility'
 
@@ -65,7 +65,7 @@ export function Disponibilidade() {
   const byDia = useMemo(() => {
     const map: Record<DiaSemana, Inscricao[]> = { seg: [], ter: [], qua: [], qui: [], sex: [], sab: [] }
     for (const i of filtered) {
-      for (const d of i.disponibilidade.dias) {
+      for (const d of diasDisponiveis(i.disponibilidade.dias)) {
         map[d].push(i)
       }
     }

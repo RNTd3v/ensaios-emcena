@@ -74,7 +74,7 @@ import {
   type Musica,
   type Personagem,
 } from '@/types'
-import { DIAS_ORDER, sortDias } from '@/lib/dias'
+import { DIAS_ORDER, diasDisponiveis, sortDias } from '@/lib/dias'
 import { formatDuracao, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { FIGURINO_MAX_BYTES, MUSICA_MAX_BYTES } from '@/lib/uploads'
 import { whatsappLink } from '@/lib/formatters'
@@ -280,7 +280,7 @@ export function CenaDetalhe() {
       (inscricoes ?? [])
         .filter(i => !cena?.participantes.includes(i.uid))
         .filter(i => i.areas.some(a => a === 'elenco' || a === 'tecnica'))
-        .filter(i => !cena?.dias.length || cena.dias.every(d => i.disponibilidade.dias.includes(d)))
+        .filter(i => !cena?.dias.length || cena.dias.every(d => diasDisponiveis(i.disponibilidade.dias).includes(d)))
         .sort((a, b) => (a.apelido || a.nomeCompleto).localeCompare(b.apelido || b.nomeCompleto)),
     [inscricoes, cena?.participantes, cena?.dias],
   )

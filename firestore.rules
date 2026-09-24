@@ -238,7 +238,8 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAdmin()
         || (id == 'config' && isEquipeFinanceiro() && resource != null
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['metaTotal', 'updatedAt']));
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['metaTotal', 'docesMetaId', 'docesMetaTitulo', 'updatedAt']));
     }
 
     // Entradas lançadas à mão (doces, ofertas, outros) e gastos (com comprovante no Storage).

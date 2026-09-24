@@ -33,6 +33,7 @@ import {
   deleteGasto,
   importarFinanceiroLegado,
   removerComprovante,
+  saveDocesMeta,
   saveFinanceiroEquipe,
   saveMetaTotal,
   subscribeToFinanceiroLegado,
@@ -42,7 +43,7 @@ import {
   type EntradaInput,
   type GastoInput,
 } from '@/services/firebase/financeiro'
-import { DOCES_INTEGRADO } from '@/services/externo/vendas'
+import { listarMetasDoces, type MetaDoces } from '@/services/externo/vendas'
 import { useAuthStore } from '@/stores/authStore'
 import {
   CATEGORIAS_GASTO,
@@ -246,7 +247,9 @@ function ResumoAba({ fin, podeEditar }: { fin: Fin; podeEditar: boolean }) {
             Rifas vêm do app de rifas
             {fin.rifas?.atualizadoEm && ` (atualizado em ${new Date(fin.rifas.atualizadoEm).toLocaleDateString('pt-BR')})`}
             {fin.rifas === null && ' — não foi possível ler agora'}.{' '}
-            {DOCES_INTEGRADO ? 'Doces vêm do app de doces.' : 'Doces, ofertas e outros são lançados na aba Arrecadação.'}
+            {fin.docesIntegrado
+              ? `Doces vêm do app de doces (meta "${fin.config?.docesMetaTitulo ?? '...'}"). Ofertas e outros são lançados na aba Arrecadação.`
+              : 'Doces, ofertas e outros são lançados na aba Arrecadação.'}
           </p>
         </CardContent>
       </Card>
@@ -449,13 +452,15 @@ function ArrecadacaoAba({ fin, podeEditar, byUid }: { fin: Fin; podeEditar: bool
         </CardContent>
       </Card>
 
+      <DocesCard fin={fin} podeEditar={podeEditar} />
+
       <Card>
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div>
               <p className="text-sm font-semibold">Lançamentos</p>
               <p className="text-xs text-muted-foreground">
-                {DOCES_INTEGRADO ? 'Ofertas e outras entradas' : 'Doces, ofertas e outras entradas'}
+                {fin.docesIntegrado ? 'Ofertas e outras entradas' : 'Doces, ofertas e outras entradas'}
               </p>
             </div>
             {podeEditar && (
@@ -491,13 +496,147 @@ function ArrecadacaoAba({ fin, podeEditar, byUid }: { fin: Fin; podeEditar: bool
         </CardContent>
       </Card>
 
-      {editando && <EntradaDialog entrada={editando === 'nova' ? undefined : editando} byUid={byUid} onClose={() => setEditando(null)} />}
+      {editando && (
+        <EntradaDialog
+          entrada={editando === 'nova' ? undefined : editando}
+          docesIntegrado={fin.docesIntegrado}
+          byUid={byUid}
+          onClose={() => setEditando(null)}
+        />
+      )}
     </>
   )
 }
 
-function EntradaDialog({ entrada, byUid, onClose }: { entrada?: Entrada; byUid: string; onClose: () => void }) {
-  const frentes = DOCES_INTEGRADO ? FRENTES_MANUAIS.filter(f => f.value !== 'doces') : FRENTES_MANUAIS
+/**
+ * Doces: escolher qual meta do app de doces conta pro musical (o app de doces também vende pra
+ * outras causas). Com meta escolhida, o total vem automático; sem, doces são lançados à mão.
+ */
+function DocesCard({ fin, podeEditar }: { fin: Fin; podeEditar: boolean }) {
+  const [metas, setMetas] = useState<MetaDoces[] | null | undefined>(undefined)
+  const [escolhendo, setEscolhendo] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const docesManuais = (fin.entradas ?? []).filter(e => e.frente === 'doces')
+
+  useEffect(() => {
+    if (!escolhendo) return
+    listarMetasDoces().then(setMetas)
+  }, [escolhendo])
+
+  async function escolher(meta: MetaDoces | undefined) {
+    setSaving(true)
+    try {
+      await saveDocesMeta(meta && { id: meta.id, titulo: meta.titulo })
+      setEscolhendo(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold">Doces</p>
+          <div className="flex items-center gap-0.5">
+            {fin.docesIntegrado && (
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fin.atualizarVendas} title="Atualizar">
+                <RefreshCw className={cn('h-4 w-4', fin.doces === undefined && 'animate-spin')} />
+              </Button>
+            )}
+            {podeEditar && (
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEscolhendo(true)} title="Escolher a meta dos doces">
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {!fin.docesIntegrado ? (
+          <p className="text-xs text-muted-foreground">
+            Ainda não ligado ao app de doces — lance as vendas de doces à mão em Lançamentos.
+            {podeEditar && ' Pelo lápis, escolha a meta dos doces que é do musical pra o total vir automático.'}
+          </p>
+        ) : fin.doces === undefined ? (
+          <Spinner size="sm" />
+        ) : fin.doces === null ? (
+          <p className="text-xs text-muted-foreground">Não foi possível ler o total do app de doces agora.</p>
+        ) : (
+          <>
+            <p className="text-2xl font-bold text-gray-900">{formatBRL(fin.doces.arrecadado)}</p>
+            <p className="text-xs text-muted-foreground">
+              {fin.doces.quantidade} pedidos na meta "{fin.config?.docesMetaTitulo}"
+              {fin.doces.atualizadoEm && ` · atualizado em ${new Date(fin.doces.atualizadoEm).toLocaleDateString('pt-BR')}`}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              Automático, do app de doces. O total de lá é recalculado quando alguém abre o Relatório (tela de admin dos doces).
+            </p>
+          </>
+        )}
+
+        {fin.docesIntegrado && docesManuais.length > 0 && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Ainda há {docesManuais.length} lançamento(s) manual(is) de doces somando junto. Se eles já estão no app de doces, exclua-os
+            em Lançamentos pra não contar em dobro.
+          </p>
+        )}
+      </CardContent>
+
+      {escolhendo && (
+        <Dialog open onClose={() => setEscolhendo(false)} title="Meta dos doces">
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              O app de doces também vende pra outras causas. Escolha a meta de lá cujas vendas contam pro musical.
+            </p>
+            {metas === undefined ? (
+              <Spinner size="sm" />
+            ) : metas === null ? (
+              <p className="text-sm text-red-600">Não foi possível ler as metas do app de doces.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {metas.map(m => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => escolher(m)}
+                    className={cn(
+                      'flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left text-sm',
+                      fin.config?.docesMetaId === m.id ? 'border-primary bg-primary/10 text-primary' : 'border-gray-200 hover:bg-gray-50',
+                    )}
+                  >
+                    <span className="truncate font-medium">{m.titulo}</span>
+                    {m.ativo && <span className="shrink-0 text-[11px] text-muted-foreground">ativa lá</span>}
+                  </button>
+                ))}
+                {metas.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma meta cadastrada no app de doces.</p>}
+              </div>
+            )}
+            {fin.docesIntegrado && (
+              <Button variant="outline" className="w-full" disabled={saving} onClick={() => escolher(undefined)}>
+                Desligar (lançar doces à mão)
+              </Button>
+            )}
+          </div>
+        </Dialog>
+      )}
+    </Card>
+  )
+}
+
+function EntradaDialog({
+  entrada,
+  docesIntegrado,
+  byUid,
+  onClose,
+}: {
+  entrada?: Entrada
+  docesIntegrado: boolean
+  byUid: string
+  onClose: () => void
+}) {
+  // Doces integrados: não dá pra lançar doces à mão (contaria em dobro) — só editar um antigo.
+  const frentes = FRENTES_MANUAIS.filter(f => !docesIntegrado || f.value !== 'doces' || entrada?.frente === 'doces')
   const [frente, setFrente] = useState<Entrada['frente']>(entrada?.frente ?? frentes[0].value)
   const [valor, setValor] = useState(entrada ? String(entrada.valor) : '')
   const [data, setData] = useState(entrada?.data ?? toDateKey(new Date()))

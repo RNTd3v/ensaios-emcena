@@ -35,6 +35,15 @@ export async function saveMetaTotal(metaTotal: number | undefined): Promise<void
   await setDoc(CONFIG_REF, { metaTotal: metaTotal ?? deleteField(), updatedAt: serverTimestamp() }, { merge: true })
 }
 
+/** Qual meta do app de doces conta pro musical (admin, líder ou assistente). `undefined` = desliga. */
+export async function saveDocesMeta(meta: { id: string; titulo: string } | undefined): Promise<void> {
+  await setDoc(
+    CONFIG_REF,
+    { docesMetaId: meta?.id ?? deleteField(), docesMetaTitulo: meta?.titulo ?? deleteField(), updatedAt: serverTimestamp() },
+    { merge: true },
+  )
+}
+
 // ---------- Entradas (lançamentos manuais) ----------
 
 export function subscribeToEntradas(callback: (entradas: Entrada[]) => void) {

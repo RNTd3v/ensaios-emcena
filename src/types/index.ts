@@ -390,6 +390,9 @@ export interface FinanceiroConfig {
   assistentes?: string[]
   /** Meta de arrecadação total, em reais. */
   metaTotal?: number
+  /** Meta do app de doces cujas vendas contam pro musical. Ausente = doces lançados à mão. */
+  docesMetaId?: string
+  docesMetaTitulo?: string
 }
 
 /** Entrada lançada à mão (coleção `entradas`) — doces (enquanto não integra), ofertas, outros. */

@@ -19,31 +19,39 @@ export function useFinanceiro() {
   useEffect(() => subscribeToEntradas(setEntradas), [])
   useEffect(() => subscribeToGastos(setGastos), [])
 
+  const docesMetaId = config?.docesMetaId
   const atualizarVendas = useCallback(() => {
     setRifas(undefined)
     lerTotalRifas().then(setRifas)
-    lerTotalDoces().then(setDoces)
-  }, [])
+    if (docesMetaId) {
+      setDoces(undefined)
+      lerTotalDoces(docesMetaId).then(setDoces)
+    } else {
+      setDoces(null)
+    }
+  }, [docesMetaId])
   useEffect(atualizarVendas, [atualizarVendas])
 
   const resumo = useMemo(() => {
     const base = resumir(config?.metaTotal, rifas?.arrecadado ?? 0, entradas ?? [], gastos ?? [])
-    // Doces integrados (quando o app de doces tiver total público) somam por cima dos manuais.
-    if (doces) {
+    // Doces integrados (meta dos doces escolhida) somam por cima dos lançamentos manuais.
+    if (docesMetaId && doces) {
       base.porFrente.doces += doces.arrecadado
       base.arrecadado += doces.arrecadado
       base.saldo += doces.arrecadado
       base.saldoProjetado += doces.arrecadado
     }
     return base
-  }, [config?.metaTotal, rifas, doces, entradas, gastos])
+  }, [config?.metaTotal, rifas, doces, docesMetaId, entradas, gastos])
 
   return {
     config,
     entradas,
     gastos,
     rifas,
+    /** Total dos doces da meta escolhida — `undefined` carregando, `null` sem integração ou erro. */
     doces,
+    docesIntegrado: !!docesMetaId,
     resumo,
     carregado: config !== null && entradas !== null && gastos !== null,
     atualizarVendas,

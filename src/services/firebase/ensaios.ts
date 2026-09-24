@@ -25,8 +25,8 @@ export async function createEnsaio(
   confirmedByUid: string,
   obrigatorios?: string[],
   flags?: { geral?: boolean; comFigurino?: boolean },
-): Promise<void> {
-  await addDoc(collection(db, 'ensaios'), {
+): Promise<string> {
+  const ref = await addDoc(collection(db, 'ensaios'), {
     cenaId,
     data,
     horario,
@@ -38,6 +38,7 @@ export async function createEnsaio(
     confirmedAt: serverTimestamp(),
     createdAt: serverTimestamp(),
   })
+  return ref.id
 }
 
 /** Define quais personagens têm presença obrigatória nesse ensaio específico. */
@@ -48,6 +49,29 @@ export async function updateEnsaioObrigatorios(id: string, personagemIds: string
 /** Corrige o horário de um ensaio já confirmado. */
 export async function updateEnsaioHorario(id: string, horario: string): Promise<void> {
   await updateDoc(doc(db, 'ensaios', id), { horario })
+}
+
+/**
+ * Edição das infos do ensaio pelo modal da página do ensaio (admin/líder), num update só.
+ * `presencas` só vem quando o ensaio já aconteceu (modo consulta) — ao vivo a presença é pela lista.
+ */
+export async function updateEnsaioInfo(
+  id: string,
+  info: { horario: string; local: string; geral: boolean; comFigurino: boolean; obrigatorios: string[]; presencas?: string[] },
+): Promise<void> {
+  await updateDoc(doc(db, 'ensaios', id), {
+    horario: info.horario,
+    local: info.local.trim() || deleteField(),
+    geral: info.geral || deleteField(),
+    comFigurino: info.comFigurino || deleteField(),
+    obrigatorios: info.obrigatorios.length ? info.obrigatorios : deleteField(),
+    ...(info.presencas ? { presencas: info.presencas } : {}),
+  })
+}
+
+/** Define (ou limpa, se vazio) o local do ensaio. */
+export async function updateEnsaioLocal(id: string, local: string): Promise<void> {
+  await updateDoc(doc(db, 'ensaios', id), { local: local.trim() || deleteField() })
 }
 
 /** Marca/desmarca as flags "ensaio geral" e "ensaio com figurino" desse ensaio. */

@@ -16,6 +16,8 @@ import { CenaDetalhe } from '@/pages/CenaDetalhe'
 import { EnsaioAoVivo } from '@/pages/EnsaioAoVivo'
 import { PersonagemDetalhe } from '@/pages/PersonagemDetalhe'
 import { Personagens } from '@/pages/Personagens'
+import { Calendario } from '@/pages/Calendario'
+import { AdminLocais } from '@/pages/AdminLocais'
 import { Disponibilidade } from '@/pages/Disponibilidade'
 import { initAuth } from '@/stores/authStore'
 
@@ -56,6 +58,14 @@ function App() {
             }
           />
           <Route
+            path="admin/locais"
+            element={
+              <AdminGuard>
+                <AdminLocais />
+              </AdminGuard>
+            }
+          />
+          <Route
             path="admin/em-construcao"
             element={
               <AdminGuard>
@@ -71,9 +81,19 @@ function App() {
               </AdminGuard>
             }
           />
+          <Route
+            path="calendario"
+            element={
+              <AdminGuard>
+                <Calendario />
+              </AdminGuard>
+            }
+          />
           <Route path="cenas" element={<Cenas />} />
           <Route path="cenas/:id" element={<CenaDetalhe />} />
           <Route path="cenas/:id/iniciar-ensaio" element={<EnsaioAoVivo />} />
+          <Route path="cenas/:id/ensaios/:ensaioId" element={<EnsaioAoVivo />} />
+          <Route path="cenas/:id/ensaios/dia/:data" element={<EnsaioAoVivo />} />
           <Route path="cenas/:cenaId/personagens/:personagemId" element={<PersonagemDetalhe />} />
           <Route
             path="disponibilidade"

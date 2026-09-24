@@ -188,6 +188,8 @@ export interface Ensaio {
   data: string
   /** HH:mm */
   horario: string
+  /** Onde o ensaio acontece (texto livre) — preenchido por admin ou líder da cena. */
+  local?: string
   confirmedByUid: string
   confirmedAt: string
   createdAt: string
@@ -211,6 +213,20 @@ export interface Ensaio {
   duracaoSegundos?: number
   finalizadoByUid?: string
   finalizadoAt?: string
+}
+
+/**
+ * Local de ensaio cadastrado pelo admin (coleção `locais`). O ensaio guarda só o nome em
+ * `Ensaio.local` (texto), então renomear um local aqui não muda ensaios já marcados com o nome antigo.
+ */
+export interface LocalEnsaio {
+  id: string
+  nome: string
+  endereco?: string
+  observacao?: string
+  /** Chave de um ícone de `LOCAL_ICONS` (@/lib/localIcons). */
+  icone?: string
+  createdAt: string
 }
 
 export interface AppSettings {

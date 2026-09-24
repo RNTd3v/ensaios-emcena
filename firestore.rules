@@ -86,6 +86,13 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Locais de ensaio: qualquer autenticado lê (aparecem no ensaio e no seletor do líder),
+    // só admin cadastra/edita/exclui.
+    match /locais/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
     // Ensaios: uma ocorrência (data+horário) de uma cena, confirmada ou cancelada. Mesma
     // visibilidade da cena correspondente (checada via get() na cena referenciada); confirmar
     // (create), cancelar/reconfirmar (update completo) é admin ou o líder daquela cena — cancelar

@@ -35,7 +35,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
-import { Textarea } from '@/components/ui/Textarea'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers, updateUserRole } from '@/services/firebase/auth'
 import {
@@ -57,8 +56,6 @@ import {
   confirmarPresenca,
   createEnsaio,
   reconfirmarEnsaio,
-  removerPresenca,
-  salvarRegistroEnsaio,
   subscribeToEnsaiosDaCena,
   updateEnsaioFlags,
   updateEnsaioHorario,
@@ -162,9 +159,6 @@ export function CenaDetalhe() {
   const personagemNomeInputRef = useRef<HTMLInputElement>(null)
 
   const [anotacoesOpen, setAnotacoesOpen] = useState(false)
-  const [ensaioRegistroAnotacoesDraft, setEnsaioRegistroAnotacoesDraft] = useState('')
-  const [ensaioRegistroDuracaoDraft, setEnsaioRegistroDuracaoDraft] = useState('')
-  const [savingEnsaioRegistro, setSavingEnsaioRegistro] = useState(false)
 
   const figurinoInputRef = useRef<HTMLInputElement>(null)
   const [uploadingFigurino, setUploadingFigurino] = useState(false)
@@ -200,25 +194,8 @@ export function CenaDetalhe() {
   const [confirmSelections, setConfirmSelections] = useState<Record<string, boolean>>({})
   const [confirmDetails, setConfirmDetails] = useState<Record<string, ConfirmDetail>>({})
   const [savingConfirm, setSavingConfirm] = useState(false)
-  const [selectedEnsaio, setSelectedEnsaio] = useState<Ensaio | null>(null)
-  const [cancelingEnsaio, setCancelingEnsaio] = useState(false)
   const [confirmingPresenca, setConfirmingPresenca] = useState(false)
-  const [obrigatoriosDraft, setObrigatoriosDraft] = useState<string[]>([])
-  const [savingObrigatorios, setSavingObrigatorios] = useState(false)
-  const [horarioDraft, setHorarioDraft] = useState('')
-  const [savingHorario, setSavingHorario] = useState(false)
-  const [geralDraft, setGeralDraft] = useState(false)
-  const [comFigurinoDraft, setComFigurinoDraft] = useState(false)
-  const [savingFlags, setSavingFlags] = useState(false)
 
-  const [createEnsaioModalOpen, setCreateEnsaioModalOpen] = useState(false)
-  const [createEnsaioDateKey, setCreateEnsaioDateKey] = useState('')
-  const [createEnsaioHorarioDraft, setCreateEnsaioHorarioDraft] = useState('')
-  const [createEnsaioObrigatoriosDraft, setCreateEnsaioObrigatoriosDraft] = useState<string[]>([])
-  const [createEnsaioGeralDraft, setCreateEnsaioGeralDraft] = useState(false)
-  const [createEnsaioComFigurinoDraft, setCreateEnsaioComFigurinoDraft] = useState(false)
-  const [savingCreateEnsaio, setSavingCreateEnsaio] = useState(false)
-  const [createEnsaioError, setCreateEnsaioError] = useState('')
 
   useEffect(() => {
     if (!id) return
@@ -651,114 +628,12 @@ export function CenaDetalhe() {
     }
   }
 
-  async function handleCancelSelectedEnsaio() {
-    if (!selectedEnsaio || !currentUser) return
-    setCancelingEnsaio(true)
-    try {
-      await cancelarEnsaio(selectedEnsaio.id, currentUser.uid)
-      setSelectedEnsaio({ ...selectedEnsaio, canceledByUid: currentUser.uid, canceledAt: new Date().toISOString() })
-    } finally {
-      setCancelingEnsaio(false)
-    }
-  }
-
-  async function handleReconfirmSelectedEnsaio() {
-    if (!selectedEnsaio || !currentUser) return
-    setCancelingEnsaio(true)
-    try {
-      await reconfirmarEnsaio(selectedEnsaio.id, currentUser.uid)
-      setSelectedEnsaio({
-        ...selectedEnsaio,
-        canceledByUid: undefined,
-        canceledAt: undefined,
-        presencas: [],
-        confirmedByUid: currentUser.uid,
-        confirmedAt: new Date().toISOString(),
-      })
-    } finally {
-      setCancelingEnsaio(false)
-    }
-  }
-
   function toggleObrigatorio(personagemId: string, draft: string[], setDraft: (v: string[]) => void) {
     setDraft(draft.includes(personagemId) ? draft.filter(id => id !== personagemId) : [...draft, personagemId])
   }
 
   function toggleAllObrigatorios(allIds: string[], draft: string[], setDraft: (v: string[]) => void) {
     setDraft(allIds.every(id => draft.includes(id)) ? [] : allIds)
-  }
-
-  function openCreateEnsaioModal(date: Date) {
-    if (!cena) return
-    const dateKey = toDateKey(date)
-    const dia = (Object.keys(DIA_TO_WEEKDAY) as DiaSemana[]).find(d => DIA_TO_WEEKDAY[d] === date.getDay())
-    setCreateEnsaioDateKey(dateKey)
-    setCreateEnsaioHorarioDraft((dia && horarioDoDia(cena, dia)) || cena.horario || '')
-    setCreateEnsaioObrigatoriosDraft([])
-    setCreateEnsaioGeralDraft(false)
-    setCreateEnsaioComFigurinoDraft(false)
-    setCreateEnsaioError('')
-    setCreateEnsaioModalOpen(true)
-  }
-
-  async function handleCreateEnsaio() {
-    if (!cena || !currentUser || !createEnsaioDateKey) return
-    if (!createEnsaioHorarioDraft) {
-      setCreateEnsaioError('Preencha o horário.')
-      return
-    }
-    setSavingCreateEnsaio(true)
-    setCreateEnsaioError('')
-    try {
-      await createEnsaio(cena.id, createEnsaioDateKey, createEnsaioHorarioDraft, currentUser.uid, createEnsaioObrigatoriosDraft, {
-        geral: createEnsaioGeralDraft,
-        comFigurino: createEnsaioComFigurinoDraft,
-      })
-      setCreateEnsaioModalOpen(false)
-    } catch {
-      setCreateEnsaioError('Não foi possível criar o ensaio. Tente de novo.')
-    } finally {
-      setSavingCreateEnsaio(false)
-    }
-  }
-
-  function openSelectedEnsaio(ensaio: Ensaio) {
-    setObrigatoriosDraft(ensaio.obrigatorios ?? [])
-    setHorarioDraft(ensaio.horario)
-    setGeralDraft(!!ensaio.geral)
-    setComFigurinoDraft(!!ensaio.comFigurino)
-    setEnsaioRegistroAnotacoesDraft(ensaio.anotacoes ?? '')
-    setEnsaioRegistroDuracaoDraft(ensaio.duracaoSegundos !== undefined ? String(Math.round(ensaio.duracaoSegundos / 60)) : '')
-    setSelectedEnsaio(ensaio)
-  }
-
-  async function toggleSelectedPresenca(uid: string) {
-    if (!selectedEnsaio) return
-    const presente = selectedEnsaio.presencas?.includes(uid)
-    if (presente) await removerPresenca(selectedEnsaio.id, uid)
-    else await confirmarPresenca(selectedEnsaio.id, uid)
-    setSelectedEnsaio({
-      ...selectedEnsaio,
-      presencas: presente ? (selectedEnsaio.presencas ?? []).filter(u => u !== uid) : [...(selectedEnsaio.presencas ?? []), uid],
-    })
-  }
-
-  async function handleSaveEnsaioRegistro() {
-    if (!selectedEnsaio || !currentUser) return
-    setSavingEnsaioRegistro(true)
-    try {
-      const duracaoSegundos = (parseInt(ensaioRegistroDuracaoDraft, 10) || 0) * 60
-      await salvarRegistroEnsaio(selectedEnsaio.id, { anotacoes: ensaioRegistroAnotacoesDraft, duracaoSegundos }, currentUser.uid)
-      setSelectedEnsaio({
-        ...selectedEnsaio,
-        anotacoes: ensaioRegistroAnotacoesDraft.trim() || undefined,
-        duracaoSegundos,
-        finalizadoByUid: currentUser.uid,
-        finalizadoAt: new Date().toISOString(),
-      })
-    } finally {
-      setSavingEnsaioRegistro(false)
-    }
   }
 
   function openFigurinoUploadModal() {
@@ -915,39 +790,6 @@ export function CenaDetalhe() {
     }
   }
 
-  async function handleSaveObrigatorios() {
-    if (!selectedEnsaio) return
-    setSavingObrigatorios(true)
-    try {
-      await updateEnsaioObrigatorios(selectedEnsaio.id, obrigatoriosDraft)
-      setSelectedEnsaio({ ...selectedEnsaio, obrigatorios: obrigatoriosDraft })
-    } finally {
-      setSavingObrigatorios(false)
-    }
-  }
-
-  async function handleSaveHorario() {
-    if (!selectedEnsaio || !horarioDraft) return
-    setSavingHorario(true)
-    try {
-      await updateEnsaioHorario(selectedEnsaio.id, horarioDraft)
-      setSelectedEnsaio({ ...selectedEnsaio, horario: horarioDraft })
-    } finally {
-      setSavingHorario(false)
-    }
-  }
-
-  async function handleSaveFlags() {
-    if (!selectedEnsaio) return
-    setSavingFlags(true)
-    try {
-      await updateEnsaioFlags(selectedEnsaio.id, { geral: geralDraft, comFigurino: comFigurinoDraft })
-      setSelectedEnsaio({ ...selectedEnsaio, geral: geralDraft, comFigurino: comFigurinoDraft })
-    } finally {
-      setSavingFlags(false)
-    }
-  }
-
   const hasPendingConfirmation = weekOccurrences.some(o => !ensaiosByDate[o.dateKey] || isCanceled(ensaiosByDate[o.dateKey]))
 
   return (
@@ -1101,11 +943,9 @@ export function CenaDetalhe() {
                           <button
                             type="button"
                             disabled={!ensaio && !canManageAgenda}
-                            onClick={() => {
-                              if (ensaio) openSelectedEnsaio(ensaio)
-                              else if (occurrence) openConfirmModal()
-                              else openCreateEnsaioModal(date)
-                            }}
+                            onClick={() =>
+                              navigate(ensaio ? `/cenas/${cena.id}/ensaios/${ensaio.id}` : `/cenas/${cena.id}/ensaios/dia/${dateKey}`)
+                            }
                             className={cn(
                               'flex flex-1 items-center gap-2.5 rounded-lg px-2 py-2.5 text-left text-base',
                               ativo && 'bg-primary text-white',
@@ -1397,7 +1237,7 @@ export function CenaDetalhe() {
                         <button
                           key={e.id}
                           type="button"
-                          onClick={() => openSelectedEnsaio(e)}
+                          onClick={() => navigate(`/cenas/${cena.id}/ensaios/${e.id}`)}
                           className="flex w-full items-center gap-2.5 rounded-lg px-1 py-1.5 text-left text-sm hover:bg-gray-50"
                         >
                           <NotebookPen className="h-4 w-4 shrink-0 text-primary" />
@@ -2079,414 +1919,6 @@ export function CenaDetalhe() {
           </div>
         </Dialog>
       )}
-
-      {cena && (
-        <Dialog open={createEnsaioModalOpen} onClose={() => setCreateEnsaioModalOpen(false)} title="Novo ensaio">
-          <div className="space-y-4">
-            <div>
-              <p className="text-sm font-medium">
-                {createEnsaioDateKey &&
-                  new Date(`${createEnsaioDateKey}T00:00:00`).toLocaleDateString('pt-BR', {
-                    weekday: 'long',
-                    day: '2-digit',
-                    month: 'long',
-                  })}
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="create-ensaio-horario">Horário</Label>
-              <Input
-                id="create-ensaio-horario"
-                type="time"
-                value={createEnsaioHorarioDraft}
-                onChange={e => setCreateEnsaioHorarioDraft(e.target.value)}
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => setCreateEnsaioGeralDraft(v => !v)}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                  createEnsaioGeralDraft ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-600',
-                )}
-              >
-                <Star className="h-3.5 w-3.5" />
-                Ensaio geral
-              </button>
-              <button
-                type="button"
-                onClick={() => setCreateEnsaioComFigurinoDraft(v => !v)}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                  createEnsaioComFigurinoDraft ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-600',
-                )}
-              >
-                <Shirt className="h-3.5 w-3.5" />
-                Com figurino
-              </button>
-            </div>
-
-            {cena.personagens.length > 0 && (
-              <div>
-                <Label>Personagens obrigatórios (opcional)</Label>
-                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      toggleAllObrigatorios(cena.personagens.map(p => p.id), createEnsaioObrigatoriosDraft, setCreateEnsaioObrigatoriosDraft)
-                    }
-                    className={cn(
-                      'rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors',
-                      cena.personagens.every(p => createEnsaioObrigatoriosDraft.includes(p.id))
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-gray-300 bg-white text-gray-600',
-                    )}
-                  >
-                    Todos
-                  </button>
-                  {cena.personagens.map(p => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => toggleObrigatorio(p.id, createEnsaioObrigatoriosDraft, setCreateEnsaioObrigatoriosDraft)}
-                      className={cn(
-                        'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                        createEnsaioObrigatoriosDraft.includes(p.id)
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-gray-300 bg-white text-gray-600',
-                      )}
-                    >
-                      {p.nome}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {createEnsaioError && <p className="text-sm text-red-600">{createEnsaioError}</p>}
-
-            <Button className="w-full" onClick={handleCreateEnsaio} disabled={savingCreateEnsaio}>
-              {savingCreateEnsaio && <Spinner size="sm" className="border-white/40 border-t-white" />}
-              Criar ensaio
-            </Button>
-          </div>
-        </Dialog>
-      )}
-
-      <Dialog
-        open={!!selectedEnsaio}
-        onClose={() => setSelectedEnsaio(null)}
-        title={selectedEnsaio?.finalizadoAt ? 'Registro do ensaio' : 'Ensaio'}
-      >
-        {selectedEnsaio && (
-          <div className="space-y-4">
-            <div>
-              <p className="text-base font-semibold">
-                {new Date(`${selectedEnsaio.data}T00:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
-              </p>
-              {canManageAgenda && !selectedEnsaio.canceledByUid ? (
-                <div className="mt-1 flex items-center gap-1.5">
-                  <Input
-                    type="time"
-                    value={horarioDraft}
-                    onChange={e => setHorarioDraft(e.target.value)}
-                    className="h-8 w-28 text-sm"
-                  />
-                  {horarioDraft && horarioDraft !== selectedEnsaio.horario && (
-                    <Button size="sm" onClick={handleSaveHorario} disabled={savingHorario}>
-                      {savingHorario && <Spinner size="sm" className="border-white/40 border-t-white" />}
-                      Salvar
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">{selectedEnsaio.horario}</p>
-              )}
-            </div>
-
-            {!selectedEnsaio.canceledByUid &&
-              (canManageAgenda ? (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setGeralDraft(v => !v)}
-                      className={cn(
-                        'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                        geralDraft ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-600',
-                      )}
-                    >
-                      <Star className="h-3.5 w-3.5" />
-                      Ensaio geral
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setComFigurinoDraft(v => !v)}
-                      className={cn(
-                        'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                        comFigurinoDraft ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-600',
-                      )}
-                    >
-                      <Shirt className="h-3.5 w-3.5" />
-                      Com figurino
-                    </button>
-                  </div>
-                  {(geralDraft !== !!selectedEnsaio.geral || comFigurinoDraft !== !!selectedEnsaio.comFigurino) && (
-                    <Button size="sm" onClick={handleSaveFlags} disabled={savingFlags}>
-                      {savingFlags && <Spinner size="sm" className="border-white/40 border-t-white" />}
-                      Salvar
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                (selectedEnsaio.geral || selectedEnsaio.comFigurino) && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedEnsaio.geral && (
-                      <Badge variant="outline" className="gap-1.5 text-xs">
-                        <Star className="h-3.5 w-3.5" />
-                        Ensaio geral
-                      </Badge>
-                    )}
-                    {selectedEnsaio.comFigurino && (
-                      <Badge variant="outline" className="gap-1.5 text-xs">
-                        <Shirt className="h-3.5 w-3.5" />
-                        Com figurino
-                      </Badge>
-                    )}
-                  </div>
-                )
-              ))}
-
-            {selectedEnsaio.canceledByUid ? (
-              <div className="flex items-center gap-2.5 rounded-lg bg-red-50 px-3 py-2.5">
-                <Avatar
-                  photoURL={users[selectedEnsaio.canceledByUid]?.photoURL}
-                  name={nameFor(selectedEnsaio.canceledByUid)}
-                  className="h-9 w-9 text-xs"
-                />
-                <div>
-                  <p className="text-sm font-medium text-red-700">Ensaio cancelado</p>
-                  <p className="text-xs text-red-600">por {nameFor(selectedEnsaio.canceledByUid)}</p>
-                </div>
-              </div>
-            ) : (
-              cena &&
-              (() => {
-                const elenco = cena.personagens.filter(p => p.participanteUid)
-                return (
-                  <div>
-                    <p className="text-sm font-medium mb-1.5">
-                      {canManageAgenda ? 'Presença' : 'Confirmados'} ({selectedEnsaio.presencas?.length ?? 0}/{elenco.length})
-                    </p>
-                    {elenco.length ? (
-                      <div className="space-y-1">
-                        {elenco.map(p => {
-                          const confirmado = !!selectedEnsaio.presencas?.includes(p.participanteUid!)
-                          return (
-                            <button
-                              key={p.id}
-                              type="button"
-                              disabled={!canManageAgenda}
-                              onClick={() => toggleSelectedPresenca(p.participanteUid!)}
-                              className={cn(
-                                'flex w-full items-center gap-2.5 rounded-lg px-1 py-1 text-left disabled:cursor-default',
-                                canManageAgenda && 'hover:bg-gray-50',
-                              )}
-                            >
-                              <div className="relative shrink-0">
-                                <Avatar
-                                  photoURL={users[p.participanteUid!]?.photoURL}
-                                  name={p.nome}
-                                  className={cn('h-8 w-8 text-xs', confirmado && 'ring-2 ring-emerald-500')}
-                                />
-                                {confirmado && (
-                                  <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 ring-2 ring-white">
-                                    <Check className="h-2 w-2 text-white" />
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-sm truncate flex-1">{p.nome}</p>
-                              {canManageAgenda && (
-                                <span className="text-xs text-muted-foreground">{confirmado ? 'presente' : 'ausente'}</span>
-                              )}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">Nenhum personagem com participante vinculado ainda.</p>
-                    )}
-                  </div>
-                )
-              })()
-            )}
-
-            {!canManageAgenda && selectedEnsaio.finalizadoAt && (
-              <div className="space-y-1.5 rounded-lg border border-gray-200 p-3">
-                <p className="flex items-center gap-1.5 text-sm font-medium">
-                  <NotebookPen className="h-4 w-4 text-primary" />
-                  Anotações do ensaio
-                </p>
-                {selectedEnsaio.duracaoSegundos !== undefined && (
-                  <p className="text-xs text-muted-foreground">Duração: {formatDuracao(selectedEnsaio.duracaoSegundos)}</p>
-                )}
-                <p className="whitespace-pre-wrap text-sm text-gray-700">
-                  {selectedEnsaio.anotacoes || 'Nenhuma anotação registrada.'}
-                </p>
-              </div>
-            )}
-
-            {canManageAgenda && !selectedEnsaio.canceledByUid && (
-              <div className="space-y-2.5 rounded-lg border border-gray-200 p-3">
-                <p className="flex items-center gap-1.5 text-sm font-medium">
-                  <NotebookPen className="h-4 w-4 text-primary" />
-                  Registro do ensaio
-                </p>
-                <div>
-                  <Label htmlFor="ensaio-registro-duracao">Duração (minutos)</Label>
-                  <Input
-                    id="ensaio-registro-duracao"
-                    type="number"
-                    min={0}
-                    value={ensaioRegistroDuracaoDraft}
-                    onChange={e => setEnsaioRegistroDuracaoDraft(e.target.value)}
-                    placeholder="Ex.: 90"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="ensaio-registro-anotacoes">Anotações</Label>
-                  <Textarea
-                    id="ensaio-registro-anotacoes"
-                    value={ensaioRegistroAnotacoesDraft}
-                    onChange={e => setEnsaioRegistroAnotacoesDraft(e.target.value)}
-                    className="mt-1.5"
-                    placeholder="Ex.: revisar a coreografia do duelo, testar troca de figurino..."
-                  />
-                </div>
-                {(ensaioRegistroAnotacoesDraft !== (selectedEnsaio.anotacoes ?? '') ||
-                  ensaioRegistroDuracaoDraft !==
-                    (selectedEnsaio.duracaoSegundos !== undefined ? String(Math.round(selectedEnsaio.duracaoSegundos / 60)) : '')) && (
-                  <Button size="sm" onClick={handleSaveEnsaioRegistro} disabled={savingEnsaioRegistro}>
-                    {savingEnsaioRegistro && <Spinner size="sm" className="border-white/40 border-t-white" />}
-                    Salvar registro
-                  </Button>
-                )}
-                {selectedEnsaio.finalizadoAt && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Última atualização por {nameFor(selectedEnsaio.finalizadoByUid!)}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {!selectedEnsaio.canceledByUid && !!cena?.personagens.length && (
-              <div>
-                <p className="text-sm font-medium mb-1.5">Personagens obrigatórios</p>
-                {canManageAgenda ? (
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => toggleAllObrigatorios(cena.personagens.map(p => p.id), obrigatoriosDraft, setObrigatoriosDraft)}
-                        className={cn(
-                          'rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors',
-                          cena.personagens.every(p => obrigatoriosDraft.includes(p.id))
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-gray-300 bg-white text-gray-600',
-                        )}
-                      >
-                        Todos
-                      </button>
-                      {cena.personagens.map(p => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => toggleObrigatorio(p.id, obrigatoriosDraft, setObrigatoriosDraft)}
-                          className={cn(
-                            'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                            obrigatoriosDraft.includes(p.id)
-                              ? 'border-primary bg-primary/10 text-primary'
-                              : 'border-gray-300 bg-white text-gray-600',
-                          )}
-                        >
-                          {p.nome}
-                        </button>
-                      ))}
-                    </div>
-                    {JSON.stringify([...obrigatoriosDraft].sort()) !== JSON.stringify([...(selectedEnsaio.obrigatorios ?? [])].sort()) && (
-                      <Button size="sm" onClick={handleSaveObrigatorios} disabled={savingObrigatorios}>
-                        {savingObrigatorios && <Spinner size="sm" className="border-white/40 border-t-white" />}
-                        Salvar obrigatórios
-                      </Button>
-                    )}
-                  </div>
-                ) : selectedEnsaio.obrigatorios?.length ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedEnsaio.obrigatorios.map(pid => {
-                      const p = cena?.personagens.find(cp => cp.id === pid)
-                      return p ? (
-                        <Badge key={pid} variant="outline" className="text-xs">
-                          {p.nome}
-                        </Badge>
-                      ) : null
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Nenhum personagem marcado como obrigatório.</p>
-                )}
-              </div>
-            )}
-
-            {canManageAgenda &&
-              (selectedEnsaio.canceledByUid ? (
-                <Button className="w-full" onClick={handleReconfirmSelectedEnsaio} disabled={cancelingEnsaio}>
-                  {cancelingEnsaio && <Spinner size="sm" className="border-white/40 border-t-white" />}
-                  Reconfirmar ensaio
-                </Button>
-              ) : (
-                <Button variant="destructive" className="w-full" onClick={handleCancelSelectedEnsaio} disabled={cancelingEnsaio}>
-                  {cancelingEnsaio && <Spinner size="sm" className="border-white/40 border-t-white" />}
-                  Cancelar ensaio
-                </Button>
-              ))}
-
-            {!selectedEnsaio.canceledByUid && myPersonagem && (
-              (() => {
-                const jaConfirmou = !!currentUser && !!selectedEnsaio.presencas?.includes(currentUser.uid)
-                const podeConfirmar = !jaConfirmou && canCheckin(selectedEnsaio.data, selectedEnsaio.horario, checkinLimiteHoras)
-                if (jaConfirmou) {
-                  return (
-                    <p className="flex items-center justify-center gap-1.5 rounded-lg bg-emerald-50 py-2.5 text-sm font-medium text-emerald-700">
-                      <Check className="h-4 w-4" />
-                      Presença confirmada
-                    </p>
-                  )
-                }
-                if (podeConfirmar) {
-                  return (
-                    <Button
-                      className="w-full"
-                      onClick={() => handleConfirmPresenca(selectedEnsaio)}
-                      disabled={confirmingPresenca}
-                    >
-                      {confirmingPresenca && <Spinner size="sm" className="border-white/40 border-t-white" />}
-                      Confirmar presença
-                    </Button>
-                  )
-                }
-                return (
-                  <p className="text-xs text-muted-foreground text-center">
-                    O check-in abre no dia do ensaio, até {checkinLimiteHoras}h antes do horário.
-                  </p>
-                )
-              })()
-            )}
-          </div>
-        )}
-      </Dialog>
 
       <Dialog open={figurinoUploadModalOpen} onClose={() => setFigurinoUploadModalOpen(false)} title="Adicionar figurino">
         <div className="space-y-4">

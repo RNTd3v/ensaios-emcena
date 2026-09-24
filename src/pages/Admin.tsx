@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock,
   MessageCircle,
+  MapPin,
   Settings,
   ShieldOff,
   ShieldCheck as ShieldCheckIcon,
@@ -183,11 +184,18 @@ export function Admin() {
             )}
           </div>
         </div>
-        <Link to="/admin/config">
-          <Button variant="outline" size="icon" title="Configurações" className="border-white/40 bg-white/10 text-white hover:bg-white/20">
-            <Settings className="h-4 w-4" />
-          </Button>
-        </Link>
+        <div className="flex shrink-0 gap-2">
+          <Link to="/admin/locais">
+            <Button variant="outline" size="icon" title="Locais de ensaio" className="border-white/40 bg-white/10 text-white hover:bg-white/20">
+              <MapPin className="h-4 w-4" />
+            </Button>
+          </Link>
+          <Link to="/admin/config">
+            <Button variant="outline" size="icon" title="Configurações" className="border-white/40 bg-white/10 text-white hover:bg-white/20">
+              <Settings className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="flex gap-2">

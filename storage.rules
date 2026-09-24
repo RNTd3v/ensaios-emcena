@@ -20,6 +20,16 @@ service firebase.storage {
       allow delete: if isSignedIn();
     }
 
+    // Comprovantes de gasto (imagem ou PDF). Quem pode vincular ao gasto é decidido no Firestore
+    // (coleção `gastos`: admin ou equipe de metas e gastos) — mesmo raciocínio das pastas de cena.
+    match /financeiro/comprovantes/{gastoId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.resource.size < 10 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+      allow delete: if isSignedIn();
+    }
+
     match /cenas/{cenaId}/musicas/{fileName} {
       allow read: if isSignedIn();
       allow write: if isSignedIn()

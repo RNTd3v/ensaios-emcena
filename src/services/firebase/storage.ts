@@ -28,3 +28,13 @@ export async function deleteCenaFile(path: string): Promise<void> {
     // já não existe / já foi removido — nada a fazer
   }
 }
+
+/** Sobe um arquivo pra `{pasta}/{id}.ext` (fora das pastas de cena) — ex.: comprovantes de gasto. */
+export async function uploadArquivo(pasta: string, file: File): Promise<{ id: string; url: string; path: string }> {
+  const id = crypto.randomUUID()
+  const path = `${pasta}/${id}${extensionOf(file.name)}`
+  const fileRef = ref(storage, path)
+  await uploadBytes(fileRef, file, { contentType: file.type })
+  const url = await getDownloadURL(fileRef)
+  return { id, url, path }
+}

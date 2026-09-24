@@ -221,10 +221,34 @@ service cloud.firestore {
             && resource.data.get('aprovacao', null) != 'aprovado');
     }
 
-    // Resumo de metas e gastos (card da Home): qualquer autenticado lê, só admin edita.
+    // Metas e gastos. `financeiro/config` guarda líder, assistentes e a meta; `financeiro/resumo`
+    // é o formato antigo (só lido pra importar e depois apagado). Todos leem; admin define a
+    // equipe; líder/assistentes mexem na meta e nos lançamentos.
+    function financeiroConfig() {
+      return get(/databases/$(database)/documents/financeiro/config).data;
+    }
+    function isEquipeFinanceiro() {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/financeiro/config)
+        && (financeiroConfig().get('liderUid', '') == request.auth.uid
+            || request.auth.uid in financeiroConfig().get('assistentes', []));
+    }
+
     match /financeiro/{id} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if isAdmin()
+        || (id == 'config' && isEquipeFinanceiro() && resource != null
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['metaTotal', 'updatedAt']));
+    }
+
+    // Entradas lançadas à mão (doces, ofertas, outros) e gastos (com comprovante no Storage).
+    match /entradas/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isEquipeFinanceiro();
+    }
+    match /gastos/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isEquipeFinanceiro();
     }
 
     // Versículos (sorteados na Home): qualquer autenticado lê, só admin cadastra/edita/exclui.

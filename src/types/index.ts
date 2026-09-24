@@ -379,6 +379,55 @@ export interface Tarefa {
   statusAtualizadoEm?: string
 }
 
+// ---------- Metas e gastos ----------
+
+/** De onde vem o dinheiro. Rifas vêm automáticas do app de rifas; as demais são lançadas à mão. */
+export type FrenteArrecadacao = 'rifas' | 'doces' | 'ofertas' | 'outros'
+
+/** Configuração da tela de metas e gastos (doc `financeiro/config`). */
+export interface FinanceiroConfig {
+  liderUid?: string
+  assistentes?: string[]
+  /** Meta de arrecadação total, em reais. */
+  metaTotal?: number
+}
+
+/** Entrada lançada à mão (coleção `entradas`) — doces (enquanto não integra), ofertas, outros. */
+export interface Entrada {
+  id: string
+  frente: Exclude<FrenteArrecadacao, 'rifas'>
+  valor: number
+  /** YYYY-MM-DD */
+  data: string
+  descricao?: string
+  createdByUid: string
+  createdAt: string
+}
+
+export type GastoStatus = 'previsto' | 'pago'
+export type GastoReembolso = 'nao_precisa' | 'pendente' | 'reembolsado'
+
+/** Um gasto (coleção `gastos`), geral ou de uma cena. */
+export interface Gasto {
+  id: string
+  descricao: string
+  valor: number
+  /** YYYY-MM-DD */
+  data: string
+  /** Chave de `CATEGORIAS_GASTO` (@/lib/financeiro). */
+  categoria: string
+  status: GastoStatus
+  cenaId?: string
+  cenaNome?: string
+  /** Quem pagou (texto livre — pode não ter conta no app). */
+  pagoPor?: string
+  reembolso: GastoReembolso
+  comprovanteUrl?: string
+  comprovantePath?: string
+  createdByUid: string
+  createdAt: string
+}
+
 export interface AppSettings {
   eventName: string
   posterImageUrl?: string

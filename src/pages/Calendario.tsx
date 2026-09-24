@@ -337,7 +337,7 @@ function ListaDoDia({ itens, nameFor, users }: ListaDoDiaProps) {
                 {o.ensaio?.geral && <Star className="h-3 w-3 shrink-0 text-amber-500" aria-label="Ensaio geral" />}
                 {o.ensaio?.comFigurino && <Shirt className="h-3 w-3 shrink-0 text-violet-500" aria-label="Com figurino" />}
               </p>
-              <p className="flex items-center gap-1 text-xs text-gray-500">
+              <div className="flex items-center gap-1 text-xs text-gray-500">
                 {lider ? (
                   <>
                     <Avatar photoURL={users[lider]?.photoURL} name={nameFor(lider)} className="h-4 w-4 text-[8px]" />
@@ -347,7 +347,7 @@ function ListaDoDia({ itens, nameFor, users }: ListaDoDiaProps) {
                 ) : (
                   <span className="text-gray-400">Sem líder</span>
                 )}
-              </p>
+              </div>
               {o.ensaio?.local && (
                 <p className="flex items-center gap-1 text-xs text-gray-500">
                   <MapPin className="h-3 w-3 shrink-0 text-primary" />

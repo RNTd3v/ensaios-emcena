@@ -30,6 +30,12 @@ export interface AppUser {
   revokedByUid?: string
   revokedAt?: string
   createdAt: string
+  /**
+   * Dependente (ex.: filho de um inscrito): "conta" sem login, criada por um responsável — id
+   * `dep_…`. Aparece no app como qualquer participante; as notificações vão pros responsáveis.
+   */
+  dependente?: boolean
+  responsaveisUids?: string[]
 }
 
 export type DiaSemana = 'seg' | 'ter' | 'qua' | 'qui' | 'sex' | 'sab'
@@ -67,6 +73,13 @@ export interface Inscricao {
   status: InscricaoStatus
   createdAt: string
   updatedAt?: string
+  /** Inscrição de dependente (criança sem login) — ver `AppUser.dependente`. */
+  dependente?: boolean
+  /** Quem cuida dessa inscrição (quem criou + outro responsável opcional). */
+  responsaveisUids?: string[]
+  idade?: number
+  fotoUrl?: string
+  fotoPath?: string
 }
 
 /**

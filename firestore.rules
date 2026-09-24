@@ -29,23 +29,46 @@ service cloud.firestore {
     // UI (cenas, personagens, participantes etc.), não só quem gerencia a cena.
     match /users/{userId} {
       allow read: if isAuthenticated();
-      // Criação automática no primeiro login (ensureUserDoc), sempre como 'participante' e ativo
+      // Criação automática no primeiro login (ensureUserDoc), sempre como 'participante' e ativo.
+      // Ou um dependente (criança sem login, id dep_…) criado por um dos responsáveis.
       allow create: if isAuthenticated()
-        && request.auth.uid == userId
         && request.resource.data.role == 'participante'
-        && request.resource.data.active == true;
-      // Promover a admin, revogar acesso (active=false) etc: só admin
-      allow update: if isAdmin();
+        && request.resource.data.active == true
+        && (request.auth.uid == userId
+            || (userId.matches('dep_.*')
+                && request.resource.data.dependente == true
+                && request.auth.uid in request.resource.data.responsaveisUids));
+      // Promover a admin, revogar acesso (active=false) etc: só admin. Responsável de um dependente
+      // só atualiza nome, foto e quem são os responsáveis (e continua sendo um deles).
+      allow update: if isAdmin()
+        || (isAuthenticated()
+            && resource.data.get('dependente', false) == true
+            && request.auth.uid in resource.data.responsaveisUids
+            && request.auth.uid in request.resource.data.responsaveisUids
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL', 'responsaveisUids']));
       allow delete: if isAdmin();
     }
 
     // Inscrições: cada participante só vê/edita a própria; admin vê e gerencia todas.
     // Só pode criar/editar enquanto o acesso estiver ativo (não revogado).
+    // Dependentes (id dep_…): os responsáveis (`responsaveisUids`) criam, veem e editam — mas não
+    // mexem no status (confirmação continua com o admin).
     match /inscricoes/{userId} {
-      allow read: if isAdmin() || isLider() || (isAuthenticated() && request.auth.uid == userId);
-      allow list: if isAdmin() || isLider();
-      allow create: if isAuthenticated() && request.auth.uid == userId && isActiveParticipant();
-      allow update: if isAdmin() || (isAuthenticated() && request.auth.uid == userId && isActiveParticipant());
+      allow read: if isAdmin() || isLider() || (isAuthenticated() && request.auth.uid == userId)
+        || (isAuthenticated() && request.auth.uid in resource.data.get('responsaveisUids', []));
+      allow list: if isAdmin() || isLider()
+        || (isAuthenticated() && request.auth.uid in resource.data.get('responsaveisUids', []));
+      allow create: if (isAuthenticated() && request.auth.uid == userId && isActiveParticipant())
+        || (isActiveParticipant()
+            && userId.matches('dep_.*')
+            && request.resource.data.dependente == true
+            && request.resource.data.status == 'pendente'
+            && request.auth.uid in request.resource.data.responsaveisUids);
+      allow update: if isAdmin() || (isAuthenticated() && request.auth.uid == userId && isActiveParticipant())
+        || (isActiveParticipant()
+            && request.auth.uid in resource.data.get('responsaveisUids', [])
+            && request.auth.uid in request.resource.data.responsaveisUids
+            && request.resource.data.status == resource.data.status);
       allow delete: if isAdmin();
     }
 

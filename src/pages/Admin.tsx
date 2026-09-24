@@ -11,6 +11,7 @@ import {
   ShieldOff,
   ShieldCheck as ShieldCheckIcon,
   SlidersHorizontal,
+  Baby,
   UserX,
   Star,
   XCircle,
@@ -289,9 +290,22 @@ export function Admin() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="text-sm font-medium truncate">{i.apelido || i.nomeCompleto}</p>
-                          <RoleChip role={users[i.uid]?.role} />
+                          {i.dependente ? (
+                            <Badge variant="outline" className="shrink-0 gap-1 border-sky-200 bg-sky-50 px-1.5 py-0 text-[10px] text-sky-700">
+                              <Baby className="h-2.5 w-2.5" />
+                              {i.idade !== undefined ? `${i.idade} anos` : 'Dependente'}
+                            </Badge>
+                          ) : (
+                            <RoleChip role={users[i.uid]?.role} />
+                          )}
                         </div>
-                        {i.apelido && <p className="text-xs text-gray-500 truncate">{i.nomeCompleto}</p>}
+                        {i.dependente ? (
+                          <p className="text-xs text-gray-500 truncate">
+                            Responsável: {(i.responsaveisUids ?? []).map(r => users[r]?.displayName?.split(' ')[0] ?? '...').join(', ')}
+                          </p>
+                        ) : (
+                          i.apelido && <p className="text-xs text-gray-500 truncate">{i.nomeCompleto}</p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">

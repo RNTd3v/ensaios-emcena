@@ -39,10 +39,51 @@ function chunks<T>(lista: T[], tamanho: number): T[][] {
   return out
 }
 
+/**
+ * Dependentes (crianças sem login, id `dep_…`) não recebem nada direto: cada um é trocado pelos
+ * responsáveis, com o nome da criança no título. Retorna [uid, notificação] já resolvidos.
+ */
+async function resolverDependentes(uids: string[], n: Notificacao): Promise<[string, Notificacao][]> {
+  const deps = uids.filter(u => u.startsWith('dep_'))
+  const saida: [string, Notificacao][] = uids.filter(u => !u.startsWith('dep_')).map(u => [u, n])
+  for (const grupo of chunks(deps, 30)) {
+    const snap = await db.getAll(...grupo.map(u => db.collection('users').doc(u)))
+    for (const d of snap) {
+      const dados = d.data()
+      if (!dados) continue
+      const paraCrianca = { ...n, titulo: `${n.titulo} · ${dados.displayName ?? 'dependente'}` }
+      for (const resp of (dados.responsaveisUids as string[] | undefined) ?? []) saida.push([resp, paraCrianca])
+    }
+  }
+  return saida
+}
+
 /** Grava a notificação pra cada destinatário (menos `excetoUid`, quem causou) e manda o push. */
-async function notificar(uids: (string | undefined | null)[], n: Notificacao, excetoUid?: string | null): Promise<void> {
-  const destinatarios = [...new Set(uids.filter((u): u is string => !!u && u !== excetoUid))]
-  if (!destinatarios.length) return
+async function notificar(uids: (string | undefined | null)[], base: Notificacao, excetoUid?: string | null): Promise<void> {
+  const unicos = [...new Set(uids.filter((u): u is string => !!u && u !== excetoUid))]
+  const resolvidos = (await resolverDependentes(unicos, base)).filter(([u]) => u !== excetoUid)
+  // Uma pessoa pode aparecer mais de uma vez (ela mesma + como responsável de um filho): cada
+  // notificação distinta vale — mas o mesmo par (pessoa, título) só uma vez.
+  const vistos = new Set<string>()
+  const itens = resolvidos.filter(([u, n]) => {
+    const chave = `${u}|${n.titulo}`
+    if (vistos.has(chave)) return false
+    vistos.add(chave)
+    return true
+  })
+  if (!itens.length) return
+  // Agrupa por conteúdo (a versão "· nome da criança" é outra notificação) e envia em lote.
+  const porTitulo = new Map<string, { n: Notificacao; uids: string[] }>()
+  for (const [uid, n] of itens) {
+    const grupo = porTitulo.get(n.titulo) ?? { n, uids: [] }
+    grupo.uids.push(uid)
+    porTitulo.set(n.titulo, grupo)
+  }
+  for (const { n, uids: destinos } of porTitulo.values()) await gravarEEnviar(destinos, n)
+}
+
+/** Grava a notificação pra cada destinatário e manda o push pros aparelhos deles. */
+async function gravarEEnviar(destinatarios: string[], n: Notificacao): Promise<void> {
 
   for (const grupo of chunks(destinatarios, 400)) {
     const batch = db.batch()

@@ -20,6 +20,16 @@ service firebase.storage {
       allow delete: if isSignedIn();
     }
 
+    // Foto de dependente (criança inscrita por um responsável). Quem pode vincular é decidido no
+    // Firestore (inscrição do dependente só pelos responsáveis).
+    match /dependentes/{depId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedIn();
+    }
+
     // Comprovantes de gasto (imagem ou PDF). Quem pode vincular ao gasto é decidido no Firestore
     // (coleção `gastos`: admin ou equipe de metas e gastos) — mesmo raciocínio das pastas de cena.
     match /financeiro/comprovantes/{gastoId}/{fileName} {

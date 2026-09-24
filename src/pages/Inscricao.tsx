@@ -18,6 +18,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { AREA_LABELS, DIA_SEMANA_LABELS, type Area, type DiaSemana, type Inscricao, type InscricaoStatus } from '@/types'
 import { AREA_ICONS } from '@/lib/areaIcons'
 import { DIAS_OBRIGATORIOS, diasDisponiveis } from '@/lib/dias'
+import { DependentesCard } from '@/components/inscricao/DependentesCard'
 
 const AREAS = Object.keys(AREA_LABELS) as Area[]
 const DIAS = Object.keys(DIA_SEMANA_LABELS) as DiaSemana[]
@@ -270,6 +271,8 @@ export function Inscricao() {
             </Button>
           </CardContent>
         </Card>
+
+        {user && <DependentesCard uid={user.uid} responsavel={inscricao} />}
       </div>
     )
   }

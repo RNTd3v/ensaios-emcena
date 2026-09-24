@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Clapperboard,
   Crown,
+  ExternalLink,
   FileText,
   HandHelping,
   Paperclip,
@@ -43,7 +44,7 @@ import {
   type EntradaInput,
   type GastoInput,
 } from '@/services/firebase/financeiro'
-import { listarMetasDoces, type MetaDoces } from '@/services/externo/vendas'
+import { APP_DOCES_URL, APP_RIFAS_URL, listarMetasDoces, type MetaDoces } from '@/services/externo/vendas'
 import { useAuthStore } from '@/stores/authStore'
 import {
   CATEGORIAS_GASTO,
@@ -437,6 +438,10 @@ function ArrecadacaoAba({ fin, podeEditar, byUid }: { fin: Fin; podeEditar: bool
             <Spinner size="sm" />
           ) : fin.rifas === null ? (
             <p className="text-xs text-muted-foreground">Não foi possível ler o total do app de rifas agora.</p>
+          ) : fin.rifas.naoGerado ? (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              O app de rifas ainda não gerou o total. Abra a tela Admin de lá uma vez.
+            </p>
           ) : (
             <>
               <p className="text-2xl font-bold text-gray-900">{formatBRL(fin.rifas.arrecadado)}</p>
@@ -445,10 +450,11 @@ function ArrecadacaoAba({ fin, podeEditar, byUid }: { fin: Fin; podeEditar: bool
                 {fin.rifas.atualizadoEm && ` · total atualizado em ${new Date(fin.rifas.atualizadoEm).toLocaleDateString('pt-BR')}`}
               </p>
               <p className="text-[11px] text-muted-foreground">
-                Automático, do app de rifas. O total de lá é recalculado quando o admin da rifa abre a tela Admin dele.
+                Automático, do app de rifas — atualiza a cada venda paga.
               </p>
             </>
           )}
+          <AbrirApp href={APP_RIFAS_URL} label="Abrir app de rifas" />
         </CardContent>
       </Card>
 
@@ -508,6 +514,15 @@ function ArrecadacaoAba({ fin, podeEditar, byUid }: { fin: Fin; podeEditar: bool
   )
 }
 
+function AbrirApp({ href, label }: { href: string; label: string }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+      <ExternalLink className="h-3.5 w-3.5" />
+      {label}
+    </a>
+  )
+}
+
 /**
  * Doces: escolher qual meta do app de doces conta pro musical (o app de doces também vende pra
  * outras causas). Com meta escolhida, o total vem automático; sem, doces são lançados à mão.
@@ -561,6 +576,10 @@ function DocesCard({ fin, podeEditar }: { fin: Fin; podeEditar: boolean }) {
           <Spinner size="sm" />
         ) : fin.doces === null ? (
           <p className="text-xs text-muted-foreground">Não foi possível ler o total do app de doces agora.</p>
+        ) : fin.doces.naoGerado ? (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            O app de doces ainda não gerou o total. Abra o Relatório lá (com login) uma vez — depois disso o valor aparece aqui.
+          </p>
         ) : (
           <>
             <p className="text-2xl font-bold text-gray-900">{formatBRL(fin.doces.arrecadado)}</p>
@@ -573,6 +592,7 @@ function DocesCard({ fin, podeEditar }: { fin: Fin; podeEditar: boolean }) {
             </p>
           </>
         )}
+        <AbrirApp href={APP_DOCES_URL} label="Abrir app de doces" />
 
         {fin.docesIntegrado && docesManuais.length > 0 && (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">

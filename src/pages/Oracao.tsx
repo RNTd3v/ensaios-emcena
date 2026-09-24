@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Crown, HandHelping, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Crown, Eye, EyeOff, HandHelping, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -25,6 +25,8 @@ import {
   updatePedidoOracao,
 } from '@/services/firebase/oracao'
 import { useAuthStore } from '@/stores/authStore'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { saveSettingsParcial } from '@/services/firebase/settings'
 import {
   DIAS_SEMANA_CURTOS,
   DIAS_SEMANA_NOMES,
@@ -88,6 +90,8 @@ export function Oracao() {
         <h1 className="text-xl font-semibold text-white">Relógio de oração</h1>
       </div>
 
+      {isAdmin && <LiberarOracaoCard />}
+
       <EquipeCard config={config} users={users} nameFor={nameFor} isAdmin={isAdmin} onEditar={() => setEquipeOpen(true)} />
 
       <OrientacoesCard config={config} podeEditar={podeGerenciar} />
@@ -110,6 +114,50 @@ export function Oracao() {
         />
       )}
     </div>
+  )
+}
+
+// ---------- Liberar pra todos (admin) ----------
+
+/** Liga/desliga o relógio de oração pra todo mundo (menu, página e card da Home). */
+function LiberarOracaoCard() {
+  const { settings, refresh } = useSettingsStore()
+  const liberada = !!settings.oracaoLiberada
+  const [saving, setSaving] = useState(false)
+
+  async function alternar() {
+    setSaving(true)
+    try {
+      await saveSettingsParcial({ oracaoLiberada: !liberada })
+      await refresh()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card className={cn('border-2', liberada ? 'border-emerald-300' : 'border-amber-300')}>
+      <CardContent className="flex items-center gap-3">
+        <span
+          className={cn(
+            'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
+            liberada ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600',
+          )}
+        >
+          {liberada ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">{liberada ? 'Liberado pra todos' : 'Visível só pra admins'}</p>
+          <p className="text-xs text-muted-foreground">
+            {liberada ? 'Aparece no menu e na Home de todo mundo.' : 'Ninguém além dos admins vê o relógio ainda.'}
+          </p>
+        </div>
+        <Button size="sm" variant={liberada ? 'outline' : 'default'} className="shrink-0" onClick={alternar} disabled={saving}>
+          {saving && <Spinner size="sm" className={liberada ? '' : 'border-white/40 border-t-white'} />}
+          {liberada ? 'Esconder' : 'Liberar oração'}
+        </Button>
+      </CardContent>
+    </Card>
   )
 }
 

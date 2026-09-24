@@ -23,6 +23,11 @@ export async function getSettings(): Promise<AppSettings> {
   return { ...DEFAULT_SETTINGS, ...snap.data() } as AppSettings
 }
 
+/** Muda só alguns campos das configurações (sem reescrever o resto) — só admin (firestore.rules). */
+export async function saveSettingsParcial(parcial: Partial<Omit<AppSettings, 'updatedAt'>>): Promise<void> {
+  await setDoc(SETTINGS_REF, { ...parcial, updatedAt: serverTimestamp() }, { merge: true })
+}
+
 export async function saveSettings(settings: Omit<AppSettings, 'updatedAt'>): Promise<void> {
   await setDoc(SETTINGS_REF, { ...settings, updatedAt: serverTimestamp() }, { merge: true })
 }

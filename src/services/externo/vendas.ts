@@ -9,6 +9,10 @@
  *   app de doces também vende pra outras causas.
  */
 
+/** Endereços públicos dos apps de vendas (links no menu e em Metas e gastos). */
+export const APP_RIFAS_URL = 'https://vendas-rifas-emcena.web.app'
+export const APP_DOCES_URL = 'https://vendas-doces-emcena575.web.app'
+
 const BASE = 'https://firestore.googleapis.com/v1/projects'
 const RIFAS_STATS_URL = `${BASE}/vendas-rifas-emcena/databases/(default)/documents/stats/public`
 const DOCES_STATS_URL = `${BASE}/vendas-doces-emcena575/databases/(default)/documents/stats/public`
@@ -18,6 +22,8 @@ export interface TotalExterno {
   arrecadado: number
   quantidade: number
   atualizadoEm?: string
+  /** O doc de total ainda não existe no outro app (ele nunca gerou) — não é erro de leitura. */
+  naoGerado?: boolean
 }
 
 export interface MetaDoces {
@@ -41,9 +47,11 @@ function numero(c: Campo | undefined): number {
   return Number(c.integerValue ?? 0)
 }
 
-async function lerDoc(url: string): Promise<Record<string, Campo> | null> {
+/** `'naoGerado'` = 404 (o outro app ainda não criou o doc); `null` = erro de verdade. */
+async function lerDoc(url: string): Promise<Record<string, Campo> | 'naoGerado' | null> {
   try {
     const res = await fetch(url)
+    if (res.status === 404) return 'naoGerado'
     if (!res.ok) return null
     const json = (await res.json()) as { fields?: Record<string, Campo> }
     return json.fields ?? {}
@@ -56,6 +64,7 @@ async function lerDoc(url: string): Promise<Record<string, Campo> | null> {
 export async function lerTotalRifas(): Promise<TotalExterno | null> {
   const f = await lerDoc(RIFAS_STATS_URL)
   if (!f) return null
+  if (f === 'naoGerado') return { arrecadado: 0, quantidade: 0, naoGerado: true }
   return { arrecadado: numero(f.totalArrecadado), quantidade: numero(f.totalVendido), atualizadoEm: f.updatedAt?.timestampValue }
 }
 
@@ -63,6 +72,7 @@ export async function lerTotalRifas(): Promise<TotalExterno | null> {
 export async function lerTotalDoces(metaId: string): Promise<TotalExterno | null> {
   const f = await lerDoc(DOCES_STATS_URL)
   if (!f) return null
+  if (f === 'naoGerado') return { arrecadado: 0, quantidade: 0, naoGerado: true }
   const daMeta = f.porMeta?.mapValue?.fields?.[metaId]?.mapValue?.fields
   return {
     arrecadado: numero(daMeta?.total),

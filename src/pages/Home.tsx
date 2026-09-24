@@ -7,6 +7,7 @@ import { ApresentacoesCard } from '@/components/home/ApresentacoesCard'
 import { FinanceiroCards } from '@/components/home/FinanceiroCards'
 import { OrandoAgoraCard } from '@/components/oracao/OrandoAgora'
 import { AtalhosMidia } from '@/components/home/AtalhosMidia'
+import { useOracaoVisivel } from '@/hooks/useOracaoVisivel'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useAuthStore } from '@/stores/authStore'
 import { getVersiculos, type VersiculoInput } from '@/services/firebase/versiculos'
@@ -42,6 +43,7 @@ export function Home() {
   const firstName = user?.displayName?.trim().split(' ')[0]
   const versiculo = useVersiculoSorteado()
   const roteiroUrl = useSettingsStore(s => s.settings.roteiroUrl)
+  const oracaoVisivel = useOracaoVisivel()
 
   return (
     <div className="space-y-4">
@@ -59,7 +61,7 @@ export function Home() {
 
       {user && <ProximoEnsaioCard uid={user.uid} />}
 
-      <OrandoAgoraCard linkParaPagina />
+      {oracaoVisivel && <OrandoAgoraCard linkParaPagina />}
 
       <ApresentacoesCard />
 

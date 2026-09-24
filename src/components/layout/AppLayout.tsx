@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { CalendarClock, CalendarDays, Clapperboard, ClipboardList, Drama, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, ShieldCheck, X } from 'lucide-react'
+import { CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, ShieldCheck, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useSelectionStore } from '@/stores/selectionStore'
 import { useInscricaoStore } from '@/stores/inscricaoStore'
+import { useOracaoVisivel } from '@/hooks/useOracaoVisivel'
+import { APP_DOCES_URL, APP_RIFAS_URL } from '@/services/externo/vendas'
 import { PhoneMockup } from '@/components/layout/PhoneMockup'
 import { cn } from '@/lib/utils'
 
@@ -17,6 +19,7 @@ export function AppLayout() {
   const hasSelection = useSelectionStore(s => s.hasSelection)
   /** Sem inscrição (e não admin): o menu só mostra "Minha inscrição" — o resto fica bloqueado. */
   const semInscricao = useInscricaoStore(s => s.existe === false) && !isAdmin
+  const oracaoVisivel = useOracaoVisivel()
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -86,12 +89,18 @@ export function AppLayout() {
                   <MenuItem to="/" label="Início" icon={Home} end onClick={() => setMenuOpen(false)} />
                   <MenuItem to="/cenas" label={isAdmin ? 'Cenas' : 'Minhas Cenas'} icon={Clapperboard} onClick={() => setMenuOpen(false)} />
                   <MenuItem to="/equipes" label="Equipes" icon={UsersRound} onClick={() => setMenuOpen(false)} />
-                  <MenuItem to="/oracao" label="Relógio de oração" icon={HandHeart} onClick={() => setMenuOpen(false)} />
+                  {oracaoVisivel && (
+                    <MenuItem to="/oracao" label="Relógio de oração" icon={HandHeart} onClick={() => setMenuOpen(false)} />
+                  )}
                   <MenuItem to="/metas-gastos" label="Metas e gastos" icon={Target} onClick={() => setMenuOpen(false)} />
 
                   <MenuDivider />
                   <MenuItem to="/musicas" label="Músicas" icon={Music} onClick={() => setMenuOpen(false)} />
                   <MenuItem to="/figurinos" label="Figurinos" icon={Shirt} onClick={() => setMenuOpen(false)} />
+
+                  <MenuDivider label="Vendas" />
+                  <MenuLinkExterno href={APP_RIFAS_URL} label="Rifas" icon={Ticket} />
+                  <MenuLinkExterno href={APP_DOCES_URL} label="Doces" icon={Candy} />
 
                   {isAdminOrLider && (
                     <>
@@ -122,6 +131,22 @@ export function AppLayout() {
         </div>
       )}
     </PhoneMockup>
+  )
+}
+
+/** Item do menu que abre outro app (rifas, doces) numa aba nova. */
+function MenuLinkExterno({ href, label, icon: Icon }: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center gap-3 rounded-xl px-4 py-3 text-base font-medium text-white/80 hover:bg-white/10"
+    >
+      <Icon className="h-5 w-5" />
+      <span className="flex-1">{label}</span>
+      <ExternalLink className="h-4 w-4 text-white/50" />
+    </a>
   )
 }
 

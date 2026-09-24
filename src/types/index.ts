@@ -442,6 +442,8 @@ export interface AppSettings {
   apresentacaoHorarios?: string
   /** Link do roteiro (Google Docs/Drive etc.) — sem link, a Home mostra "Em breve". */
   roteiroUrl?: string
+  /** Relógio de oração visível pra todos (menu, página, card da Home). Desligado = só admin. */
+  oracaoLiberada?: boolean
   callToActionText?: string
   /** Mensagem de boas-vindas exibida na Home, personalizável pelo admin. */
   welcomeMessage?: string

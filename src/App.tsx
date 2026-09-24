@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { AuthGuard } from '@/components/layout/AuthGuard'
 import { InscricaoGuard } from '@/components/layout/InscricaoGuard'
+import { OracaoGuard } from '@/components/layout/OracaoGuard'
 import { AdminGuard } from '@/components/layout/AdminGuard'
 import { AdminOrLiderGuard } from '@/components/layout/AdminOrLiderGuard'
 import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt'
@@ -106,7 +107,15 @@ function App() {
               </AdminGuard>
             }
           />
-          <Route path="oracao" element={<Oracao />} />
+          {/* Relógio de oração: admin sempre; os demais quando o admin libera (botão na página). */}
+          <Route
+            path="oracao"
+            element={
+              <OracaoGuard>
+                <Oracao />
+              </OracaoGuard>
+            }
+          />
           <Route path="equipes" element={<Equipes />} />
           <Route path="equipes/:id" element={<EquipeDetalhe />} />
           <Route path="metas-gastos" element={<MetasGastos />} />

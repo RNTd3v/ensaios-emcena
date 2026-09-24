@@ -15,6 +15,7 @@ import { Cenas } from '@/pages/Cenas'
 import { CenaDetalhe } from '@/pages/CenaDetalhe'
 import { EnsaioAoVivo } from '@/pages/EnsaioAoVivo'
 import { PersonagemDetalhe } from '@/pages/PersonagemDetalhe'
+import { Personagens } from '@/pages/Personagens'
 import { Disponibilidade } from '@/pages/Disponibilidade'
 import { initAuth } from '@/stores/authStore'
 
@@ -59,6 +60,14 @@ function App() {
             element={
               <AdminGuard>
                 <EmConstrucao />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="personagens"
+            element={
+              <AdminGuard>
+                <Personagens />
               </AdminGuard>
             }
           />

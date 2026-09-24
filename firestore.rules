@@ -80,6 +80,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Catálogo de personagens (tela de Personagens): só admin lê e escreve. Os personagens em si
+    // continuam dentro de cada cena — aqui ficam só os criados pela tela, inclusive os sem cena.
+    match /personagens/{id} {
+      allow read, write: if isAdmin();
+    }
+
     // Ensaios: uma ocorrência (data+horário) de uma cena, confirmada ou cancelada. Mesma
     // visibilidade da cena correspondente (checada via get() na cena referenciada); confirmar
     // (create), cancelar/reconfirmar (update completo) é admin ou o líder daquela cena — cancelar

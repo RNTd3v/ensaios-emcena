@@ -50,6 +50,7 @@ import {
   updateCenaPersonagens,
   updateCenaRoteiro,
 } from '@/services/firebase/cenas'
+import { preservarPersonagensNoCatalogo } from '@/services/firebase/personagens'
 import { deleteCenaFile, uploadCenaFile } from '@/services/firebase/storage'
 import {
   cancelarEnsaio,
@@ -480,6 +481,8 @@ export function CenaDetalhe() {
     if (!cena || !currentUser || !editingPersonagemId) return
     setSavingPersonagem(true)
     try {
+      // Sai só da cena — o personagem continua na base (tela de Personagens).
+      await preservarPersonagensNoCatalogo(personagensBase.filter(p => p.id === editingPersonagemId))
       const next = personagensBase.filter(p => p.id !== editingPersonagemId)
       await updateCenaPersonagens(cena.id, next, currentUser.uid)
       setPersonagensBase(next)
@@ -1822,7 +1825,7 @@ export function CenaDetalhe() {
             {editingPersonagemId && (
               <Button variant="outline" className="w-full gap-1.5 text-red-600" onClick={handleDeletePersonagem} disabled={savingPersonagem}>
                 <Trash2 className="h-4 w-4" />
-                Excluir personagem
+                Remover da cena
               </Button>
             )}
           </div>

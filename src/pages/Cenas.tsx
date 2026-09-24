@@ -38,6 +38,7 @@ import {
   updateCena,
   type CenaInput,
 } from '@/services/firebase/cenas'
+import { preservarPersonagensNoCatalogo } from '@/services/firebase/personagens'
 import { subscribeToAllEnsaios, subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
 import { DIA_SEMANA_LABELS, type AppUser, type Cena, type DiaSemana, type Ensaio, type Inscricao } from '@/types'
@@ -448,6 +449,8 @@ export function Cenas() {
     if (!hardDeleteTarget) return
     setHardDeleting(true)
     try {
+      // Os personagens saem junto com a cena, mas continuam na base (tela de Personagens).
+      await preservarPersonagensNoCatalogo(hardDeleteTarget.personagens)
       await deleteCenaPermanently(hardDeleteTarget.id)
       setHardDeleteTarget(null)
     } finally {

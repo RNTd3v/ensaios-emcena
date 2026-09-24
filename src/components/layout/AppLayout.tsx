@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { CalendarDays, Clapperboard, ClipboardList, Home, LogOut, Menu, ShieldCheck, X } from 'lucide-react'
+import { CalendarDays, Clapperboard, ClipboardList, Drama, Home, LogOut, Menu, ShieldCheck, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -79,6 +79,9 @@ export function AppLayout() {
             <div className="space-y-2">
               <MenuItem to="/" label="Início" icon={Home} end onClick={() => setMenuOpen(false)} />
               <MenuItem to="/cenas" label={isAdmin ? 'Cenas' : 'Minhas Cenas'} icon={Clapperboard} onClick={() => setMenuOpen(false)} />
+              {isAdmin && (
+                <MenuItem to="/personagens" label="Personagens" icon={Drama} onClick={() => setMenuOpen(false)} />
+              )}
               {isAdminOrLider && (
                 <MenuItem to="/disponibilidade" label="Disponibilidade" icon={CalendarDays} onClick={() => setMenuOpen(false)} />
               )}

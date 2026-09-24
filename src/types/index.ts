@@ -88,6 +88,20 @@ export interface Personagem {
   prazoFigurino?: string
 }
 
+/**
+ * Entrada do catálogo de personagens (coleção `personagens`, só admin) — guarda os personagens
+ * criados pela tela de Personagens, inclusive os que ainda não estão em nenhuma cena. O id do doc
+ * é a chave normalizada do nome (ver `personagemKey`), que é o que agrupa as instâncias do mesmo
+ * personagem espalhadas pelas cenas. Quando o personagem está em alguma cena, os dados da cena
+ * prevalecem — o catálogo é só o fallback.
+ */
+export interface PersonagemCatalogo {
+  id: string
+  nome: string
+  participanteUid?: string
+  createdAt: string
+}
+
 export interface PersonagemFicha {
   idade?: string
   sexo?: string

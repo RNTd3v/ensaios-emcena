@@ -275,6 +275,37 @@ export interface Financeiro {
   updatedAt?: string
 }
 
+/**
+ * Horário de oração de uma pessoa (doc `horariosOracao/{uid}` — um por pessoa). Repete toda semana
+ * nos `dias` marcados (0 = domingo … 6 = sábado, como `Date.getDay()`).
+ */
+export interface HorarioOracao {
+  uid: string
+  /** HH:mm */
+  inicio: string
+  duracaoMin: number
+  dias: number[]
+  updatedAt?: string
+}
+
+/** Pedido de oração (coleção `pedidosOracao`) — cadastrado pelo líder/assistente da oração ou admin. */
+export interface PedidoOracao {
+  id: string
+  texto: string
+  /** Por quem/o quê orar (opcional, ex.: "Família da Ana"). */
+  titulo?: string
+  respondido?: boolean
+  createdByUid: string
+  createdAt: string
+}
+
+/** Configuração da página de oração (doc `oracao/config`): quem lidera e as orientações. */
+export interface OracaoConfig {
+  liderUid?: string
+  assistentes?: string[]
+  orientacoes?: string
+}
+
 export interface AppSettings {
   eventName: string
   posterImageUrl?: string

@@ -17,6 +17,7 @@ import { EnsaioAoVivo } from '@/pages/EnsaioAoVivo'
 import { PersonagemDetalhe } from '@/pages/PersonagemDetalhe'
 import { Personagens } from '@/pages/Personagens'
 import { Calendario } from '@/pages/Calendario'
+import { Oracao } from '@/pages/Oracao'
 import { AdminLocais } from '@/pages/AdminLocais'
 import { AdminVersiculos } from '@/pages/AdminVersiculos'
 import { Disponibilidade } from '@/pages/Disponibilidade'
@@ -98,6 +99,7 @@ function App() {
               </AdminGuard>
             }
           />
+          <Route path="oracao" element={<Oracao />} />
           <Route path="cenas" element={<Cenas />} />
           <Route path="cenas/:id" element={<CenaDetalhe />} />
           <Route path="cenas/:id/iniciar-ensaio" element={<EnsaioAoVivo />} />

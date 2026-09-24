@@ -93,6 +93,38 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Oração: `oracao/config` guarda líder, assistentes e orientações. Admin define a equipe;
+    // líder/assistente só editam as orientações.
+    function oracaoConfig() {
+      return get(/databases/$(database)/documents/oracao/config).data;
+    }
+    function isEquipeOracao() {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/oracao/config)
+        && (oracaoConfig().get('liderUid', '') == request.auth.uid
+            || request.auth.uid in oracaoConfig().get('assistentes', []));
+    }
+
+    match /oracao/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin()
+        || (isEquipeOracao() && resource != null
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['orientacoes', 'updatedAt']));
+    }
+
+    // Horário de oração de cada pessoa (id = uid): todos veem (a Home mostra quem está orando);
+    // cada um mexe no seu, e admin/equipe da oração podem ajustar o de qualquer um.
+    match /horariosOracao/{uid} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (request.auth.uid == uid || isAdmin() || isEquipeOracao());
+    }
+
+    // Pedidos de oração: todos leem, só admin/equipe da oração cadastram e editam.
+    match /pedidosOracao/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isEquipeOracao();
+    }
+
     // Resumo de metas e gastos (card da Home): qualquer autenticado lê, só admin edita.
     match /financeiro/{id} {
       allow read: if isAuthenticated();

@@ -114,7 +114,7 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras }: Props) {
             Você avisou que não vai
           </p>
           {ausencia.motivo && <p className="mt-0.5 whitespace-pre-wrap text-xs text-red-600">{ausencia.motivo}</p>}
-          <p className="mt-1 text-[10px] text-red-400">O motivo só aparece pra você, pro líder da cena e pros admins.</p>
+          <p className="mt-1 text-[10px] text-red-400">O motivo só aparece pra você, pra liderança da cena e pros admins.</p>
         </div>
         {!comecou && (
           <div className="flex gap-2">

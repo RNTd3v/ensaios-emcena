@@ -139,7 +139,7 @@ service cloud.firestore {
 
     // Ensaios: uma ocorrência (data+horário) de uma cena, confirmada ou cancelada. Mesma
     // visibilidade da cena correspondente (checada via get() na cena referenciada); confirmar
-    // (create), cancelar/reconfirmar (update completo) é admin ou o líder daquela cena — cancelar
+    // (create), cancelar/reconfirmar (update completo) é admin, o líder ou um assistente daquela cena — cancelar
     // não apaga o documento, só marca `canceledByUid`/`canceledAt`, pra manter o histórico visível.
     // Participante da cena também pode dar update, mas só na própria resposta: se incluir/tirar
     // de `presencas` e `ausentes` (nunca outra pessoa nem outro campo) — ver listaPropriaOk. O
@@ -162,6 +162,12 @@ service cloud.firestore {
       return request.resource.data.get('ausencias', {}).diff(resource.data.get('ausencias', {})).affectedKeys().hasOnly([request.auth.uid]);
     }
 
+    // Quem cuida do dia a dia dos ensaios de uma cena: o líder e os assistentes dela.
+    function gerenciaEnsaios(cena) {
+      return isAuthenticated()
+        && (cena.get('liderUid', '') == request.auth.uid || request.auth.uid in cena.get('assistentes', []));
+    }
+
     match /ensaios/{id} {
       allow read: if isAdmin()
         || (isAuthenticated()
@@ -169,11 +175,9 @@ service cloud.firestore {
         || (isAuthenticated()
             && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.participantes);
       allow create: if isAdmin()
-        || (isAuthenticated()
-            && get(/databases/$(database)/documents/cenas/$(request.resource.data.cenaId)).data.liderUid == request.auth.uid);
+        || gerenciaEnsaios(get(/databases/$(database)/documents/cenas/$(request.resource.data.cenaId)).data);
       allow update: if isAdmin()
-        || (isAuthenticated()
-            && get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.liderUid == request.auth.uid)
+        || gerenciaEnsaios(get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data)
         || (isAuthenticated()
             && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.participantes
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presencas', 'ausentes', 'ausencias'])
@@ -185,7 +189,7 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.liderUid == request.auth.uid);
 
       // Motivo de quem avisou que não vai (um doc por pessoa, id = uid). Separado do ensaio pra
-      // ficar privado: só admin, o líder da cena e a própria pessoa leem. Quem não vai (sem o
+      // ficar privado: só admin, o líder e os assistentes da cena e a própria pessoa leem. Quem não vai (sem o
       // motivo) fica visível pra todos em `ausentes`, no próprio ensaio.
       match /ausencias/{uid} {
         function cenaDoEnsaio() {
@@ -193,10 +197,10 @@ service cloud.firestore {
         }
         allow read: if isAdmin()
           || (isAuthenticated() && request.auth.uid == uid)
-          || (isAuthenticated() && cenaDoEnsaio().liderUid == request.auth.uid);
+          || gerenciaEnsaios(cenaDoEnsaio());
         allow write: if isAdmin()
           || (isAuthenticated() && request.auth.uid == uid && request.auth.uid in cenaDoEnsaio().participantes)
-          || (isAuthenticated() && cenaDoEnsaio().liderUid == request.auth.uid);
+          || gerenciaEnsaios(cenaDoEnsaio());
       }
     }
   }

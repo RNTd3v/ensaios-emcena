@@ -105,7 +105,11 @@ export function EnsaioAoVivo() {
       .sort((a, b) => a.data.localeCompare(b.data) || a.horario.localeCompare(b.horario))[0]
   }, [ensaios, todayKey])
 
-  const canManageAgenda = !!cena && !!currentUser && (currentUser.role === 'admin' || cena.liderUid === currentUser.uid)
+  /** Admin, líder ou assistente da cena — quem cuida do dia a dia dos ensaios. */
+  const canManageAgenda =
+    !!cena &&
+    !!currentUser &&
+    (currentUser.role === 'admin' || cena.liderUid === currentUser.uid || !!cena.assistentes?.includes(currentUser.uid))
 
   const elenco = useMemo(() => (cena?.personagens ?? []).filter(p => p.participanteUid), [cena?.personagens])
 

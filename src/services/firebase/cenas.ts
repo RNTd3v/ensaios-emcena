@@ -35,6 +35,7 @@ function fromSnap(id: string, data: Record<string, unknown>): Cena {
     id,
     ...data,
     personagens: (data.personagens as Personagem[]) ?? [],
+    assistentes: (data.assistentes as string[]) ?? [],
     figurinos: (data.figurinos as FigurinoImagem[]) ?? [],
     musicas: (data.musicas as Musica[]) ?? [],
     ativo: data.ativo !== false,
@@ -92,6 +93,11 @@ export async function updateCenaLider(id: string, liderUid: string | undefined, 
     updatedByUid,
     updatedAt: serverTimestamp(),
   })
+}
+
+/** Assistentes da cena (sempre participantes dela) — admin ou líder. */
+export async function updateCenaAssistentes(id: string, assistentes: string[], updatedByUid: string): Promise<void> {
+  await updateDoc(doc(db, 'cenas', id), { assistentes, updatedByUid, updatedAt: serverTimestamp() })
 }
 
 export async function updateCenaRoteiro(
@@ -172,17 +178,30 @@ export async function deleteCenaPermanently(id: string): Promise<void> {
  * Filtrar por ativo/inativo é responsabilidade de quem consome a lista.
  */
 export function subscribeToCenas(role: UserRole, uid: string, callback: (cenas: Cena[]) => void) {
-  const q =
-    role === 'admin'
-      ? query(collection(db, 'cenas'), orderBy('createdAt', 'desc'))
-      : role === 'lider'
-        ? query(collection(db, 'cenas'), where('liderUid', '==', uid))
-        : query(collection(db, 'cenas'), where('participantes', 'array-contains', uid))
-  return onSnapshot(q, snap => {
-    const cenas = snap.docs.map(d => fromSnap(d.id, d.data()))
-    if (role !== 'admin') cenas.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    callback(cenas)
-  })
+  if (role === 'admin') {
+    return onSnapshot(query(collection(db, 'cenas'), orderBy('createdAt', 'desc')), snap =>
+      callback(snap.docs.map(d => fromSnap(d.id, d.data()))),
+    )
+  }
+  // Líder vê as que lidera + as que participa (inclusive como assistente); participante só as
+  // que participa. Duas queries juntas porque o Firestore não faz OR entre esses dois filtros
+  // de um jeito que a regra consiga provar.
+  const queries = [query(collection(db, 'cenas'), where('participantes', 'array-contains', uid))]
+  if (role === 'lider') queries.push(query(collection(db, 'cenas'), where('liderUid', '==', uid)))
+  const porQuery: (Map<string, Cena> | null)[] = queries.map(() => null)
+  const emitir = () => {
+    if (porQuery.some(m => m === null)) return // espera todas responderem uma vez
+    const todas = new Map<string, Cena>()
+    for (const m of porQuery) for (const [id, c] of m!) todas.set(id, c)
+    callback([...todas.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)))
+  }
+  const unsubs = queries.map((q, i) =>
+    onSnapshot(q, snap => {
+      porQuery[i] = new Map(snap.docs.map(d => [d.id, fromSnap(d.id, d.data())]))
+      emitir()
+    }),
+  )
+  return () => unsubs.forEach(u => u())
 }
 
 /**

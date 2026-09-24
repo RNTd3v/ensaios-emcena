@@ -11,6 +11,7 @@ import {
   Crown,
   ExternalLink,
   Info,
+  HandHelping,
   Image,
   MessageCircle,
   Music,
@@ -42,6 +43,7 @@ import {
   subscribeToCenas,
   updateCenaAgenda,
   updateCenaFigurinos,
+  updateCenaAssistentes,
   updateCenaLider,
   updateCenaMusicas,
   updateCenaNome,
@@ -128,7 +130,12 @@ export function CenaDetalhe() {
   const [ensaios, setEnsaios] = useState<Ensaio[] | null>(null)
   const [todasCenas, setTodasCenas] = useState<Cena[] | null>(null)
 
-  const canManageAgenda = isAdmin || (!!cena && cena.liderUid === currentUser?.uid)
+  const isLiderDaCena = !!cena && !!currentUser && cena.liderUid === currentUser.uid
+  const isAssistenteDaCena = !!cena && !!currentUser && !!cena.assistentes?.includes(currentUser.uid)
+  /** Estrutura da cena (agenda recorrente, grupo, assistentes, figurinos): admin e líder. */
+  const canManageCena = isAdmin || isLiderDaCena
+  /** Dia a dia dos ensaios (confirmar, abrir, presença...): também os assistentes. */
+  const canManageAgenda = canManageCena || isAssistenteDaCena
 
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [liderModalOpen, setLiderModalOpen] = useState(false)
@@ -494,13 +501,31 @@ export function CenaDetalhe() {
     }
   }
 
-  /** Remove o participante da cena e desfaz qualquer vínculo dele (líder, personagem) pra não deixar referência solta. */
+  async function handleToggleAssistente(uid: string) {
+    if (!cena || !currentUser) return
+    setSavingParticipante(true)
+    try {
+      const atuais = cena.assistentes ?? []
+      await updateCenaAssistentes(
+        cena.id,
+        atuais.includes(uid) ? atuais.filter(a => a !== uid) : [...atuais, uid],
+        currentUser.uid,
+      )
+    } finally {
+      setSavingParticipante(false)
+    }
+  }
+
+  /** Remove o participante da cena e desfaz qualquer vínculo dele (líder, assistente, personagem) pra não deixar referência solta. */
   async function handleRemoveParticipante(uid: string) {
     if (!cena || !currentUser) return
     setSavingParticipante(true)
     try {
       const tasks: Promise<void>[] = [updateCenaParticipantes(cena.id, cena.participantes.filter(p => p !== uid), currentUser.uid)]
       if (cena.liderUid === uid) tasks.push(updateCenaLider(cena.id, undefined, currentUser.uid))
+      if (cena.assistentes?.includes(uid)) {
+        tasks.push(updateCenaAssistentes(cena.id, cena.assistentes.filter(a => a !== uid), currentUser.uid))
+      }
       if (cena.personagens.some(p => p.participanteUid === uid)) {
         tasks.push(
           updateCenaPersonagens(
@@ -841,9 +866,11 @@ export function CenaDetalhe() {
                   </button>
                   {canManageAgenda && (
                     <div className="flex gap-1 shrink-0">
-                      <Button variant="ghost" size="icon" onClick={openAgendaModal} title="Editar agenda">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
+                      {canManageCena && (
+                        <Button variant="ghost" size="icon" onClick={openAgendaModal} title="Editar agenda">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
                         variant={hasPendingConfirmation ? 'default' : 'outline'}
                         size="icon"
@@ -1280,7 +1307,7 @@ export function CenaDetalhe() {
                   <Image className="h-4 w-4 text-primary" />
                   Ideias de figurinos
                 </p>
-                {canManageAgenda && (
+                {canManageCena && (
                   <Button variant="ghost" size="icon" onClick={openFigurinoUploadModal} title="Adicionar foto">
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -1333,7 +1360,7 @@ export function CenaDetalhe() {
                   <ChevronDown className={cn('h-4 w-4 text-gray-400 transition-transform', !participantesOpen && '-rotate-90')} />
                   Grupo
                 </button>
-                {canManageAgenda && (
+                {canManageCena && (
                   <Button variant="ghost" size="icon" onClick={openAddParticipanteModal} className="shrink-0" title="Adicionar participante">
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -1379,26 +1406,50 @@ export function CenaDetalhe() {
                         </div>
                       </button>
                     )}
-                    {outrosParticipantes.map(uid => (
-                      <div key={uid} className="flex items-center gap-2.5 rounded-lg px-1 py-1.5">
-                        <Avatar photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-9 w-9 text-xs" />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate">{nameFor(uid)}</p>
+                    {outrosParticipantes.map(uid => {
+                      const assistente = !!cena.assistentes?.includes(uid)
+                      return (
+                        <div key={uid} className="flex items-center gap-2.5 rounded-lg px-1 py-1.5">
+                          <div className="relative shrink-0">
+                            <Avatar photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-9 w-9 text-xs" />
+                            {assistente && (
+                              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary ring-2 ring-white">
+                                <HandHelping className="h-2.5 w-2.5 text-white" />
+                              </span>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium truncate">{nameFor(uid)}</p>
+                            {assistente && <p className="text-xs text-primary">Assistente</p>}
+                          </div>
+                          {canManageCena && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleToggleAssistente(uid)}
+                              disabled={savingParticipante}
+                              className={cn('shrink-0', assistente ? 'text-primary' : 'text-gray-300')}
+                              title={assistente ? 'Deixar de ser assistente' : 'Tornar assistente'}
+                              aria-pressed={assistente}
+                            >
+                              <HandHelping className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {canManageCena && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveParticipante(uid)}
+                              disabled={savingParticipante}
+                              className="shrink-0"
+                              title="Remover"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
-                        {canManageAgenda && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleRemoveParticipante(uid)}
-                            disabled={savingParticipante}
-                            className="shrink-0"
-                            title="Remover"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground pt-2">Nenhum participante cadastrado ainda.</p>
@@ -2024,7 +2075,7 @@ export function CenaDetalhe() {
                     {figurinoViewerIndex + 1}/{figurinosOrdenados.length}
                   </span>
                 </div>
-                {canManageAgenda && (
+                {canManageCena && (
                   <Button variant="destructive" className="w-full gap-1.5" onClick={() => setFigurinoDeleteTarget(item)}>
                     <Trash2 className="h-4 w-4" />
                     Excluir

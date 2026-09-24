@@ -148,6 +148,11 @@ export interface Cena {
   participantes: string[]
   /** uid de um dos participantes, marcado como líder dessa cena. */
   liderUid?: string
+  /**
+   * uids de participantes que ajudam o líder no dia a dia dos ensaios (confirmar, iniciar,
+   * presença, local, anotações) — sem mexer na estrutura da cena. Líder/admin definem.
+   */
+  assistentes?: string[]
   personagens: Personagem[]
   dias: DiaSemana[]
   /** Horário único, válido pra todos os dias. Mutuamente exclusivo com `horarios` (por dia). */

@@ -52,6 +52,7 @@ import {
 import { preservarPersonagensNoCatalogo } from '@/services/firebase/personagens'
 import { deleteCenaFile, uploadCenaFile } from '@/services/firebase/storage'
 import {
+  aplicarIndisponibilidades,
   cancelarEnsaio,
   confirmarPresenca,
   createEnsaio,
@@ -60,6 +61,7 @@ import {
   updateEnsaioFlags,
   updateEnsaioHorario,
   updateEnsaioObrigatorios,
+  uidsIndisponiveis,
 } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -589,9 +591,12 @@ export function CenaDetalhe() {
         toConfirm.map(o => {
           const detail = confirmDetails[o.dateKey] ?? { horario: o.horario, geral: false, comFigurino: false, obrigatorios: [] }
           const existing = ensaiosByDate[o.dateKey]
+          // Depois de criar/reconfirmar (que zera as respostas), quem marcou a data como
+          // indisponível na inscrição já entra como "não vai".
+          const indisponiveis = uidsIndisponiveis(cena, o.dateKey, inscricoesByUid)
           return existing
             ? Promise.all([
-                reconfirmarEnsaio(existing.id, currentUser.uid),
+                reconfirmarEnsaio(existing.id, currentUser.uid).then(() => aplicarIndisponibilidades(existing.id, indisponiveis)),
                 updateEnsaioHorario(existing.id, detail.horario),
                 updateEnsaioObrigatorios(existing.id, detail.obrigatorios),
                 updateEnsaioFlags(existing.id, { geral: detail.geral, comFigurino: detail.comFigurino }),
@@ -599,7 +604,7 @@ export function CenaDetalhe() {
             : createEnsaio(cena.id, o.dateKey, detail.horario, currentUser.uid, detail.obrigatorios, {
                 geral: detail.geral,
                 comFigurino: detail.comFigurino,
-              })
+              }).then(novoId => aplicarIndisponibilidades(novoId, indisponiveis))
         }),
       )
       setConfirmModalOpen(false)

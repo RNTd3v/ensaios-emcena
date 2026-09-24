@@ -1,6 +1,6 @@
-import { addDoc, arrayRemove, arrayUnion, collection, deleteField, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore'
+import { addDoc, arrayRemove, arrayUnion, collection, deleteField, doc, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { db } from './config'
-import type { Ensaio } from '@/types'
+import type { AusenciaMotivo, Cena, Ensaio, Inscricao } from '@/types'
 
 function toIso(value: unknown): string | undefined {
   return (value as { toDate?: () => Date })?.toDate?.().toISOString()
@@ -93,23 +93,118 @@ export async function reconfirmarEnsaio(id: string, confirmedByUid: string): Pro
     canceledByUid: deleteField(),
     canceledAt: deleteField(),
     presencas: [],
+    ausentes: [],
     ausencias: deleteField(),
     confirmedByUid,
     confirmedAt: serverTimestamp(),
   })
 }
 
-/** Confirma a presença de `uid` (elenco com personagem na cena) nesse ensaio — e limpa uma ausência avisada antes. */
-export async function confirmarPresenca(id: string, uid: string): Promise<void> {
-  await updateDoc(doc(db, 'ensaios', id), { presencas: arrayUnion(uid), [`ausencias.${uid}`]: deleteField() })
+function ausenciaRef(ensaioId: string, uid: string) {
+  return doc(db, 'ensaios', ensaioId, 'ausencias', uid)
 }
 
-/** `uid` avisa que não vai nesse ensaio, com o motivo — sai de `presencas` se tinha confirmado. */
-export async function registrarAusencia(id: string, uid: string, motivo: string): Promise<void> {
-  await updateDoc(doc(db, 'ensaios', id), {
-    presencas: arrayRemove(uid),
-    [`ausencias.${uid}`]: { motivo: motivo.trim(), registradaEm: new Date().toISOString() },
+/**
+ * Confirma a presença de `uid` nesse ensaio — e desfaz uma ausência avisada antes (tira de
+ * `ausentes`, apaga o motivo privado e a chave legada em `ausencias`).
+ */
+export async function confirmarPresenca(id: string, uid: string): Promise<void> {
+  const batch = writeBatch(db)
+  batch.update(doc(db, 'ensaios', id), {
+    presencas: arrayUnion(uid),
+    ausentes: arrayRemove(uid),
+    [`ausencias.${uid}`]: deleteField(),
   })
+  batch.delete(ausenciaRef(id, uid))
+  await batch.commit()
+}
+
+/**
+ * `uid` avisa que não vai nesse ensaio: entra em `ausentes` (público, sem motivo) e o motivo vai
+ * pra subcoleção privada. Sai de `presencas` se tinha confirmado.
+ */
+export async function registrarAusencia(id: string, uid: string, motivo: string): Promise<void> {
+  const batch = writeBatch(db)
+  batch.update(doc(db, 'ensaios', id), {
+    presencas: arrayRemove(uid),
+    ausentes: arrayUnion(uid),
+    [`ausencias.${uid}`]: deleteField(),
+  })
+  batch.set(ausenciaRef(id, uid), { uid, motivo: motivo.trim(), registradaEm: new Date().toISOString() })
+  await batch.commit()
+}
+
+/** Motivo usado quando a ausência vem da indisponibilidade informada na inscrição. */
+export const MOTIVO_INDISPONIBILIDADE = 'Indisponível nessa data (informado na inscrição).'
+
+/**
+ * Registra como "não vai" (motivo `MOTIVO_INDISPONIBILIDADE`) quem marcou a data do ensaio como
+ * indisponível na inscrição. Quem chama já filtra quem respondeu (ver `uidsIndisponiveis`).
+ * Admin/líder usam ao confirmar um ensaio; a própria pessoa, pra ela mesma, ao abrir a Home.
+ */
+export async function aplicarIndisponibilidades(ensaioId: string, uids: string[]): Promise<void> {
+  if (!uids.length) return
+  const batch = writeBatch(db)
+  batch.update(doc(db, 'ensaios', ensaioId), { ausentes: arrayUnion(...uids) })
+  const registradaEm = new Date().toISOString()
+  for (const uid of uids) {
+    batch.set(ausenciaRef(ensaioId, uid), { uid, motivo: MOTIVO_INDISPONIBILIDADE, registradaEm, origem: 'inscricao' })
+  }
+  await batch.commit()
+}
+
+/**
+ * Do elenco da cena, quem marcou `data` como indisponível na inscrição e ainda não respondeu ao
+ * ensaio (nem "vou" nem "não vou"). `ensaio` ausente = ensaio recém-criado, ninguém respondeu.
+ */
+export function uidsIndisponiveis(
+  cena: Pick<Cena, 'personagens'>,
+  data: string,
+  inscricoesByUid: Record<string, Pick<Inscricao, 'indisponibilidade'> | undefined>,
+  ensaio?: Pick<Ensaio, 'presencas' | 'ausentes' | 'ausencias'>,
+): string[] {
+  const respondeu = new Set([...(ensaio?.presencas ?? []), ...(ensaio ? uidsAusentes(ensaio) : [])])
+  const elenco = new Set(cena.personagens.map(p => p.participanteUid).filter((u): u is string => !!u))
+  return [...elenco].filter(uid => !respondeu.has(uid) && !!inscricoesByUid[uid]?.indisponibilidade?.includes(data))
+}
+
+/** O motivo da própria ausência (`null` = não tem). */
+export function subscribeToMinhaAusencia(ensaioId: string, uid: string, callback: (a: AusenciaMotivo | null) => void) {
+  return onSnapshot(
+    ausenciaRef(ensaioId, uid),
+    snap => callback(snap.exists() ? (snap.data() as AusenciaMotivo) : null),
+    () => callback(null),
+  )
+}
+
+/** Todos os motivos de ausência do ensaio, por uid — só admin/líder da cena têm leitura. */
+export function subscribeToAusencias(ensaioId: string, callback: (porUid: Record<string, AusenciaMotivo>) => void) {
+  return onSnapshot(
+    collection(db, 'ensaios', ensaioId, 'ausencias'),
+    snap => callback(Object.fromEntries(snap.docs.map(d => [d.id, d.data() as AusenciaMotivo]))),
+    () => callback({}),
+  )
+}
+
+/**
+ * Move os motivos legados (mapa `ausencias` no próprio ensaio, legível por todo participante) pra
+ * subcoleção privada, e apaga o mapa. Chamado por admin/líder ao abrir a página do ensaio.
+ */
+export async function migrarAusenciasLegadas(ensaio: Ensaio): Promise<void> {
+  const legado = ensaio.ausencias ?? {}
+  const uids = Object.keys(legado)
+  if (!uids.length) return
+  const batch = writeBatch(db)
+  for (const uid of uids) {
+    batch.set(ausenciaRef(ensaio.id, uid), { uid, motivo: legado[uid].motivo, registradaEm: legado[uid].registradaEm })
+  }
+  batch.update(doc(db, 'ensaios', ensaio.id), { ausentes: arrayUnion(...uids), ausencias: deleteField() })
+  await batch.commit()
+}
+
+/** Quem avisou que não vai — inclui o legado ainda não migrado. */
+export function uidsAusentes(ensaio: Pick<Ensaio, 'ausentes' | 'ausencias'>): string[] {
+  return [...new Set([...(ensaio.ausentes ?? []), ...Object.keys(ensaio.ausencias ?? {})])]
 }
 
 /** Desmarca a presença de `uid` nesse ensaio — usado por quem gerencia a agenda na tela ao vivo. */

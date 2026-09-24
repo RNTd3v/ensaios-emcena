@@ -180,6 +180,13 @@ export interface Cena {
   deactivatedAt?: string
 }
 
+/** Motivo de uma ausência (`ensaios/{id}/ausencias/{uid}`) — só admin, líder da cena e a própria pessoa leem. */
+export interface AusenciaMotivo {
+  uid: string
+  motivo: string
+  registradaEm: string
+}
+
 /** Uma ocorrência de ensaio confirmada (data + horário) de uma cena — um documento por data. */
 export interface Ensaio {
   id: string
@@ -195,7 +202,15 @@ export interface Ensaio {
   createdAt: string
   /** uids de quem (do elenco, com personagem nessa cena) confirmou presença nesse ensaio. */
   presencas?: string[]
-  /** Quem avisou que não vai, com o motivo — chave é o uid. Confirmar presença limpa a ausência. */
+  /**
+   * uids de quem avisou que não vai — visível pra todos. O motivo fica na subcoleção privada
+   * `ensaios/{id}/ausencias/{uid}` (ver `AusenciaMotivo`). Confirmar presença tira daqui.
+   */
+  ausentes?: string[]
+  /**
+   * Legado: motivos gravados no próprio ensaio (visíveis a todo participante da cena). Migrados pra
+   * subcoleção quando admin/líder abre a página do ensaio — não gravar mais aqui.
+   */
   ausencias?: Record<string, { motivo: string; registradaEm: string }>
   /** ids de personagens (da cena) com presença obrigatória nesse ensaio específico. */
   obrigatorios?: string[]

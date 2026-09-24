@@ -110,21 +110,22 @@ service cloud.firestore {
     // (create), cancelar/reconfirmar (update completo) é admin ou o líder daquela cena — cancelar
     // não apaga o documento, só marca `canceledByUid`/`canceledAt`, pra manter o histórico visível.
     // Participante da cena também pode dar update, mas só na própria resposta: se incluir/tirar
-    // de `presencas` e registrar/limpar a própria ausência em `ausencias` (nunca a de outra pessoa
-    // nem outro campo) — ver presencaPropriaOk/ausenciaPropriaOk. A regra não valida se a pessoa
+    // de `presencas` e `ausentes` (nunca outra pessoa nem outro campo) — ver listaPropriaOk. O
+    // motivo da ausência fica na subcoleção `ausencias`, com leitura restrita. A regra não valida se a pessoa
     // tem personagem nem a janela de horário — isso é responsabilidade do cliente (regras do
     // Firestore não conseguem inspecionar o array `personagens` pra achar `participanteUid`).
-    // Participante mexendo na própria resposta de um ensaio: só pode se incluir ou se tirar de
-    // `presencas` (nada mais muda no array)...
-    function presencaPropriaOk() {
-      let antes = resource.data.get('presencas', []);
-      let depois = request.resource.data.get('presencas', []);
+    // Participante mexendo na própria resposta de um ensaio: nas listas `presencas` e `ausentes`
+    // só pode se incluir ou se tirar (nada mais muda no array)...
+    function listaPropriaOk(campo) {
+      let antes = resource.data.get(campo, []);
+      let depois = request.resource.data.get(campo, []);
       return depois == antes
         || (!(request.auth.uid in antes) && depois == antes.concat([request.auth.uid]))
         || ((request.auth.uid in antes) && depois == antes.removeAll([request.auth.uid]));
     }
 
-    // ...e em `ausencias` (mapa uid -> { motivo, registradaEm }) só a própria chave.
+    // ...e no mapa legado `ausencias` (motivos gravados no próprio ensaio, antes de irem pra
+    // subcoleção) só pode mexer na própria chave — na prática, só pra apagá-la.
     function ausenciaPropriaOk() {
       return request.resource.data.get('ausencias', {}).diff(resource.data.get('ausencias', {})).affectedKeys().hasOnly([request.auth.uid]);
     }
@@ -143,12 +144,28 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.liderUid == request.auth.uid)
         || (isAuthenticated()
             && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.participantes
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presencas', 'ausencias'])
-            && presencaPropriaOk()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presencas', 'ausentes', 'ausencias'])
+            && listaPropriaOk('presencas')
+            && listaPropriaOk('ausentes')
             && ausenciaPropriaOk());
       allow delete: if isAdmin()
         || (isAuthenticated()
             && get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.liderUid == request.auth.uid);
+
+      // Motivo de quem avisou que não vai (um doc por pessoa, id = uid). Separado do ensaio pra
+      // ficar privado: só admin, o líder da cena e a própria pessoa leem. Quem não vai (sem o
+      // motivo) fica visível pra todos em `ausentes`, no próprio ensaio.
+      match /ausencias/{uid} {
+        function cenaDoEnsaio() {
+          return get(/databases/$(database)/documents/cenas/$(get(/databases/$(database)/documents/ensaios/$(id)).data.cenaId)).data;
+        }
+        allow read: if isAdmin()
+          || (isAuthenticated() && request.auth.uid == uid)
+          || (isAuthenticated() && cenaDoEnsaio().liderUid == request.auth.uid);
+        allow write: if isAdmin()
+          || (isAuthenticated() && request.auth.uid == uid && request.auth.uid in cenaDoEnsaio().participantes)
+          || (isAuthenticated() && cenaDoEnsaio().liderUid == request.auth.uid);
+      }
     }
   }
 }

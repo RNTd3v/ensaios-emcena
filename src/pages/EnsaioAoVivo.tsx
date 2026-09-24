@@ -15,6 +15,7 @@ import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers } from '@/services/firebase/auth'
 import { subscribeToCena } from '@/services/firebase/cenas'
 import {
+  aplicarIndisponibilidades,
   cancelarEnsaio,
   confirmarPresenca,
   createEnsaio,
@@ -23,13 +24,18 @@ import {
   salvarRegistroEnsaio,
   subscribeToEnsaiosDaCena,
   updateEnsaioAnotacoes,
+  migrarAusenciasLegadas,
+  subscribeToAusencias,
+  subscribeToMinhaAusencia,
+  uidsAusentes,
+  uidsIndisponiveis,
   updateEnsaioInfo,
 } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { mapsLink, subscribeToLocais } from '@/services/firebase/locais'
 import { localIcon } from '@/lib/localIcons'
-import type { AppUser, Cena, Ensaio, Inscricao, LocalEnsaio, Personagem } from '@/types'
+import type { AppUser, AusenciaMotivo, Cena, Ensaio, Inscricao, LocalEnsaio, Personagem } from '@/types'
 import { DIA_TO_WEEKDAY, formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { formatDuracao, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { DIAS_ORDER } from '@/lib/dias'
@@ -102,6 +108,14 @@ export function EnsaioAoVivo() {
   const canManageAgenda = !!cena && !!currentUser && (currentUser.role === 'admin' || cena.liderUid === currentUser.uid)
 
   const elenco = useMemo(() => (cena?.personagens ?? []).filter(p => p.participanteUid), [cena?.personagens])
+
+  // Motivos de ausência gravados no formato antigo (no próprio ensaio, legíveis por todo o elenco)
+  // vão pra subcoleção privada assim que admin/líder abre a página.
+  const temAusenciasLegadas = !!ensaio && Object.keys(ensaio.ausencias ?? {}).length > 0
+  useEffect(() => {
+    if (!canManageAgenda || !ensaio || !temAusenciasLegadas) return
+    migrarAusenciasLegadas(ensaio).catch(() => {})
+  }, [canManageAgenda, ensaio, temAusenciasLegadas])
 
   /** Qualquer inscrito com acesso ativo — pra marcar presença de quem foi sem ser do elenco da cena. */
   const pessoas = useMemo(
@@ -176,6 +190,7 @@ export function EnsaioAoVivo() {
     setConfirmandoEnsaio(true)
     try {
       const novoId = await createEnsaio(cena.id, dataParam, horarioNovo, currentUser.uid)
+      await aplicarIndisponibilidades(novoId, uidsIndisponiveis(cena, dataParam, inscricoesByUid)).catch(() => {})
       navigate(`/cenas/${cena.id}/ensaios/${novoId}`, { replace: true })
     } finally {
       setConfirmandoEnsaio(false)
@@ -205,6 +220,7 @@ export function EnsaioAoVivo() {
     setReconfirmando(true)
     try {
       await reconfirmarEnsaio(ensaio.id, currentUser.uid)
+      if (cena) await aplicarIndisponibilidades(ensaio.id, uidsIndisponiveis(cena, ensaio.data, inscricoesByUid)).catch(() => {})
     } finally {
       setReconfirmando(false)
     }
@@ -561,8 +577,35 @@ interface PresencaCardProps {
   podeVerMotivo?: boolean
 }
 
+/**
+ * Motivos de ausência que quem está vendo pode ler: todos (admin/líder, `podeVerTodos`) ou só o
+ * próprio. Lidos da subcoleção privada, com fallback pro legado ainda não migrado.
+ */
+function useMotivosAusencia(ensaio: Ensaio, podeVerTodos: boolean, currentUid: string | undefined) {
+  const [todos, setTodos] = useState<Record<string, AusenciaMotivo>>({})
+  const [meu, setMeu] = useState<AusenciaMotivo | null>(null)
+  useEffect(() => {
+    if (!podeVerTodos) return setTodos({})
+    return subscribeToAusencias(ensaio.id, setTodos)
+  }, [ensaio.id, podeVerTodos])
+  const souAusente = !!currentUid && uidsAusentes(ensaio).includes(currentUid)
+  useEffect(() => {
+    if (podeVerTodos || !currentUid || !souAusente) return setMeu(null)
+    return subscribeToMinhaAusencia(ensaio.id, currentUid, setMeu)
+  }, [ensaio.id, podeVerTodos, currentUid, souAusente])
+
+  return (uid: string): string | undefined => {
+    const legado = ensaio.ausencias?.[uid]?.motivo
+    if (podeVerTodos) return todos[uid]?.motivo ?? legado
+    if (uid === currentUid) return meu?.motivo ?? legado
+    return undefined
+  }
+}
+
 function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, podeVerMotivo }: PresencaCardProps) {
   const currentUid = useAuthStore(s => s.user?.uid)
+  const ausentes = uidsAusentes(ensaio)
+  const motivoDe = useMotivosAusencia(ensaio, !!podeVerMotivo, currentUid)
   const elencoUids = new Set(elenco.map(p => p.participanteUid as string))
   const presentesElenco = (ensaio.presencas ?? []).filter(uid => elencoUids.has(uid)).length
   /** Quem esteve presente sem ser do elenco da cena (adicionado pelo modal de edição). */
@@ -609,9 +652,9 @@ function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, p
                       )}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">{nameFor(uid)}</p>
-                    {!presente && ensaio.ausencias?.[uid] && (
+                    {!presente && ausentes.includes(uid) && (
                       <p className="whitespace-pre-wrap text-xs text-red-600">
-                        Não vai{(podeVerMotivo || uid === currentUid) && `: ${ensaio.ausencias[uid].motivo}`}
+                        Não vai{motivoDe(uid) ? `: ${motivoDe(uid)}` : ''}
                       </p>
                     )}
                   </div>
@@ -620,12 +663,12 @@ function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, p
                       'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
                       presente
                         ? 'border-emerald-500 bg-emerald-500 text-white'
-                        : ensaio.ausencias?.[uid]
+                        : ausentes.includes(uid)
                           ? 'border-red-400 bg-red-50 text-red-500'
                           : 'border-gray-300',
                     )}
                   >
-                    {presente ? <Check className="h-3 w-3" /> : ensaio.ausencias?.[uid] && <X className="h-3 w-3" />}
+                    {presente ? <Check className="h-3 w-3" /> : ausentes.includes(uid) && <X className="h-3 w-3" />}
                   </span>
                 </button>
               )

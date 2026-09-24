@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Check, MessageSquareX, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/Spinner'
 import { Textarea } from '@/components/ui/Textarea'
-import { confirmarPresenca, registrarAusencia } from '@/services/firebase/ensaios'
+import { confirmarPresenca, registrarAusencia, subscribeToMinhaAusencia, uidsAusentes } from '@/services/firebase/ensaios'
 import { canCheckin } from '@/lib/agenda'
-import type { Ensaio } from '@/types'
+import type { AusenciaMotivo, Ensaio } from '@/types'
 
 /** Se o horário de início do ensaio já passou. */
 export function ensaioJaComecou(ensaio: Pick<Ensaio, 'data' | 'horario'>): boolean {
@@ -29,8 +29,16 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  const [minhaAusencia, setMinhaAusencia] = useState<AusenciaMotivo | null>(null)
+  const ausente = uidsAusentes(ensaio).includes(uid)
+  useEffect(() => {
+    if (!ausente) return setMinhaAusencia(null)
+    return subscribeToMinhaAusencia(ensaio.id, uid, setMinhaAusencia)
+  }, [ensaio.id, uid, ausente])
+
   const confirmado = !!ensaio.presencas?.includes(uid)
-  const ausencia = ensaio.ausencias?.[uid]
+  // Motivo privado (subcoleção), com fallback pro legado ainda não migrado.
+  const ausencia = ausente ? { motivo: minhaAusencia?.motivo ?? ensaio.ausencias?.[uid]?.motivo ?? '' } : undefined
   const podeConfirmar = canCheckin(ensaio.data, ensaio.horario, checkinLimiteHoras)
   const comecou = ensaioJaComecou(ensaio)
 
@@ -105,7 +113,8 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras }: Props) {
             <X className="h-4 w-4" />
             Você avisou que não vai
           </p>
-          <p className="mt-0.5 whitespace-pre-wrap text-xs text-red-600">{ausencia.motivo}</p>
+          {ausencia.motivo && <p className="mt-0.5 whitespace-pre-wrap text-xs text-red-600">{ausencia.motivo}</p>}
+          <p className="mt-1 text-[10px] text-red-400">O motivo só aparece pra você, pro líder da cena e pros admins.</p>
         </div>
         {!comecou && (
           <div className="flex gap-2">

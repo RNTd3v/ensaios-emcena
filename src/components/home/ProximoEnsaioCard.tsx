@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CalendarClock, ChevronRight, Clapperboard, MapPin } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -6,13 +6,14 @@ import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { subscribeToCenasDoParticipante } from '@/services/firebase/cenas'
-import { subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
+import { aplicarIndisponibilidades, subscribeToEnsaiosDaCena, uidsIndisponiveis } from '@/services/firebase/ensaios'
+import { getInscricao } from '@/services/firebase/inscricoes'
 import { subscribeToLocais } from '@/services/firebase/locais'
 import { formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { formatHoraCompacta } from '@/lib/cenaHorario'
 import { ensaioStatus } from '@/lib/ensaioStatus'
 import { localIcon } from '@/lib/localIcons'
-import type { Cena, Ensaio, LocalEnsaio } from '@/types'
+import type { Cena, Ensaio, Inscricao, LocalEnsaio } from '@/types'
 
 /**
  * Card em destaque na Home pra quem é do elenco (tem personagem vinculado em alguma cena ativa):
@@ -45,6 +46,26 @@ export function ProximoEnsaioCard({ uid }: { uid: string }) {
   }, [cenaIdsKey])
 
   const todayKey = toDateKey(new Date())
+
+  // Datas marcadas como indisponíveis na inscrição viram "não vou" nos próximos ensaios que a
+  // pessoa ainda não respondeu — cobre ensaios confirmados antes e datas incluídas depois.
+  const [minhaInscricao, setMinhaInscricao] = useState<Inscricao | null>(null)
+  useEffect(() => {
+    getInscricao(uid).then(setMinhaInscricao, () => setMinhaInscricao(null))
+  }, [uid])
+  const jaAplicados = useRef(new Set<string>())
+  useEffect(() => {
+    if (!minhaInscricao?.indisponibilidade?.length) return
+    for (const cena of minhasCenas) {
+      for (const e of ensaiosPorCena[cena.id] ?? []) {
+        if (e.canceledByUid || e.finalizadoAt || e.data < todayKey || jaAplicados.current.has(e.id)) continue
+        if (!uidsIndisponiveis(cena, e.data, { [uid]: minhaInscricao }, e).includes(uid)) continue
+        jaAplicados.current.add(e.id)
+        aplicarIndisponibilidades(e.id, [uid]).catch(() => jaAplicados.current.delete(e.id))
+      }
+    }
+  }, [minhaInscricao, minhasCenas, ensaiosPorCena, todayKey, uid])
+
   const proximo = useMemo(() => {
     const candidatos: { ensaio: Ensaio; cena: Cena }[] = []
     for (const cena of minhasCenas) {

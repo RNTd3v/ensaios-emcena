@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Clock,
   MessageCircle,
+  BookOpen,
   MapPin,
   Settings,
   ShieldOff,
@@ -185,6 +186,11 @@ export function Admin() {
           </div>
         </div>
         <div className="flex shrink-0 gap-2">
+          <Link to="/admin/versiculos">
+            <Button variant="outline" size="icon" title="Versículos" className="border-white/40 bg-white/10 text-white hover:bg-white/20">
+              <BookOpen className="h-4 w-4" />
+            </Button>
+          </Link>
           <Link to="/admin/locais">
             <Button variant="outline" size="icon" title="Locais de ensaio" className="border-white/40 bg-white/10 text-white hover:bg-white/20">
               <MapPin className="h-4 w-4" />

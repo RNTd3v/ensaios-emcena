@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, CheckCircle2, Clock, ExternalLink, Plus, MapPin, Music, NotebookPen, Pause, Pencil, Play, RotateCcw, Shirt, Star, Users, X, XCircle, RefreshCw, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Check, CheckCircle2, Clock, ExternalLink, Plus, MapPin, Music, NotebookPen, Pause, Pencil, Play, RotateCcw, Shirt, Star, Users, X, XCircle, RefreshCw } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,12 +30,13 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { mapsLink, subscribeToLocais } from '@/services/firebase/locais'
 import { localIcon } from '@/lib/localIcons'
 import type { AppUser, Cena, Ensaio, Inscricao, LocalEnsaio, Personagem } from '@/types'
-import { DIA_TO_WEEKDAY, canCheckin, formatRelativeDia, toDateKey } from '@/lib/agenda'
+import { DIA_TO_WEEKDAY, formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { formatDuracao, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { DIAS_ORDER } from '@/lib/dias'
 import { cn } from '@/lib/utils'
 import { ensaioStatus } from '@/lib/ensaioStatus'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
+import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
 
 /**
  * A página de um ensaio. Rotas: `/cenas/:id/ensaios/:ensaioId` (um ensaio específico),
@@ -241,7 +242,7 @@ export function EnsaioAoVivo() {
     )
   }
 
-  const presencaProps = { elenco, users, nameFor, onToggle: togglePresenca }
+  const presencaProps = { elenco, users, nameFor, onToggle: togglePresenca, podeVerMotivo: canManageAgenda }
 
   return (
     <div className="space-y-4">
@@ -535,48 +536,17 @@ interface CheckinCardProps {
   checkinLimiteHoras: number
 }
 
-/**
- * Check-in do próprio participante (quem tem personagem na cena), antes do ensaio: libera no dia,
- * até `checkinLimiteHoras` antes do horário — mesma regra da tela da cena.
- */
+/** A resposta da própria pessoa (quem tem personagem na cena): "Vou" / "Não vou" com motivo. */
 function CheckinCard({ ensaio, elenco, checkinLimiteHoras }: CheckinCardProps) {
   const currentUser = useAuthStore(s => s.user)
-  const [saving, setSaving] = useState(false)
   if (!currentUser || !elenco.some(p => p.participanteUid === currentUser.uid)) return null
-
-  const jaConfirmou = !!ensaio.presencas?.includes(currentUser.uid)
-  if (jaConfirmou) {
-    return (
-      <p className="flex items-center justify-center gap-1.5 rounded-2xl bg-emerald-50 py-2.5 text-sm font-medium text-emerald-700">
-        <Check className="h-4 w-4" />
-        Presença confirmada
-      </p>
-    )
-  }
-  if (!canCheckin(ensaio.data, ensaio.horario, checkinLimiteHoras)) {
-    return (
-      <p className="flex items-center justify-center gap-1.5 text-center text-xs text-white/80">
-        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-        O check-in abre no dia do ensaio, até {checkinLimiteHoras}h antes do horário.
-      </p>
-    )
-  }
-
-  async function handleConfirmar() {
-    if (!currentUser) return
-    setSaving(true)
-    try {
-      await confirmarPresenca(ensaio.id, currentUser.uid)
-    } finally {
-      setSaving(false)
-    }
-  }
-
   return (
-    <Button className="w-full" onClick={handleConfirmar} disabled={saving}>
-      {saving && <Spinner size="sm" className="border-white/40 border-t-white" />}
-      Confirmar presença
-    </Button>
+    <Card>
+      <CardContent className="space-y-2">
+        <p className="text-sm font-semibold">Sua presença</p>
+        <RespostaPresenca ensaio={ensaio} uid={currentUser.uid} checkinLimiteHoras={checkinLimiteHoras} />
+      </CardContent>
+    </Card>
   )
 }
 
@@ -587,9 +557,12 @@ interface PresencaCardProps {
   nameFor: (uid: string) => string
   onToggle: (uid: string) => void
   podeAlterar: (uid: string) => boolean
+  /** Admin/líder veem o motivo de quem avisou que não vai; os demais só veem que a pessoa não vai. */
+  podeVerMotivo?: boolean
 }
 
-function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar }: PresencaCardProps) {
+function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, podeVerMotivo }: PresencaCardProps) {
+  const currentUid = useAuthStore(s => s.user?.uid)
   const elencoUids = new Set(elenco.map(p => p.participanteUid as string))
   const presentesElenco = (ensaio.presencas ?? []).filter(uid => elencoUids.has(uid)).length
   /** Quem esteve presente sem ser do elenco da cena (adicionado pelo modal de edição). */
@@ -636,14 +609,23 @@ function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar }:
                       )}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">{nameFor(uid)}</p>
+                    {!presente && ensaio.ausencias?.[uid] && (
+                      <p className="whitespace-pre-wrap text-xs text-red-600">
+                        Não vai{(podeVerMotivo || uid === currentUid) && `: ${ensaio.ausencias[uid].motivo}`}
+                      </p>
+                    )}
                   </div>
                   <span
                     className={cn(
                       'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
-                      presente ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-gray-300',
+                      presente
+                        ? 'border-emerald-500 bg-emerald-500 text-white'
+                        : ensaio.ausencias?.[uid]
+                          ? 'border-red-400 bg-red-50 text-red-500'
+                          : 'border-gray-300',
                     )}
                   >
-                    {presente && <Check className="h-3 w-3" />}
+                    {presente ? <Check className="h-3 w-3" /> : ensaio.ausencias?.[uid] && <X className="h-3 w-3" />}
                   </span>
                 </button>
               )

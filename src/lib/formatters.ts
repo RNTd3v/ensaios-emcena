@@ -16,3 +16,10 @@ export function whatsappLink(phone: string): string {
   const withCountryCode = digits.startsWith('55') ? digits : `55${digits}`
   return `https://wa.me/${withCountryCode}`
 }
+
+const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+
+/** Formata um valor em reais: 1234.5 -> "R$ 1.234,50". */
+export function formatBRL(valor: number): string {
+  return BRL.format(valor)
+}

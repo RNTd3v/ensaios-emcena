@@ -18,6 +18,7 @@ import { PersonagemDetalhe } from '@/pages/PersonagemDetalhe'
 import { Personagens } from '@/pages/Personagens'
 import { Calendario } from '@/pages/Calendario'
 import { AdminLocais } from '@/pages/AdminLocais'
+import { AdminVersiculos } from '@/pages/AdminVersiculos'
 import { Disponibilidade } from '@/pages/Disponibilidade'
 import { initAuth } from '@/stores/authStore'
 
@@ -54,6 +55,14 @@ function App() {
             element={
               <AdminGuard>
                 <AdminConfig />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="admin/versiculos"
+            element={
+              <AdminGuard>
+                <AdminVersiculos />
               </AdminGuard>
             }
           />

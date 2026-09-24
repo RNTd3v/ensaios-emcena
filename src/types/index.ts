@@ -195,6 +195,8 @@ export interface Ensaio {
   createdAt: string
   /** uids de quem (do elenco, com personagem nessa cena) confirmou presença nesse ensaio. */
   presencas?: string[]
+  /** Quem avisou que não vai, com o motivo — chave é o uid. Confirmar presença limpa a ausência. */
+  ausencias?: Record<string, { motivo: string; registradaEm: string }>
   /** ids de personagens (da cena) com presença obrigatória nesse ensaio específico. */
   obrigatorios?: string[]
   /** Ensaio geral (com todo o elenco reunido, geralmente próximo da apresentação). */
@@ -229,6 +231,35 @@ export interface LocalEnsaio {
   createdAt: string
 }
 
+/** Versículo cadastrado pelo admin (coleção `versiculos`) — a Home sorteia um a cada carregamento. */
+export interface Versiculo {
+  id: string
+  texto: string
+  /** Ex.: "Colossenses 3:23" */
+  referencia: string
+  createdAt: string
+}
+
+/**
+ * Resumo de metas e gastos (doc único `financeiro/resumo`), editado pelo admin em Configurações
+ * enquanto a página própria de metas e gastos não existe. Valores em reais.
+ */
+export interface Financeiro {
+  /** Meta de arrecadação total. */
+  metaTotal?: number
+  rifasVendidas?: number
+  rifasMeta?: number
+  rifasValor?: number
+  docesVendidos?: number
+  docesMeta?: number
+  docesValor?: number
+  ofertasValor?: number
+  /** Orçamento previsto de gastos (opcional). */
+  gastosOrcamento?: number
+  gastosTotal?: number
+  updatedAt?: string
+}
+
 export interface AppSettings {
   eventName: string
   posterImageUrl?: string
@@ -236,6 +267,10 @@ export interface AppSettings {
   /** Imagem de fundo do cabeçalho nas telas internas (logado), diferente da imagem de login. */
   internalBgUrl?: string
   eventDate?: string // YYYY-MM-DD
+  /** Horários das apresentações nesse dia, separados por vírgula (ex.: "10:00, 19:00"). */
+  apresentacaoHorarios?: string
+  /** Link do roteiro (Google Docs/Drive etc.) — sem link, a Home mostra "Em breve". */
+  roteiroUrl?: string
   callToActionText?: string
   /** Mensagem de boas-vindas exibida na Home, personalizável pelo admin. */
   welcomeMessage?: string

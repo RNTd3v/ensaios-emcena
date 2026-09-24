@@ -87,7 +87,7 @@ export function AppLayout() {
               )}
               <MenuItem to="/inscricao" label="Minha inscrição" icon={ClipboardList} end onClick={() => setMenuOpen(false)} />
               {isAdmin && (
-                <MenuItem to="/calendario" label="Calendário" icon={CalendarClock} onClick={() => setMenuOpen(false)} />
+                <MenuItem to="/calendario" label="Calendário geral de ensaios" icon={CalendarClock} onClick={() => setMenuOpen(false)} />
               )}
               {isAdmin && <MenuItem to="/admin" label="Admin" icon={ShieldCheck} onClick={() => setMenuOpen(false)} />}
             </div>

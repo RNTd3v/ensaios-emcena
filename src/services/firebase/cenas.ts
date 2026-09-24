@@ -186,6 +186,15 @@ export function subscribeToCenas(role: UserRole, uid: string, callback: (cenas: 
 }
 
 /**
+ * Cenas das quais `uid` é participante, independente do perfil — um líder ou admin também pode
+ * estar no elenco de outras cenas (usado na Home pro card de próximo ensaio).
+ */
+export function subscribeToCenasDoParticipante(uid: string, callback: (cenas: Cena[]) => void) {
+  const q = query(collection(db, 'cenas'), where('participantes', 'array-contains', uid))
+  return onSnapshot(q, snap => callback(snap.docs.map(d => fromSnap(d.id, d.data()))))
+}
+
+/**
  * Uma cena específica, em tempo real — usado na tela de detalhe. `null` = não existe, foi
  * excluída, ou quem está vendo não tem permissão (regra do Firestore nega e o snapshot vira erro).
  */

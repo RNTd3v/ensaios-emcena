@@ -93,14 +93,42 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Resumo de metas e gastos (card da Home): qualquer autenticado lê, só admin edita.
+    match /financeiro/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Versículos (sorteados na Home): qualquer autenticado lê, só admin cadastra/edita/exclui.
+    match /versiculos/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
     // Ensaios: uma ocorrência (data+horário) de uma cena, confirmada ou cancelada. Mesma
     // visibilidade da cena correspondente (checada via get() na cena referenciada); confirmar
     // (create), cancelar/reconfirmar (update completo) é admin ou o líder daquela cena — cancelar
     // não apaga o documento, só marca `canceledByUid`/`canceledAt`, pra manter o histórico visível.
-    // Participante da cena também pode dar update, mas só pra check-in: só pode se adicionar em
-    // `presencas` (nunca remover outro nem mexer em outro campo). A regra não valida se a pessoa
+    // Participante da cena também pode dar update, mas só na própria resposta: se incluir/tirar
+    // de `presencas` e registrar/limpar a própria ausência em `ausencias` (nunca a de outra pessoa
+    // nem outro campo) — ver presencaPropriaOk/ausenciaPropriaOk. A regra não valida se a pessoa
     // tem personagem nem a janela de horário — isso é responsabilidade do cliente (regras do
     // Firestore não conseguem inspecionar o array `personagens` pra achar `participanteUid`).
+    // Participante mexendo na própria resposta de um ensaio: só pode se incluir ou se tirar de
+    // `presencas` (nada mais muda no array)...
+    function presencaPropriaOk() {
+      let antes = resource.data.get('presencas', []);
+      let depois = request.resource.data.get('presencas', []);
+      return depois == antes
+        || (!(request.auth.uid in antes) && depois == antes.concat([request.auth.uid]))
+        || ((request.auth.uid in antes) && depois == antes.removeAll([request.auth.uid]));
+    }
+
+    // ...e em `ausencias` (mapa uid -> { motivo, registradaEm }) só a própria chave.
+    function ausenciaPropriaOk() {
+      return request.resource.data.get('ausencias', {}).diff(resource.data.get('ausencias', {})).affectedKeys().hasOnly([request.auth.uid]);
+    }
+
     match /ensaios/{id} {
       allow read: if isAdmin()
         || (isAuthenticated()
@@ -115,9 +143,9 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.liderUid == request.auth.uid)
         || (isAuthenticated()
             && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.participantes
-            && !(request.auth.uid in resource.data.presencas)
-            && request.resource.data.presencas == resource.data.presencas.concat([request.auth.uid])
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presencas']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presencas', 'ausencias'])
+            && presencaPropriaOk()
+            && ausenciaPropriaOk());
       allow delete: if isAdmin()
         || (isAuthenticated()
             && get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.liderUid == request.auth.uid);

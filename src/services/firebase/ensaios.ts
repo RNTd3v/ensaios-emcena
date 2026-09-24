@@ -93,14 +93,23 @@ export async function reconfirmarEnsaio(id: string, confirmedByUid: string): Pro
     canceledByUid: deleteField(),
     canceledAt: deleteField(),
     presencas: [],
+    ausencias: deleteField(),
     confirmedByUid,
     confirmedAt: serverTimestamp(),
   })
 }
 
-/** Confirma a presença de `uid` (elenco com personagem na cena) nesse ensaio. */
+/** Confirma a presença de `uid` (elenco com personagem na cena) nesse ensaio — e limpa uma ausência avisada antes. */
 export async function confirmarPresenca(id: string, uid: string): Promise<void> {
-  await updateDoc(doc(db, 'ensaios', id), { presencas: arrayUnion(uid) })
+  await updateDoc(doc(db, 'ensaios', id), { presencas: arrayUnion(uid), [`ausencias.${uid}`]: deleteField() })
+}
+
+/** `uid` avisa que não vai nesse ensaio, com o motivo — sai de `presencas` se tinha confirmado. */
+export async function registrarAusencia(id: string, uid: string, motivo: string): Promise<void> {
+  await updateDoc(doc(db, 'ensaios', id), {
+    presencas: arrayRemove(uid),
+    [`ausencias.${uid}`]: { motivo: motivo.trim(), registradaEm: new Date().toISOString() },
+  })
 }
 
 /** Desmarca a presença de `uid` nesse ensaio — usado por quem gerencia a agenda na tela ao vivo. */

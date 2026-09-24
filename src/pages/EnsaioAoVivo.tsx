@@ -43,6 +43,7 @@ import { cn } from '@/lib/utils'
 import { ensaioStatus } from '@/lib/ensaioStatus'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
+import { subscribeToDependentes } from '@/services/firebase/dependentes'
 import { MusicasCard } from '@/components/midia/MusicasCard'
 
 /**
@@ -543,14 +544,36 @@ interface CheckinCardProps {
 /** A resposta da própria pessoa (quem tem personagem na cena): "Vou" / "Não vou" com motivo. */
 function CheckinCard({ ensaio, elenco, checkinLimiteHoras }: CheckinCardProps) {
   const currentUser = useAuthStore(s => s.user)
-  if (!currentUser || !elenco.some(p => p.participanteUid === currentUser.uid)) return null
+  // Filhos (dependentes) da pessoa: ela responde a presença por eles também.
+  const [dependentes, setDependentes] = useState<Inscricao[]>([])
+  useEffect(() => {
+    if (!currentUser) return
+    return subscribeToDependentes(currentUser.uid, setDependentes)
+  }, [currentUser])
+  if (!currentUser) return null
+
+  const noElenco = (uid: string) => elenco.some(p => p.participanteUid === uid)
+  const filhosNoElenco = dependentes.filter(d => noElenco(d.uid))
+
   return (
-    <Card>
-      <CardContent className="space-y-2">
-        <p className="text-sm font-semibold">Sua presença</p>
-        <RespostaPresenca ensaio={ensaio} uid={currentUser.uid} checkinLimiteHoras={checkinLimiteHoras} />
-      </CardContent>
-    </Card>
+    <>
+      {noElenco(currentUser.uid) && (
+        <Card>
+          <CardContent className="space-y-2">
+            <p className="text-sm font-semibold">Sua presença</p>
+            <RespostaPresenca ensaio={ensaio} uid={currentUser.uid} checkinLimiteHoras={checkinLimiteHoras} />
+          </CardContent>
+        </Card>
+      )}
+      {filhosNoElenco.map(d => (
+        <Card key={d.uid}>
+          <CardContent className="space-y-2">
+            <p className="text-sm font-semibold">Presença de {d.apelido || d.nomeCompleto}</p>
+            <RespostaPresenca ensaio={ensaio} uid={d.uid} checkinLimiteHoras={checkinLimiteHoras} paraQuem={d.apelido || d.nomeCompleto} />
+          </CardContent>
+        </Card>
+      ))}
+    </>
   )
 }
 

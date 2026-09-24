@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { subscribeToCenasDoParticipante } from '@/services/firebase/cenas'
+import { subscribeToCenasDoParticipante, subscribeToCenasDosMeusDependentes } from '@/services/firebase/cenas'
 import { aplicarIndisponibilidades, subscribeToEnsaiosDaCena, uidsIndisponiveis } from '@/services/firebase/ensaios'
 import { getInscricao } from '@/services/firebase/inscricoes'
 import { subscribeToLocais } from '@/services/firebase/locais'
@@ -21,13 +21,29 @@ import type { Cena, Ensaio, Inscricao, LocalEnsaio } from '@/types'
  * a resposta dela ali mesmo ("Vou" / "Não vou" com motivo) e atalho pra página do ensaio.
  * Não renderiza nada pra quem não tem personagem.
  */
-export function ProximoEnsaioCard({ uid }: { uid: string }) {
+export function ProximoEnsaioCard({
+  uid,
+  dependenteDe,
+  nome,
+}: {
+  /** De quem é o ensaio (a própria pessoa, ou um filho). */
+  uid: string
+  /** Modo dependente: `uid` é um filho e quem está vendo (responsável) responde por ele. */
+  dependenteDe?: string
+  nome?: string
+}) {
   const [cenas, setCenas] = useState<Cena[] | null>(null)
   const [ensaiosPorCena, setEnsaiosPorCena] = useState<Record<string, Ensaio[]>>({})
   const [locais, setLocais] = useState<LocalEnsaio[]>([])
   const { settings } = useSettingsStore()
 
-  useEffect(() => subscribeToCenasDoParticipante(uid, setCenas), [uid])
+  useEffect(
+    () =>
+      dependenteDe
+        ? subscribeToCenasDosMeusDependentes(dependenteDe, lista => setCenas(lista.filter(c => c.participantes.includes(uid))))
+        : subscribeToCenasDoParticipante(uid, setCenas),
+    [uid, dependenteDe],
+  )
   useEffect(() => subscribeToLocais(setLocais), [])
 
   const minhasCenas = useMemo(
@@ -79,6 +95,9 @@ export function ProximoEnsaioCard({ uid }: { uid: string }) {
 
   if (!cenas || minhasCenas.length === 0) return null
 
+  // Filho sem ensaio confirmado: não ocupa espaço na Home.
+  if (!proximo && dependenteDe) return null
+
   if (!proximo) {
     return (
       <Link to="/cenas" className="block">
@@ -112,7 +131,9 @@ export function ProximoEnsaioCard({ uid }: { uid: string }) {
       <CardContent className="space-y-3">
         <Link to={ensaioUrl} className="block space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary">Seu próximo ensaio</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+              {dependenteDe ? `Próximo ensaio de ${nome ?? 'dependente'}` : 'Seu próximo ensaio'}
+            </p>
             <EnsaioStatusChip status={ensaioStatus(ensaio, todayKey)} />
           </div>
 
@@ -137,7 +158,12 @@ export function ProximoEnsaioCard({ uid }: { uid: string }) {
         </Link>
 
         <div className="border-t border-gray-100 pt-3">
-          <RespostaPresenca ensaio={ensaio} uid={uid} checkinLimiteHoras={settings.checkinLimiteHoras ?? 2} />
+          <RespostaPresenca
+            ensaio={ensaio}
+            uid={uid}
+            checkinLimiteHoras={settings.checkinLimiteHoras ?? 2}
+            paraQuem={dependenteDe ? nome : undefined}
+          />
         </div>
 
         <Link

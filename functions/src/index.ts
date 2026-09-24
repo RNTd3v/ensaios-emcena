@@ -320,3 +320,39 @@ export const avisoCriado = onDocumentCreated('avisos/{id}', async event => {
   )
   await event.data?.ref.update({ enviadoPara: destinatarios.length, enviadoEm: FieldValue.serverTimestamp() })
 })
+
+// ---------- Dependentes nas cenas ----------
+
+/**
+ * Mantém `cena.responsaveisDependentes`: os responsáveis das crianças (dependentes, id `dep_…`)
+ * que participam da cena. É o que deixa os pais verem a cena/ensaios e responder a presença pelos
+ * filhos (firestore.rules) sem estarem na cena.
+ */
+async function sincronizarResponsaveisDaCena(ref: FirebaseFirestore.DocumentReference, dados: DocumentData): Promise<void> {
+  const deps = ((dados.participantes as string[] | undefined) ?? []).filter(u => u.startsWith('dep_'))
+  const responsaveis = new Set<string>()
+  for (const grupo of chunks(deps, 30)) {
+    const snaps = await db.getAll(...grupo.map(u => db.collection('users').doc(u)))
+    for (const s of snaps) for (const r of ((s.data()?.responsaveisUids as string[] | undefined) ?? [])) responsaveis.add(r)
+  }
+  const novo = [...responsaveis].sort()
+  const atual = [...((dados.responsaveisDependentes as string[] | undefined) ?? [])].sort()
+  if (JSON.stringify(novo) === JSON.stringify(atual)) return // já está certo — evita laço de escrita
+  await ref.update({ responsaveisDependentes: novo })
+}
+
+export const cenaResponsaveisDependentes = onDocumentWritten('cenas/{id}', async event => {
+  const depois = event.data?.after
+  if (!depois?.exists) return
+  await sincronizarResponsaveisDaCena(depois.ref, depois.data() ?? {})
+})
+
+/** Mudou quem é responsável por uma criança: atualiza as cenas em que ela está. */
+export const dependenteResponsaveis = onDocumentUpdated('users/{uid}', async event => {
+  const antes = event.data?.before.data()
+  const depois = event.data?.after.data()
+  if (!depois?.dependente) return
+  if (JSON.stringify(antes?.responsaveisUids ?? []) === JSON.stringify(depois.responsaveisUids ?? [])) return
+  const cenas = await db.collection('cenas').where('participantes', 'array-contains', event.params.uid).get()
+  for (const c of cenas.docs) await sincronizarResponsaveisDaCena(c.ref, c.data())
+})

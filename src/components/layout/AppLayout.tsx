@@ -7,6 +7,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { useSelectionStore } from '@/stores/selectionStore'
 import { useInscricaoStore } from '@/stores/inscricaoStore'
 import { useOracaoVisivel } from '@/hooks/useOracaoVisivel'
+import { useEquipesVisivel } from '@/hooks/useEquipesVisivel'
 import { APP_DOCES_URL, APP_RIFAS_URL } from '@/services/externo/vendas'
 import { PhoneMockup } from '@/components/layout/PhoneMockup'
 import { SinoNotificacoes } from '@/components/layout/SinoNotificacoes'
@@ -22,6 +23,7 @@ export function AppLayout() {
   /** Sem inscrição (e não admin): o menu só mostra "Minha inscrição" — o resto fica bloqueado. */
   const semInscricao = useInscricaoStore(s => s.existe === false) && !isAdmin
   const oracaoVisivel = useOracaoVisivel()
+  const equipesVisivel = useEquipesVisivel()
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -100,7 +102,9 @@ export function AppLayout() {
                 <>
                   <MenuItem to="/" label="Início" icon={Home} end onClick={() => setMenuOpen(false)} />
                   <MenuItem to="/cenas" label={isAdmin ? 'Cenas' : 'Minhas Cenas'} icon={Clapperboard} onClick={() => setMenuOpen(false)} />
-                  <MenuItem to="/equipes" label="Equipes" icon={UsersRound} onClick={() => setMenuOpen(false)} />
+                  {equipesVisivel && (
+                    <MenuItem to="/equipes" label="Equipes" icon={UsersRound} onClick={() => setMenuOpen(false)} />
+                  )}
                   {oracaoVisivel && (
                     <MenuItem to="/oracao" label="Relógio de oração" icon={HandHeart} onClick={() => setMenuOpen(false)} />
                   )}

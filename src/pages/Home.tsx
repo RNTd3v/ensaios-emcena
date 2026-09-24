@@ -8,6 +8,8 @@ import { FinanceiroCards } from '@/components/home/FinanceiroCards'
 import { OrandoAgoraCard } from '@/components/oracao/OrandoAgora'
 import { AtalhosMidia } from '@/components/home/AtalhosMidia'
 import { useOracaoVisivel } from '@/hooks/useOracaoVisivel'
+import { subscribeToDependentes } from '@/services/firebase/dependentes'
+import type { Inscricao } from '@/types'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useAuthStore } from '@/stores/authStore'
 import { getVersiculos, type VersiculoInput } from '@/services/firebase/versiculos'
@@ -44,6 +46,12 @@ export function Home() {
   const versiculo = useVersiculoSorteado()
   const roteiroUrl = useSettingsStore(s => s.settings.roteiroUrl)
   const oracaoVisivel = useOracaoVisivel()
+  // Filhos inscritos pela pessoa: um card de próximo ensaio pra cada, com a resposta por ele.
+  const [dependentes, setDependentes] = useState<Inscricao[]>([])
+  useEffect(() => {
+    if (!user) return
+    return subscribeToDependentes(user.uid, setDependentes)
+  }, [user])
 
   return (
     <div className="space-y-4">
@@ -60,6 +68,8 @@ export function Home() {
       </div>
 
       {user && <ProximoEnsaioCard uid={user.uid} />}
+      {user &&
+        dependentes.map(d => <ProximoEnsaioCard key={d.uid} uid={d.uid} dependenteDe={user.uid} nome={d.apelido || d.nomeCompleto} />)}
 
       {oracaoVisivel && <OrandoAgoraCard linkParaPagina />}
 

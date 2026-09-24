@@ -4,6 +4,7 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { AuthGuard } from '@/components/layout/AuthGuard'
 import { InscricaoGuard } from '@/components/layout/InscricaoGuard'
 import { OracaoGuard } from '@/components/layout/OracaoGuard'
+import { EquipesGuard } from '@/components/layout/EquipesGuard'
 import { AdminGuard } from '@/components/layout/AdminGuard'
 import { AdminOrLiderGuard } from '@/components/layout/AdminOrLiderGuard'
 import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt'
@@ -117,8 +118,23 @@ function App() {
               </OracaoGuard>
             }
           />
-          <Route path="equipes" element={<Equipes />} />
-          <Route path="equipes/:id" element={<EquipeDetalhe />} />
+          {/* Equipes: só admin ou quem faz parte de alguma equipe. */}
+          <Route
+            path="equipes"
+            element={
+              <EquipesGuard>
+                <Equipes />
+              </EquipesGuard>
+            }
+          />
+          <Route
+            path="equipes/:id"
+            element={
+              <EquipesGuard>
+                <EquipeDetalhe />
+              </EquipesGuard>
+            }
+          />
           <Route path="metas-gastos" element={<MetasGastos />} />
           <Route path="notificacoes" element={<Notificacoes />} />
           <Route path="musicas" element={<MusicasPage />} />

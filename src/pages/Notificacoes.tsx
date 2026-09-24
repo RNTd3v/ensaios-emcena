@@ -234,7 +234,7 @@ function PushCard({ uid }: { uid: string }) {
             {erro && <p className="text-xs text-red-600">{erro}</p>}
             <Button className="w-full gap-1.5" onClick={ativar} disabled={ativando}>
               {ativando ? <Spinner size="sm" className="border-white/40 border-t-white" /> : <Bell className="h-4 w-4" />}
-              Ativar notificações neste aparelho
+              Ativar notificações
             </Button>
           </>
         )}

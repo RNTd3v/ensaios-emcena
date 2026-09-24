@@ -90,9 +90,12 @@ service cloud.firestore {
     // próprio ator/atriz preenche na página do personagem) — mas só nesses campos, nada mais; a UI
     // garante que cada um só edita a própria ficha dentro do array, a regra não valida isso.
     match /cenas/{id} {
+      // Responsáveis de crianças (dependentes) da cena também veem — lista mantida pela Cloud
+      // Function `cenaResponsaveisDependentes`.
       allow read: if isAdmin()
         || (isAuthenticated() && resource.data.liderUid == request.auth.uid)
-        || (isAuthenticated() && request.auth.uid in resource.data.participantes);
+        || (isAuthenticated() && request.auth.uid in resource.data.participantes)
+        || (isAuthenticated() && request.auth.uid in resource.data.get('responsaveisDependentes', []));
       allow create: if isAdmin();
       allow update: if isAdmin()
         || (isAuthenticated() && resource.data.liderUid == request.auth.uid
@@ -343,12 +346,40 @@ service cloud.firestore {
         && (cena.get('liderUid', '') == request.auth.uid || request.auth.uid in cena.get('assistentes', []));
     }
 
+    // Responsável por uma criança (dependente): `uid` é um dependente e quem está logado é um dos
+    // responsáveis dele.
+    function responsavelDe(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.get('responsaveisUids', []).hasAny([request.auth.uid]);
+    }
+
+    // Uids que entraram ou saíram de uma lista (presencas/ausentes) nessa escrita.
+    function alteradosEm(campo) {
+      let antes = resource.data.get(campo, []);
+      let depois = request.resource.data.get(campo, []);
+      return depois.removeAll(antes).concat(antes.removeAll(depois));
+    }
+
+    // Pai/mãe respondendo a presença de UM filho: só esse uid muda em presencas/ausentes (e na
+    // chave legada de `ausencias`), ele é participante da cena e quem escreve é responsável por ele.
+    function respostaDeDependenteOk(cena) {
+      // Lista (pode repetir o mesmo uid: entrou em presencas e saiu de ausentes) — tem que ser um só.
+      let alterados = alteradosEm('presencas').concat(alteradosEm('ausentes'));
+      return alterados.size() >= 1
+        && alterados.toSet().size() == 1
+        && alterados[0] in cena.participantes
+        && responsavelDe(alterados[0])
+        && request.resource.data.get('ausencias', {}).diff(resource.data.get('ausencias', {})).affectedKeys()
+             .hasOnly([alterados[0]]);
+    }
+
     match /ensaios/{id} {
       allow read: if isAdmin()
         || (isAuthenticated()
             && get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.liderUid == request.auth.uid)
         || (isAuthenticated()
-            && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.participantes);
+            && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.participantes)
+        || (isAuthenticated()
+            && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.get('responsaveisDependentes', []));
       allow create: if isAdmin()
         || gerenciaEnsaios(get(/databases/$(database)/documents/cenas/$(request.resource.data.cenaId)).data);
       allow update: if isAdmin()
@@ -358,7 +389,11 @@ service cloud.firestore {
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presencas', 'ausentes', 'ausencias'])
             && listaPropriaOk('presencas')
             && listaPropriaOk('ausentes')
-            && ausenciaPropriaOk());
+            && ausenciaPropriaOk())
+        || (isAuthenticated()
+            && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.get('responsaveisDependentes', [])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presencas', 'ausentes', 'ausencias'])
+            && respostaDeDependenteOk(get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data));
       allow delete: if isAdmin()
         || (isAuthenticated()
             && get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.liderUid == request.auth.uid);
@@ -372,10 +407,12 @@ service cloud.firestore {
         }
         allow read: if isAdmin()
           || (isAuthenticated() && request.auth.uid == uid)
-          || gerenciaEnsaios(cenaDoEnsaio());
+          || gerenciaEnsaios(cenaDoEnsaio())
+          || (isAuthenticated() && uid.matches('dep_.*') && responsavelDe(uid));
         allow write: if isAdmin()
           || (isAuthenticated() && request.auth.uid == uid && request.auth.uid in cenaDoEnsaio().participantes)
-          || gerenciaEnsaios(cenaDoEnsaio());
+          || gerenciaEnsaios(cenaDoEnsaio())
+          || (isAuthenticated() && uid.matches('dep_.*') && responsavelDe(uid) && uid in cenaDoEnsaio().participantes);
       }
     }
   }

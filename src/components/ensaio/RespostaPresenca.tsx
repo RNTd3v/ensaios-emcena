@@ -16,6 +16,8 @@ interface Props {
   ensaio: Ensaio
   uid: string
   checkinLimiteHoras: number
+  /** Respondendo por outra pessoa (filho/dependente): o nome dela, pros textos. */
+  paraQuem?: string
 }
 
 /**
@@ -23,7 +25,7 @@ interface Props {
  * "Não vou" com o motivo (a qualquer momento antes do ensaio começar). Dá pra trocar de resposta
  * enquanto o ensaio não começou.
  */
-export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras }: Props) {
+export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem }: Props) {
   const [escrevendoMotivo, setEscrevendoMotivo] = useState(false)
   const [motivo, setMotivo] = useState('')
   const [saving, setSaving] = useState(false)
@@ -111,7 +113,7 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras }: Props) {
         <div className="rounded-lg bg-red-50 px-3 py-2">
           <p className="flex items-center gap-1 text-sm font-medium text-red-700">
             <X className="h-4 w-4" />
-            Você avisou que não vai
+            {paraQuem ? `Avisado que ${paraQuem} não vai` : 'Você avisou que não vai'}
           </p>
           {ausencia.motivo && <p className="mt-0.5 whitespace-pre-wrap text-xs text-red-600">{ausencia.motivo}</p>}
           <p className="mt-1 text-[10px] text-red-400">O motivo só aparece pra você, pra liderança da cena e pros admins.</p>
@@ -139,7 +141,8 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras }: Props) {
     )
   }
 
-  if (comecou) return <p className="text-xs text-muted-foreground">Você não respondeu a esse ensaio.</p>
+  if (comecou)
+    return <p className="text-xs text-muted-foreground">{paraQuem ? `Sem resposta pra ${paraQuem}.` : 'Você não respondeu a esse ensaio.'}</p>
 
   return (
     <div className="space-y-2">

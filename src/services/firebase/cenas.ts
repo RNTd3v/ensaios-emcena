@@ -214,6 +214,19 @@ export function subscribeToCenasDoParticipante(uid: string, callback: (cenas: Ce
 }
 
 /**
+ * Cenas em que algum dependente (filho) de `responsavelUid` participa — pela lista
+ * `responsaveisDependentes` que a Cloud Function mantém na cena (é o que a regra deixa ler).
+ */
+export function subscribeToCenasDosMeusDependentes(responsavelUid: string, callback: (cenas: Cena[]) => void) {
+  const q = query(collection(db, 'cenas'), where('responsaveisDependentes', 'array-contains', responsavelUid))
+  return onSnapshot(
+    q,
+    snap => callback(snap.docs.map(d => fromSnap(d.id, d.data()))),
+    () => callback([]),
+  )
+}
+
+/**
  * Uma cena específica, em tempo real — usado na tela de detalhe. `null` = não existe, foi
  * excluída, ou quem está vendo não tem permissão (regra do Firestore nega e o snapshot vira erro).
  */

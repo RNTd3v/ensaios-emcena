@@ -311,6 +311,22 @@ export interface OracaoConfig {
   orientacoes?: string
 }
 
+/**
+ * Equipe de staff (coleção `equipes`) — Cenário, Iluminação, Figurino etc.; admin cria outras.
+ * Um líder só, vários assistentes; `membros` inclui todo mundo da equipe (líder e assistentes também).
+ */
+export interface Equipe {
+  id: string
+  nome: string
+  /** Chave de `EQUIPE_ICONS` (@/lib/equipeIcons). */
+  icone?: string
+  descricao?: string
+  liderUid?: string
+  assistentes: string[]
+  membros: string[]
+  createdAt: string
+}
+
 export interface AppSettings {
   eventName: string
   posterImageUrl?: string

@@ -125,6 +125,17 @@ service cloud.firestore {
       allow write: if isAdmin() || isEquipeOracao();
     }
 
+    // Equipes de staff: todos leem. Admin cria/exclui e mexe em tudo; o líder da equipe mexe em
+    // membros, assistentes e descrição — mas não troca nome, ícone nem o próprio líder.
+    match /equipes/{id} {
+      allow read: if isAuthenticated();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isAuthenticated()
+            && resource.data.get('liderUid', '') == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['membros', 'assistentes', 'descricao']));
+    }
+
     // Resumo de metas e gastos (card da Home): qualquer autenticado lê, só admin edita.
     match /financeiro/{id} {
       allow read: if isAuthenticated();

@@ -126,14 +126,99 @@ service cloud.firestore {
     }
 
     // Equipes de staff: todos leem. Admin cria/exclui e mexe em tudo; o líder da equipe mexe em
-    // membros, assistentes e descrição — mas não troca nome, ícone nem o próprio líder.
+    // membros, assistentes, descrição e prazo do figurino — mas não troca nome, ícone, líder nem o
+    // que a equipe gerencia. Assistentes só mexem no prazo do figurino.
     match /equipes/{id} {
       allow read: if isAuthenticated();
       allow create, delete: if isAdmin();
       allow update: if isAdmin()
         || (isAuthenticated()
             && resource.data.get('liderUid', '') == request.auth.uid
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['membros', 'assistentes', 'descricao']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['membros', 'assistentes', 'descricao', 'prazoFigurino']))
+        || (isAuthenticated()
+            && request.auth.uid in resource.data.get('assistentes', [])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['prazoFigurino']));
+
+      // Tarefas da equipe: todos leem. Admin, líder e assistentes criam, editam e excluem;
+      // os demais membros só mudam o status. Bloqueado/cancelado sempre com justificativa.
+      match /tarefas/{tarefaId} {
+        function equipe() {
+          return get(/databases/$(database)/documents/equipes/$(id)).data;
+        }
+        function gerenciaEquipe() {
+          return isAdmin()
+            || (isAuthenticated()
+                && (equipe().get('liderUid', '') == request.auth.uid || request.auth.uid in equipe().get('assistentes', [])));
+        }
+        function justificativaOk() {
+          return !(request.resource.data.status in ['bloqueado', 'cancelado'])
+            || (request.resource.data.get('justificativa', '') is string
+                && request.resource.data.get('justificativa', '').size() > 0);
+        }
+        function statusValido() {
+          return request.resource.data.status in ['a_fazer', 'fazendo', 'feito', 'bloqueado', 'cancelado'];
+        }
+
+        allow read: if isAuthenticated();
+        allow create: if gerenciaEquipe() && statusValido() && justificativaOk();
+        allow update: if statusValido() && justificativaOk()
+          && (gerenciaEquipe()
+              || (isAuthenticated()
+                  && request.auth.uid in equipe().get('membros', [])
+                  && request.resource.data.diff(resource.data).affectedKeys()
+                      .hasOnly(['status', 'justificativa', 'statusAtualizadoPorUid', 'statusAtualizadoEm'])));
+        allow delete: if gerenciaEquipe();
+      }
+    }
+
+    // Músicas e figurinos (coleções próprias, cena opcional). Quem cadastra em nome da peça: admin
+    // e membros de uma equipe cuja `gerencia` inclui o tipo — o doc traz o `equipeId` em nome de
+    // quem foi gravado (o Firestore não consegue procurar "alguma equipe" da pessoa).
+    function membroDeEquipeQueGerencia(equipeId, tipo) {
+      return equipeId is string
+        && exists(/databases/$(database)/documents/equipes/$(equipeId))
+        && tipo in get(/databases/$(database)/documents/equipes/$(equipeId)).data.get('gerencia', [])
+        && request.auth.uid in get(/databases/$(database)/documents/equipes/$(equipeId)).data.get('membros', []);
+    }
+    function cenaDoc(cenaId) {
+      return get(/databases/$(database)/documents/cenas/$(cenaId)).data;
+    }
+
+    match /musicas/{id} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin()
+        || (isAuthenticated() && membroDeEquipeQueGerencia(request.resource.data.get('equipeId', null), 'musicas'));
+      allow delete: if isAdmin()
+        || (isAuthenticated() && membroDeEquipeQueGerencia(resource.data.get('equipeId', null), 'musicas'));
+    }
+
+    // Figurinos: admin e a equipe responsável cadastram/editam tudo (referências da peça). O
+    // elenco manda a foto do próprio figurino pela página do personagem: entra `pendente` e o líder
+    // da cena aprova/reprova (só os campos de avaliação). Quem mandou pode excluir enquanto não foi
+    // aprovada.
+    match /figurinos/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin()
+        || (isAuthenticated() && membroDeEquipeQueGerencia(request.resource.data.get('equipeId', null), 'figurinos'))
+        || (isAuthenticated()
+            && request.resource.data.get('cenaId', null) is string
+            && request.resource.data.get('personagemId', null) is string
+            && request.auth.uid in cenaDoc(request.resource.data.cenaId).participantes
+            && request.resource.data.uploadedByUid == request.auth.uid
+            && request.resource.data.get('aprovacao', null) == 'pendente');
+      allow update: if isAdmin()
+        || (isAuthenticated() && membroDeEquipeQueGerencia(request.resource.data.get('equipeId', null), 'figurinos'))
+        || (isAuthenticated()
+            && resource.data.get('cenaId', null) is string
+            && cenaDoc(resource.data.cenaId).get('liderUid', '') == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['aprovacao', 'avaliadoPorUid', 'avaliadoEm', 'motivoReprovacao'])
+            && request.resource.data.aprovacao in ['aprovado', 'reprovado']);
+      allow delete: if isAdmin()
+        || (isAuthenticated() && membroDeEquipeQueGerencia(resource.data.get('equipeId', null), 'figurinos'))
+        || (isAuthenticated()
+            && resource.data.uploadedByUid == request.auth.uid
+            && resource.data.get('aprovacao', null) != 'aprovado');
     }
 
     // Resumo de metas e gastos (card da Home): qualquer autenticado lê, só admin edita.

@@ -20,6 +20,7 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
+import type { MidiaTipo } from '@/types'
 
 /**
  * Ícones que o admin pode escolher pra uma equipe. A chave é o que fica salvo em `Equipe.icone`
@@ -54,11 +55,11 @@ export function equipeIcon(key: string | undefined): LucideIcon {
 }
 
 /** Equipes criadas pelo botão "Criar equipes padrão" (as já existentes com o mesmo nome são puladas). */
-export const EQUIPES_PADRAO: { nome: string; icone: string }[] = [
+export const EQUIPES_PADRAO: { nome: string; icone: string; gerencia?: MidiaTipo[] }[] = [
   { nome: 'Cenário', icone: 'cenario' },
   { nome: 'Iluminação', icone: 'iluminacao' },
-  { nome: 'Sonoplastia', icone: 'som' },
-  { nome: 'Figurino', icone: 'figurino' },
+  { nome: 'Sonoplastia', icone: 'som', gerencia: ['musicas'] },
+  { nome: 'Figurino', icone: 'figurino', gerencia: ['figurinos'] },
   { nome: 'Palco', icone: 'palco' },
   { nome: 'Objetos de cena', icone: 'objetos' },
 ]

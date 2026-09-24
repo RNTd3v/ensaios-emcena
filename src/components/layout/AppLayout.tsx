@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { CalendarClock, CalendarDays, Clapperboard, ClipboardList, Drama, HandHeart, Home, UsersRound, LogOut, Menu, ShieldCheck, X } from 'lucide-react'
+import { CalendarClock, CalendarDays, Clapperboard, ClipboardList, Drama, HandHeart, Home, Music, Shirt, UsersRound, LogOut, Menu, ShieldCheck, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -56,7 +56,7 @@ export function AppLayout() {
             className="absolute right-0 top-0 h-full w-full bg-black/70 backdrop-blur-xl shadow-2xl p-5 pt-[calc(1rem+env(safe-area-inset-top,0px))] flex flex-col text-white"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex shrink-0 items-center justify-between mb-8">
               <div className="flex items-center gap-3 min-w-0">
                 {user?.photoURL ? (
                   <img
@@ -76,26 +76,37 @@ export function AppLayout() {
                 <X className="h-6 w-6 text-white/70" />
               </button>
             </div>
-            <div className="space-y-2">
+            {/* Lista rola sozinha quando não cabe; o "Sair" fica fixo embaixo. */}
+            <div className="-mx-1 min-h-0 flex-1 space-y-2 overflow-y-auto px-1 pb-2">
               <MenuItem to="/" label="Início" icon={Home} end onClick={() => setMenuOpen(false)} />
               <MenuItem to="/cenas" label={isAdmin ? 'Cenas' : 'Minhas Cenas'} icon={Clapperboard} onClick={() => setMenuOpen(false)} />
               <MenuItem to="/equipes" label="Equipes" icon={UsersRound} onClick={() => setMenuOpen(false)} />
-              {isAdmin && (
-                <MenuItem to="/personagens" label="Personagens" icon={Drama} onClick={() => setMenuOpen(false)} />
-              )}
-              {isAdminOrLider && (
-                <MenuItem to="/disponibilidade" label="Disponibilidade" icon={CalendarDays} onClick={() => setMenuOpen(false)} />
-              )}
               <MenuItem to="/oracao" label="Relógio de oração" icon={HandHeart} onClick={() => setMenuOpen(false)} />
-              <MenuItem to="/inscricao" label="Minha inscrição" icon={ClipboardList} end onClick={() => setMenuOpen(false)} />
-              {isAdmin && (
-                <MenuItem to="/calendario" label="Calendário geral de ensaios" icon={CalendarClock} onClick={() => setMenuOpen(false)} />
+
+              <MenuDivider />
+              <MenuItem to="/musicas" label="Músicas" icon={Music} onClick={() => setMenuOpen(false)} />
+              <MenuItem to="/figurinos" label="Figurinos" icon={Shirt} onClick={() => setMenuOpen(false)} />
+
+              {isAdminOrLider && (
+                <>
+                  <MenuDivider label="Admin" />
+                  <MenuItem to="/disponibilidade" label="Disponibilidade" icon={CalendarDays} onClick={() => setMenuOpen(false)} />
+                  {isAdmin && (
+                    <>
+                      <MenuItem to="/personagens" label="Personagens" icon={Drama} onClick={() => setMenuOpen(false)} />
+                      <MenuItem to="/calendario" label="Calendário geral de ensaios" icon={CalendarClock} onClick={() => setMenuOpen(false)} />
+                      <MenuItem to="/admin" label="Admin" icon={ShieldCheck} onClick={() => setMenuOpen(false)} />
+                    </>
+                  )}
+                </>
               )}
-              {isAdmin && <MenuItem to="/admin" label="Admin" icon={ShieldCheck} onClick={() => setMenuOpen(false)} />}
+
+              <MenuDivider />
+              <MenuItem to="/inscricao" label="Minha inscrição" icon={ClipboardList} end onClick={() => setMenuOpen(false)} />
             </div>
             <button
               onClick={() => logout()}
-              className="mt-auto flex items-center gap-3 rounded-xl px-4 py-3 text-base text-white/80 hover:bg-white/10"
+              className="mt-2 flex shrink-0 items-center gap-3 rounded-xl px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] text-base text-white/80 hover:bg-white/10"
             >
               <LogOut className="h-5 w-5" /> Sair
             </button>
@@ -103,6 +114,16 @@ export function AppLayout() {
         </div>
       )}
     </PhoneMockup>
+  )
+}
+
+/** Separador entre grupos do menu, com rótulo opcional (ex.: "Admin"). */
+function MenuDivider({ label }: { label?: string }) {
+  return (
+    <div className="flex items-center gap-2 px-4 pt-3 pb-1" role="separator">
+      {label && <span className="text-[11px] font-semibold uppercase tracking-wider text-white/50">{label}</span>}
+      <span className="h-px flex-1 bg-white/15" />
+    </div>
   )
 }
 

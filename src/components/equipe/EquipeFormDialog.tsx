@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import { createEquipe, updateEquipeDescricao, updateEquipeInfo } from '@/services/firebase/equipes'
 import { DEFAULT_EQUIPE_ICON, EQUIPE_ICONS } from '@/lib/equipeIcons'
 import { cn } from '@/lib/utils'
-import type { AppUser, Equipe } from '@/types'
+import type { AppUser, Equipe, MidiaTipo } from '@/types'
 
 interface Props {
   /** Ausente = criando uma equipe nova (só admin). */
@@ -30,6 +30,7 @@ export function EquipeFormDialog({ equipe, isAdmin, users = {}, onClose, onCreat
   const [icone, setIcone] = useState(equipe?.icone ?? DEFAULT_EQUIPE_ICON)
   const [descricao, setDescricao] = useState(equipe?.descricao ?? '')
   const [liderUid, setLiderUid] = useState(equipe?.liderUid ?? '')
+  const [gerencia, setGerencia] = useState<MidiaTipo[]>(equipe?.gerencia ?? [])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -50,10 +51,10 @@ export function EquipeFormDialog({ equipe, isAdmin, users = {}, onClose, onCreat
     setError('')
     try {
       if (!equipe) {
-        const id = await createEquipe({ nome, icone, descricao })
+        const id = await createEquipe({ nome, icone, descricao, gerencia })
         onCreated?.(id)
       } else if (isAdmin) {
-        await updateEquipeInfo(equipe, { nome, icone, descricao, liderUid: liderUid || undefined })
+        await updateEquipeInfo(equipe, { nome, icone, descricao, liderUid: liderUid || undefined, gerencia })
       } else {
         await updateEquipeDescricao(equipe.id, descricao)
       }
@@ -118,6 +119,31 @@ export function EquipeFormDialog({ equipe, isAdmin, users = {}, onClose, onCreat
               ))}
             </Select>
             <p className="mt-1 text-xs text-muted-foreground">Quem vira líder entra automaticamente na equipe.</p>
+          </div>
+        )}
+
+        {isAdmin && (
+          <div>
+            <Label>Essa equipe cuida de</Label>
+            <p className="text-xs text-muted-foreground">Os membros podem cadastrar e editar isso em qualquer cena.</p>
+            <div className="mt-1.5 space-y-1.5">
+              {(
+                [
+                  ['musicas', 'Músicas'],
+                  ['figurinos', 'Figurinos'],
+                ] as const
+              ).map(([tipo, label]) => (
+                <label key={tipo} className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2.5">
+                  <span className="text-sm text-gray-700">{label}</span>
+                  <input
+                    type="checkbox"
+                    checked={gerencia.includes(tipo)}
+                    onChange={e => setGerencia(prev => (e.target.checked ? [...prev, tipo] : prev.filter(g => g !== tipo)))}
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                </label>
+              ))}
+            </div>
           </div>
         )}
 

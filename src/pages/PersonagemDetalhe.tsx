@@ -11,11 +11,12 @@ import { Spinner } from '@/components/ui/Spinner'
 import { Textarea } from '@/components/ui/Textarea'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers } from '@/services/firebase/auth'
-import { subscribeToCena, updateCenaFigurinos, updateCenaPersonagens } from '@/services/firebase/cenas'
+import { subscribeToCena, updateCenaPersonagens } from '@/services/firebase/cenas'
 import { subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
-import { deleteCenaFile, uploadCenaFile } from '@/services/firebase/storage'
 import { useAuthStore } from '@/stores/authStore'
-import type { AppUser, Cena, Ensaio, FigurinoImagem, Inscricao, PersonagemFicha } from '@/types'
+import { subscribeToEquipes } from '@/services/firebase/equipes'
+import { avaliarFigurino, deleteFigurino, figurinoVisivel, juntarComLegado, subscribeToFigurinos, uploadFigurino } from '@/services/firebase/midias'
+import type { AppUser, Cena, Ensaio, Equipe, FigurinoImagem, Inscricao, PersonagemFicha } from '@/types'
 import { toDateKey, formatRelativeDia } from '@/lib/agenda'
 import { formatHoraCompacta } from '@/lib/cenaHorario'
 import { whatsappLink } from '@/lib/formatters'
@@ -58,18 +59,58 @@ export function PersonagemDetalhe() {
   const personagem = cena?.personagens.find(p => p.id === personagemId)
   const atorInscricao = personagem?.participanteUid ? inscricoesByUid[personagem.participanteUid] : undefined
 
-  const canEditFigurino =
-    !!cena &&
-    !!currentUser &&
-    (currentUser.role === 'admin' || cena.liderUid === currentUser.uid || personagem?.participanteUid === currentUser.uid)
+  /** Quem manda a foto do figurino é o próprio ator/atriz — entra pendente e o líder da cena aprova. */
+  const podeEnviarFigurino = !!currentUser && !!personagem?.participanteUid && personagem.participanteUid === currentUser.uid
+  /** Aprovar/reprovar foto de figurino: líder da cena (ou admin). */
+  const podeAvaliarFigurino = !!cena && !!currentUser && (currentUser.role === 'admin' || cena.liderUid === currentUser.uid)
+
+  // Prazo de envio: definido pela equipe de figurino (vale pra todo mundo). O prazo antigo, por
+  // personagem, só aparece se a equipe ainda não definiu o dela.
+  const [equipes, setEquipes] = useState<Equipe[]>([])
+  useEffect(() => subscribeToEquipes(setEquipes), [])
+  const prazoFigurino =
+    equipes.find(e => e.gerencia?.includes('figurinos') && e.prazoFigurino)?.prazoFigurino ?? personagem?.prazoFigurino
 
   /** Só quem interpreta o personagem edita a própria ficha — nem admin, nem líder. */
   const isAtor = !!currentUser && !!personagem?.participanteUid && personagem.participanteUid === currentUser.uid
 
-  /** Só admin/líder definem o prazo de envio do figurino — o ator sobe fotos, mas não define o prazo. */
-  const canSetPrazoFigurino = !!cena && !!currentUser && (currentUser.role === 'admin' || cena.liderUid === currentUser.uid)
 
-  const fotos = (cena?.figurinos ?? []).filter(f => f.personagemId === personagemId)
+  const [figurinosDaCena, setFigurinosDaCena] = useState<FigurinoImagem[]>([])
+  useEffect(() => {
+    if (!cena?.id) return
+    return subscribeToFigurinos(cena.id, setFigurinosDaCena)
+  }, [cena?.id])
+  // Coleção nova + o que ainda estiver no formato antigo (array na cena), sem duplicar. Todo mundo
+  // vê o que já vale (da equipe ou aprovado); quem mandou vê as suas em qualquer status; o líder vê
+  // as pendentes/reprovadas pra avaliar.
+  const fotos = useMemo(
+    () =>
+      (cena ? juntarComLegado(figurinosDaCena, cena.figurinos, { cenaId: cena.id, cenaNome: cena.nome }) : []).filter(
+        f =>
+          f.personagemId === personagemId &&
+          (figurinoVisivel(f) || f.uploadedByUid === currentUser?.uid || podeAvaliarFigurino),
+      ),
+    [figurinosDaCena, cena, personagemId, currentUser?.uid, podeAvaliarFigurino],
+  )
+  /** Excluir (igual às firestore.rules): admin, ou quem mandou enquanto não foi aprovada. */
+  function podeExcluirFoto(f: FigurinoImagem & { legado?: boolean }) {
+    if (f.legado || !currentUser) return false
+    return currentUser.role === 'admin' || (f.uploadedByUid === currentUser.uid && f.aprovacao !== 'aprovado')
+  }
+
+  const [motivoReprovacao, setMotivoReprovacao] = useState('')
+  const [reprovando, setReprovando] = useState(false)
+  async function handleAvaliar(f: FigurinoImagem, aprovado: boolean) {
+    if (!currentUser) return
+    setUploading(true)
+    try {
+      await avaliarFigurino(f.id, aprovado, motivoReprovacao, currentUser.uid)
+      setReprovando(false)
+      setMotivoReprovacao('')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const galeriaInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -80,12 +121,10 @@ export function PersonagemDetalhe() {
 
   async function handleUpload(fileList: FileList | null) {
     if (!fileList || !cena || !currentUser || !personagemId) return
-    const files = Array.from(fileList)
     setUploadError('')
     setUploading(true)
     try {
-      const novas: FigurinoImagem[] = []
-      for (const file of files) {
+      for (const file of Array.from(fileList)) {
         if (!file.type.startsWith('image/')) {
           setUploadError('Só imagens são aceitas.')
           continue
@@ -94,18 +133,11 @@ export function PersonagemDetalhe() {
           setUploadError('Cada foto precisa ter até 5MB.')
           continue
         }
-        const uploaded = await uploadCenaFile(cena.id, 'figurino', file)
-        novas.push({
-          id: uploaded.id,
-          url: uploaded.url,
-          path: uploaded.path,
-          personagemId,
-          uploadedByUid: currentUser.uid,
-          uploadedAt: new Date().toISOString(),
-        })
-      }
-      if (novas.length) {
-        await updateCenaFigurinos(cena.id, [...(cena.figurinos ?? []), ...novas], currentUser.uid)
+        await uploadFigurino(
+          file,
+          { cenaId: cena.id, cenaNome: cena.nome, personagemId, personagemNome: personagem?.nome, aprovacao: 'pendente' },
+          currentUser.uid,
+        )
       }
     } catch {
       setUploadError('Não foi possível enviar. Tente de novo.')
@@ -115,11 +147,9 @@ export function PersonagemDetalhe() {
   }
 
   async function handleDelete(item: FigurinoImagem) {
-    if (!cena || !currentUser) return
     setUploading(true)
     try {
-      await updateCenaFigurinos(cena.id, (cena.figurinos ?? []).filter(f => f.id !== item.id), currentUser.uid)
-      await deleteCenaFile(item.path)
+      await deleteFigurino(item)
       setDeleteTarget(null)
       setViewerIndex(null)
     } finally {
@@ -152,30 +182,6 @@ export function PersonagemDetalhe() {
       await updateCenaPersonagens(cena.id, novaLista, currentUser.uid)
     } finally {
       setSavingFicha(false)
-    }
-  }
-
-  // ---------- Prazo do figurino ----------
-  const [prazoFigurinoDraft, setPrazoFigurinoDraft] = useState('')
-  const [prazoFigurinoCarregado, setPrazoFigurinoCarregado] = useState(false)
-  const [savingPrazoFigurino, setSavingPrazoFigurino] = useState(false)
-
-  useEffect(() => {
-    if (!personagem || prazoFigurinoCarregado) return
-    setPrazoFigurinoDraft(personagem.prazoFigurino ?? '')
-    setPrazoFigurinoCarregado(true)
-  }, [personagem, prazoFigurinoCarregado])
-
-  async function handleSavePrazoFigurino() {
-    if (!cena || !currentUser || !personagem) return
-    setSavingPrazoFigurino(true)
-    try {
-      const novaLista = cena.personagens.map(p =>
-        p.id === personagem.id ? { ...p, prazoFigurino: prazoFigurinoDraft || undefined } : p,
-      )
-      await updateCenaPersonagens(cena.id, novaLista, currentUser.uid)
-    } finally {
-      setSavingPrazoFigurino(false)
     }
   }
 
@@ -343,50 +349,31 @@ export function PersonagemDetalhe() {
                 </p>
               </div>
               <p className="text-xs text-muted-foreground">
-                Fotos de referência do figurino desse personagem, pra {personagem.participanteUid ? 'quem interpreta' : 'o elenco'}{' '}
-                preencher.
+                {podeEnviarFigurino
+                  ? 'Mande fotos do seu figurino. Elas passam pela aprovação do líder da cena.'
+                  : 'Fotos do figurino desse personagem.'}
               </p>
 
-              {personagem.prazoFigurino && (
+              {prazoFigurino && (
                 <div
                   className={cn(
                     'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium',
-                    todayKey > personagem.prazoFigurino ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700',
+                    todayKey > prazoFigurino ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700',
                   )}
                 >
-                  {todayKey > personagem.prazoFigurino ? (
+                  {todayKey > prazoFigurino ? (
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                   ) : (
                     <Clock className="h-3.5 w-3.5 shrink-0" />
                   )}
                   <span>
-                    Prazo pra enviar o figurino: {new Date(`${personagem.prazoFigurino}T00:00:00`).toLocaleDateString('pt-BR')}
-                    {todayKey > personagem.prazoFigurino && ' (vencido)'}
+                    Prazo pra enviar o figurino: {new Date(`${prazoFigurino}T00:00:00`).toLocaleDateString('pt-BR')}
+                    {todayKey > prazoFigurino && ' (vencido)'}
                   </span>
                 </div>
               )}
 
-              {canSetPrazoFigurino && (
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <Label htmlFor="prazo-figurino">Prazo pra enviar (opcional)</Label>
-                    <Input
-                      id="prazo-figurino"
-                      type="date"
-                      value={prazoFigurinoDraft}
-                      onChange={e => setPrazoFigurinoDraft(e.target.value)}
-                    />
-                  </div>
-                  {prazoFigurinoDraft !== (personagem.prazoFigurino ?? '') && (
-                    <Button size="sm" onClick={handleSavePrazoFigurino} disabled={savingPrazoFigurino}>
-                      {savingPrazoFigurino && <Spinner size="sm" className="border-white/40 border-t-white" />}
-                      Salvar
-                    </Button>
-                  )}
-                </div>
-              )}
-
-              {canEditFigurino && (
+              {podeEnviarFigurino && (
                 <div className="flex gap-2">
                   <Button variant="outline" className="flex-1 gap-1.5" onClick={() => cameraInputRef.current?.click()} disabled={uploading}>
                     <Camera className="h-4 w-4" />
@@ -431,9 +418,19 @@ export function PersonagemDetalhe() {
                       key={f.id}
                       type="button"
                       onClick={() => setViewerIndex(index)}
-                      className="aspect-square overflow-hidden rounded-lg bg-gray-100"
+                      className="relative aspect-square overflow-hidden rounded-lg bg-gray-100"
                     >
                       <img src={f.url} alt="" className="h-full w-full object-cover" />
+                      {f.aprovacao && f.aprovacao !== 'aprovado' && (
+                        <span
+                          className={cn(
+                            'absolute left-1 top-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium text-white',
+                            f.aprovacao === 'pendente' ? 'bg-amber-500' : 'bg-red-500',
+                          )}
+                        >
+                          {f.aprovacao === 'pendente' ? 'Aguardando' : 'Reprovada'}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -507,7 +504,49 @@ export function PersonagemDetalhe() {
             <p className="text-center text-xs text-muted-foreground">
               {viewerIndex + 1}/{fotos.length}
             </p>
-            {canEditFigurino && (
+            {fotos[viewerIndex].aprovacao === 'pendente' && (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Aguardando aprovação do líder da cena.</p>
+            )}
+            {fotos[viewerIndex].aprovacao === 'reprovado' && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                Reprovada{fotos[viewerIndex].motivoReprovacao ? `: ${fotos[viewerIndex].motivoReprovacao}` : '.'}
+              </p>
+            )}
+            {fotos[viewerIndex].aprovacao === 'aprovado' && (
+              <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">Aprovada.</p>
+            )}
+            {podeAvaliarFigurino && fotos[viewerIndex].aprovacao && fotos[viewerIndex].aprovacao !== 'aprovado' &&
+              (reprovando ? (
+                <div className="space-y-2">
+                  <Textarea
+                    value={motivoReprovacao}
+                    onChange={e => setMotivoReprovacao(e.target.value)}
+                    placeholder="O que precisa mudar? (opcional)"
+                  />
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={() => setReprovando(false)} disabled={uploading}>
+                      Voltar
+                    </Button>
+                    <Button variant="destructive" className="flex-1" onClick={() => handleAvaliar(fotos[viewerIndex], false)} disabled={uploading}>
+                      Reprovar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  {fotos[viewerIndex].aprovacao === 'pendente' && (
+                    <Button variant="outline" className="flex-1 gap-1.5 text-red-600" onClick={() => setReprovando(true)} disabled={uploading}>
+                      <X className="h-4 w-4" />
+                      Reprovar
+                    </Button>
+                  )}
+                  <Button className="flex-1 gap-1.5" onClick={() => handleAvaliar(fotos[viewerIndex], true)} disabled={uploading}>
+                    <Check className="h-4 w-4" />
+                    Aprovar
+                  </Button>
+                </div>
+              ))}
+            {podeExcluirFoto(fotos[viewerIndex]) && (
               <Button variant="destructive" className="w-full gap-1.5" onClick={() => setDeleteTarget(fotos[viewerIndex])}>
                 <Trash2 className="h-4 w-4" />
                 Excluir

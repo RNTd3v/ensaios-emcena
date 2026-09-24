@@ -7,6 +7,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
 import { EquipeFormDialog } from '@/components/equipe/EquipeFormDialog'
+import { TarefasCard } from '@/components/equipe/TarefasCard'
+import { PrazoFigurinoCard } from '@/components/equipe/PrazoFigurinoCard'
+import { MusicasCard } from '@/components/midia/MusicasCard'
+import { FigurinosCard } from '@/components/midia/FigurinosCard'
 import { useUsersMap } from '@/components/oracao/OrandoAgora'
 import { deleteEquipe, subscribeToEquipe, updateEquipePessoas } from '@/services/firebase/equipes'
 import { useAuthStore } from '@/stores/authStore'
@@ -15,8 +19,9 @@ import { cn } from '@/lib/utils'
 import type { Equipe } from '@/types'
 
 /**
- * Detalhe de uma equipe: líder, assistentes e membros. Admin e o líder da equipe adicionam/removem
- * pessoas e marcam assistentes; nome, ícone e líder só o admin troca (pelo lápis).
+ * Detalhe de uma equipe: tarefas, líder, assistentes e membros. Admin e o líder da equipe
+ * adicionam/removem pessoas e marcam assistentes; nome, ícone e líder só o admin troca (pelo lápis).
+ * Tarefas: admin, líder e assistentes cadastram; membros atualizam o status.
  */
 export function EquipeDetalhe() {
   const { id } = useParams<{ id: string }>()
@@ -38,6 +43,10 @@ export function EquipeDetalhe() {
   const isAdmin = currentUser?.role === 'admin'
   const isLider = !!equipe && !!currentUser && equipe.liderUid === currentUser.uid
   const podeGerenciar = isAdmin || isLider
+  /** Tarefas: além de admin e líder, os assistentes também criam e editam. */
+  const podeGerenciarTarefas = podeGerenciar || (!!equipe && !!currentUser && equipe.assistentes.includes(currentUser.uid))
+  /** Músicas/figurinos que a equipe gerencia: qualquer membro (e admin) cadastra e edita, aqui. */
+  const podeGerenciarMidia = isAdmin || (!!equipe && !!currentUser && equipe.membros.includes(currentUser.uid))
 
   const nameFor = (uid: string) => users[uid]?.displayName ?? 'Sem nome'
 
@@ -122,11 +131,22 @@ export function EquipeDetalhe() {
         </Card>
       )}
 
+      <TarefasCard equipe={equipe} users={users} podeGerenciar={podeGerenciarTarefas} />
+
+      {equipe.gerencia?.includes('figurinos') && (
+        <>
+          <PrazoFigurinoCard key={equipe.prazoFigurino ?? ''} equipe={equipe} podeEditar={podeGerenciarTarefas} />
+          <FigurinosCard gerenciar={podeGerenciarMidia ? { equipeId: equipe.id } : undefined} />
+        </>
+      )}
+
+      {equipe.gerencia?.includes('musicas') && (
+        <MusicasCard gerenciar={podeGerenciarMidia ? { equipeId: equipe.id } : undefined} />
+      )}
+
       <Card>
         <CardContent className="space-y-3">
-          <p className="text-sm font-semibold">
-            Pessoas ({equipe.membros.length})
-          </p>
+          <p className="text-sm font-semibold">Pessoas ({equipe.membros.length})</p>
 
           {equipe.liderUid ? (
             <div className="flex items-center gap-2.5">

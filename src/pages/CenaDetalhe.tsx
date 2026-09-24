@@ -12,15 +12,12 @@ import {
   ExternalLink,
   Info,
   HandHelping,
-  Image,
   MessageCircle,
-  Music,
   NotebookPen,
   Pencil,
   Pin,
   Play,
   Plus,
-  RefreshCw,
   Shirt,
   Star,
   Trash2,
@@ -42,17 +39,14 @@ import {
   subscribeToCena,
   subscribeToCenas,
   updateCenaAgenda,
-  updateCenaFigurinos,
   updateCenaAssistentes,
   updateCenaLider,
-  updateCenaMusicas,
   updateCenaNome,
   updateCenaParticipantes,
   updateCenaPersonagens,
   updateCenaRoteiro,
 } from '@/services/firebase/cenas'
 import { preservarPersonagensNoCatalogo } from '@/services/firebase/personagens'
-import { deleteCenaFile, uploadCenaFile } from '@/services/firebase/storage'
 import {
   aplicarIndisponibilidades,
   cancelarEnsaio,
@@ -66,6 +60,10 @@ import {
   uidsIndisponiveis,
 } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
+import { MusicasCard } from '@/components/midia/MusicasCard'
+import { FigurinosCard } from '@/components/midia/FigurinosCard'
+import { AprovacoesFigurinoCard } from '@/components/midia/AprovacoesFigurinoCard'
+import { useMigrarMidiasLegadas } from '@/hooks/useMigrarMidiasLegadas'
 import { useSettingsStore } from '@/stores/settingsStore'
 import {
   DIA_SEMANA_LABELS,
@@ -73,14 +71,11 @@ import {
   type Cena,
   type DiaSemana,
   type Ensaio,
-  type FigurinoImagem,
   type Inscricao,
-  type Musica,
   type Personagem,
 } from '@/types'
 import { DIAS_ORDER, diasDisponiveis, sortDias } from '@/lib/dias'
 import { formatDuracao, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
-import { FIGURINO_MAX_BYTES, MUSICA_MAX_BYTES } from '@/lib/uploads'
 import { whatsappLink } from '@/lib/formatters'
 import { addDays, canCheckin, DIA_TO_WEEKDAY, formatRelativeDia, toDateKey, weekDates } from '@/lib/agenda'
 import { cn } from '@/lib/utils'
@@ -132,7 +127,7 @@ export function CenaDetalhe() {
 
   const isLiderDaCena = !!cena && !!currentUser && cena.liderUid === currentUser.uid
   const isAssistenteDaCena = !!cena && !!currentUser && !!cena.assistentes?.includes(currentUser.uid)
-  /** Estrutura da cena (agenda recorrente, grupo, assistentes, figurinos): admin e líder. */
+  /** Estrutura da cena (agenda recorrente, grupo, assistentes): admin e líder. */
   const canManageCena = isAdmin || isLiderDaCena
   /** Dia a dia dos ensaios (confirmar, abrir, presença...): também os assistentes. */
   const canManageAgenda = canManageCena || isAssistenteDaCena
@@ -169,24 +164,7 @@ export function CenaDetalhe() {
 
   const [anotacoesOpen, setAnotacoesOpen] = useState(false)
 
-  const figurinoInputRef = useRef<HTMLInputElement>(null)
-  const [uploadingFigurino, setUploadingFigurino] = useState(false)
-  const [figurinoError, setFigurinoError] = useState('')
-  const [figurinoViewerIndex, setFigurinoViewerIndex] = useState<number | null>(null)
-  const [figurinoUploadModalOpen, setFigurinoUploadModalOpen] = useState(false)
-  const [figurinoUploadEscopo, setFigurinoUploadEscopo] = useState<'geral' | 'personagem'>('geral')
-  const [figurinoUploadPersonagemId, setFigurinoUploadPersonagemId] = useState('')
-  const [figurinoDeleteTarget, setFigurinoDeleteTarget] = useState<FigurinoImagem | null>(null)
 
-  const musicaInputRef = useRef<HTMLInputElement>(null)
-  const trocarMusicaInputRef = useRef<HTMLInputElement>(null)
-  const [uploadingMusica, setUploadingMusica] = useState(false)
-  const [musicaError, setMusicaError] = useState('')
-  const [trocandoMusicaId, setTrocandoMusicaId] = useState<string | null>(null)
-  const [musicaDeleteTarget, setMusicaDeleteTarget] = useState<Musica | null>(null)
-  const [musicaRenameTarget, setMusicaRenameTarget] = useState<Musica | null>(null)
-  const [musicaRenameDraft, setMusicaRenameDraft] = useState('')
-  const [savingMusicaRename, setSavingMusicaRename] = useState(false)
 
   const [weekBase, setWeekBase] = useState(() => new Date())
 
@@ -210,6 +188,9 @@ export function CenaDetalhe() {
     if (!id) return
     return subscribeToCena(id, setCena)
   }, [id])
+
+  // Admin abrindo a cena: músicas/figurinos do formato antigo vão pras coleções próprias.
+  useMigrarMidiasLegadas(cena ? [cena] : null)
 
   useEffect(() => subscribeToAllInscricoes(setInscricoes), [])
 
@@ -275,14 +256,6 @@ export function CenaDetalhe() {
     () => [...(cena?.personagens ?? [])].sort((a, b) => Number(!!b.recorrente) - Number(!!a.recorrente)),
     [cena?.personagens],
   )
-
-  /** Figurinos na ordem de exibição da galeria: gerais primeiro, depois agrupados por personagem. */
-  const figurinosOrdenados = useMemo(() => {
-    const figurinos = cena?.figurinos ?? []
-    const gerais = figurinos.filter(f => !f.personagemId)
-    const porPersonagem = (cena?.personagens ?? []).flatMap(p => figurinos.filter(f => f.personagemId === p.id))
-    return [...gerais, ...porPersonagem]
-  }, [cena?.figurinos, cena?.personagens])
 
   const availableParaAdicionar = useMemo(
     () =>
@@ -666,160 +639,6 @@ export function CenaDetalhe() {
     setDraft(allIds.every(id => draft.includes(id)) ? [] : allIds)
   }
 
-  function openFigurinoUploadModal() {
-    setFigurinoUploadEscopo('geral')
-    setFigurinoUploadPersonagemId('')
-    setFigurinoError('')
-    setFigurinoUploadModalOpen(true)
-  }
-
-  async function handleUploadFigurino(fileList: FileList | null) {
-    if (!fileList || !cena || !currentUser) return
-    const personagemId = figurinoUploadEscopo === 'personagem' ? figurinoUploadPersonagemId || undefined : undefined
-    const files = Array.from(fileList)
-    setFigurinoError('')
-    setUploadingFigurino(true)
-    try {
-      const novos: FigurinoImagem[] = []
-      for (const file of files) {
-        if (!file.type.startsWith('image/')) {
-          setFigurinoError('Só imagens são aceitas.')
-          continue
-        }
-        if (file.size > FIGURINO_MAX_BYTES) {
-          setFigurinoError('Cada imagem precisa ter até 5MB.')
-          continue
-        }
-        const uploaded = await uploadCenaFile(cena.id, 'figurino', file)
-        novos.push({
-          id: uploaded.id,
-          url: uploaded.url,
-          path: uploaded.path,
-          personagemId,
-          uploadedByUid: currentUser.uid,
-          uploadedAt: new Date().toISOString(),
-        })
-      }
-      if (novos.length) {
-        await updateCenaFigurinos(cena.id, [...(cena.figurinos ?? []), ...novos], currentUser.uid)
-        setFigurinoUploadModalOpen(false)
-      }
-    } catch {
-      setFigurinoError('Não foi possível enviar. Tente de novo.')
-    } finally {
-      setUploadingFigurino(false)
-    }
-  }
-
-  async function handleDeleteFigurino(item: FigurinoImagem) {
-    if (!cena || !currentUser) return
-    setUploadingFigurino(true)
-    try {
-      await updateCenaFigurinos(cena.id, (cena.figurinos ?? []).filter(f => f.id !== item.id), currentUser.uid)
-      await deleteCenaFile(item.path)
-      setFigurinoDeleteTarget(null)
-      setFigurinoViewerIndex(null)
-    } finally {
-      setUploadingFigurino(false)
-    }
-  }
-
-  async function handleUploadMusica(fileList: FileList | null) {
-    if (!fileList || !cena || !currentUser) return
-    const files = Array.from(fileList)
-    setMusicaError('')
-    setUploadingMusica(true)
-    try {
-      const novas: Musica[] = []
-      for (const file of files) {
-        if (!file.type.startsWith('audio/')) {
-          setMusicaError('Só arquivos de áudio são aceitos.')
-          continue
-        }
-        if (file.size > MUSICA_MAX_BYTES) {
-          setMusicaError('Cada música precisa ter até 15MB.')
-          continue
-        }
-        const uploaded = await uploadCenaFile(cena.id, 'musicas', file)
-        novas.push({
-          id: uploaded.id,
-          nome: file.name.replace(/\.[^.]+$/, ''),
-          url: uploaded.url,
-          path: uploaded.path,
-          uploadedByUid: currentUser.uid,
-          uploadedAt: new Date().toISOString(),
-        })
-      }
-      if (novas.length) {
-        await updateCenaMusicas(cena.id, [...(cena.musicas ?? []), ...novas], currentUser.uid)
-      }
-    } catch {
-      setMusicaError('Não foi possível enviar. Tente de novo.')
-    } finally {
-      setUploadingMusica(false)
-    }
-  }
-
-  async function handleDeleteMusica(item: Musica) {
-    if (!cena || !currentUser) return
-    setUploadingMusica(true)
-    try {
-      await updateCenaMusicas(cena.id, (cena.musicas ?? []).filter(m => m.id !== item.id), currentUser.uid)
-      await deleteCenaFile(item.path)
-      setMusicaDeleteTarget(null)
-    } finally {
-      setUploadingMusica(false)
-    }
-  }
-
-  function openMusicaRename(item: Musica) {
-    setMusicaRenameDraft(item.nome)
-    setMusicaRenameTarget(item)
-  }
-
-  async function handleSaveMusicaRename() {
-    if (!cena || !currentUser || !musicaRenameTarget) return
-    const nome = musicaRenameDraft.trim()
-    if (!nome) return
-    setSavingMusicaRename(true)
-    try {
-      const novaLista = (cena.musicas ?? []).map(m => (m.id === musicaRenameTarget.id ? { ...m, nome } : m))
-      await updateCenaMusicas(cena.id, novaLista, currentUser.uid)
-      setMusicaRenameTarget(null)
-    } finally {
-      setSavingMusicaRename(false)
-    }
-  }
-
-  async function handleTrocarMusica(item: Musica, file: File) {
-    if (!cena || !currentUser) return
-    setMusicaError('')
-    if (!file.type.startsWith('audio/')) {
-      setMusicaError('Só arquivos de áudio são aceitos.')
-      return
-    }
-    if (file.size > MUSICA_MAX_BYTES) {
-      setMusicaError('Cada música precisa ter até 15MB.')
-      return
-    }
-    setUploadingMusica(true)
-    try {
-      const uploaded = await uploadCenaFile(cena.id, 'musicas', file)
-      const novaLista = (cena.musicas ?? []).map(m =>
-        m.id === item.id
-          ? { ...m, url: uploaded.url, path: uploaded.path, uploadedByUid: currentUser.uid, uploadedAt: new Date().toISOString() }
-          : m,
-      )
-      await updateCenaMusicas(cena.id, novaLista, currentUser.uid)
-      await deleteCenaFile(item.path)
-    } catch {
-      setMusicaError('Não foi possível trocar. Tente de novo.')
-    } finally {
-      setUploadingMusica(false)
-      setTrocandoMusicaId(null)
-    }
-  }
-
   const hasPendingConfirmation = weekOccurrences.some(o => !ensaiosByDate[o.dateKey] || isCanceled(ensaiosByDate[o.dateKey]))
 
   return (
@@ -1151,100 +970,7 @@ export function CenaDetalhe() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="space-y-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <p className="flex items-center gap-1.5 text-base font-semibold">
-                  <Music className="h-4 w-4 text-primary" />
-                  Músicas
-                </p>
-                {isAdmin && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => musicaInputRef.current?.click()}
-                    disabled={uploadingMusica}
-                    title="Adicionar música"
-                  >
-                    {uploadingMusica ? <Spinner size="sm" /> : <Plus className="h-4 w-4" />}
-                  </Button>
-                )}
-              </div>
-              <input
-                ref={musicaInputRef}
-                type="file"
-                accept="audio/*"
-                multiple
-                className="hidden"
-                onChange={e => {
-                  handleUploadMusica(e.target.files)
-                  e.target.value = ''
-                }}
-              />
-              <input
-                ref={trocarMusicaInputRef}
-                type="file"
-                accept="audio/*"
-                className="hidden"
-                onChange={e => {
-                  const file = e.target.files?.[0]
-                  const item = cena.musicas?.find(m => m.id === trocandoMusicaId)
-                  if (file && item) handleTrocarMusica(item, file)
-                  e.target.value = ''
-                }}
-              />
-              {musicaError && <p className="text-xs text-red-600">{musicaError}</p>}
-              {!cena.musicas?.length ? (
-                <p className="text-xs text-muted-foreground py-1">Nenhuma música ainda.</p>
-              ) : (
-                <div className="space-y-2.5">
-                  {cena.musicas.map(m => (
-                    <div key={m.id} className="space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-sm font-medium">{m.nome}</p>
-                        {isAdmin && (
-                          <div className="flex shrink-0 items-center gap-0.5">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => openMusicaRename(m)}
-                              disabled={uploadingMusica}
-                              title="Renomear"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => {
-                                setTrocandoMusicaId(m.id)
-                                trocarMusicaInputRef.current?.click()
-                              }}
-                              disabled={uploadingMusica}
-                              title="Trocar arquivo"
-                            >
-                              <RefreshCw className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setMusicaDeleteTarget(m)}
-                              disabled={uploadingMusica}
-                              title="Excluir"
-                              className="text-red-600"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                      <audio controls src={m.url} className="h-9 w-full" />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <MusicasCard cena={cena} />
 
           {registros.length > 0 && (
             <Card>
@@ -1300,54 +1026,9 @@ export function CenaDetalhe() {
             Iniciar ensaio
           </Button>
 
-          <Card>
-            <CardContent className="space-y-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <p className="flex items-center gap-1.5 text-base font-semibold">
-                  <Image className="h-4 w-4 text-primary" />
-                  Ideias de figurinos
-                </p>
-                {canManageCena && (
-                  <Button variant="ghost" size="icon" onClick={openFigurinoUploadModal} title="Adicionar foto">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-              <input
-                ref={figurinoInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={e => {
-                  handleUploadFigurino(e.target.files)
-                  e.target.value = ''
-                }}
-              />
-              {!cena.figurinos?.length ? (
-                <p className="text-xs text-muted-foreground py-1">Sem ideias ainda.</p>
-              ) : (
-                <div className="grid grid-cols-3 gap-1.5">
-                  {figurinosOrdenados.map((f, index) => {
-                    const personagemNome = f.personagemId ? cena.personagens.find(p => p.id === f.personagemId)?.nome : undefined
-                    return (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => setFigurinoViewerIndex(index)}
-                        className="relative aspect-square overflow-hidden rounded-lg bg-gray-100"
-                      >
-                        <img src={f.url} alt="" className="h-full w-full object-cover" />
-                        <span className="absolute inset-x-0 bottom-0 truncate bg-black/50 px-1.5 py-0.5 text-[10px] text-white">
-                          {personagemNome ?? 'Geral'}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <AprovacoesFigurinoCard cena={cena} users={users} />
+
+          <FigurinosCard cena={cena} titulo="Figurinos" />
 
           <Card>
             <CardContent>
@@ -1975,177 +1656,6 @@ export function CenaDetalhe() {
           </div>
         </Dialog>
       )}
-
-      <Dialog open={figurinoUploadModalOpen} onClose={() => setFigurinoUploadModalOpen(false)} title="Adicionar figurino">
-        <div className="space-y-4">
-          <div>
-            <Label>Essa foto é</Label>
-            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setFigurinoUploadEscopo('geral')}
-                className={cn(
-                  'rounded-lg border py-2 text-sm font-medium transition-colors',
-                  figurinoUploadEscopo === 'geral' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
-                )}
-              >
-                Geral
-              </button>
-              <button
-                type="button"
-                onClick={() => setFigurinoUploadEscopo('personagem')}
-                className={cn(
-                  'rounded-lg border py-2 text-sm font-medium transition-colors',
-                  figurinoUploadEscopo === 'personagem'
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-gray-300 bg-white text-gray-700',
-                )}
-              >
-                De um personagem
-              </button>
-            </div>
-          </div>
-
-          {figurinoUploadEscopo === 'personagem' && (
-            <div>
-              <Label htmlFor="figurino-personagem">Personagem</Label>
-              <Select
-                id="figurino-personagem"
-                value={figurinoUploadPersonagemId}
-                onChange={e => setFigurinoUploadPersonagemId(e.target.value)}
-                className="mt-1.5"
-              >
-                <option value="">Selecione um personagem</option>
-                {personagensOrdenados.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.nome}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          )}
-
-          {figurinoError && <p className="text-sm text-red-600">{figurinoError}</p>}
-
-          <Button
-            className="w-full gap-1.5"
-            onClick={() => figurinoInputRef.current?.click()}
-            disabled={uploadingFigurino || (figurinoUploadEscopo === 'personagem' && !figurinoUploadPersonagemId)}
-          >
-            {uploadingFigurino && <Spinner size="sm" className="border-white/40 border-t-white" />}
-            Escolher fotos
-          </Button>
-        </div>
-      </Dialog>
-
-      <Dialog open={figurinoViewerIndex !== null} onClose={() => setFigurinoViewerIndex(null)} title="Figurino">
-        {figurinoViewerIndex !== null &&
-          figurinosOrdenados[figurinoViewerIndex] &&
-          (() => {
-            const item = figurinosOrdenados[figurinoViewerIndex]
-            const personagemNome = item.personagemId ? cena?.personagens.find(p => p.id === item.personagemId)?.nome : undefined
-            return (
-              <div className="space-y-3">
-                <div className="relative">
-                  <img src={item.url} alt="" className="w-full rounded-lg" />
-                  {figurinoViewerIndex > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setFigurinoViewerIndex(i => (i ?? 0) - 1)}
-                      className="absolute left-1.5 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white"
-                      title="Anterior"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </button>
-                  )}
-                  {figurinoViewerIndex < figurinosOrdenados.length - 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setFigurinoViewerIndex(i => (i ?? 0) + 1)}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white"
-                      title="Próxima"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{personagemNome ?? 'Geral'}</span>
-                  <span>
-                    {figurinoViewerIndex + 1}/{figurinosOrdenados.length}
-                  </span>
-                </div>
-                {canManageCena && (
-                  <Button variant="destructive" className="w-full gap-1.5" onClick={() => setFigurinoDeleteTarget(item)}>
-                    <Trash2 className="h-4 w-4" />
-                    Excluir
-                  </Button>
-                )}
-              </div>
-            )
-          })()}
-      </Dialog>
-
-      <Dialog open={!!figurinoDeleteTarget} onClose={() => setFigurinoDeleteTarget(null)} title="Excluir foto">
-        {figurinoDeleteTarget && (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-700">Excluir essa foto de figurino? Essa ação não pode ser desfeita.</p>
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setFigurinoDeleteTarget(null)}>
-                Cancelar
-              </Button>
-              <Button
-                variant="destructive"
-                className="flex-1"
-                onClick={() => handleDeleteFigurino(figurinoDeleteTarget)}
-                disabled={uploadingFigurino}
-              >
-                {uploadingFigurino && <Spinner size="sm" className="border-white/40 border-t-white" />}
-                Excluir
-              </Button>
-            </div>
-          </div>
-        )}
-      </Dialog>
-
-      <Dialog open={!!musicaDeleteTarget} onClose={() => setMusicaDeleteTarget(null)} title="Excluir música">
-        {musicaDeleteTarget && (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-700">
-              Excluir <span className="font-medium">{musicaDeleteTarget.nome}</span>? Essa ação não pode ser desfeita.
-            </p>
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setMusicaDeleteTarget(null)}>
-                Cancelar
-              </Button>
-              <Button
-                variant="destructive"
-                className="flex-1"
-                onClick={() => handleDeleteMusica(musicaDeleteTarget)}
-                disabled={uploadingMusica}
-              >
-                {uploadingMusica && <Spinner size="sm" className="border-white/40 border-t-white" />}
-                Excluir
-              </Button>
-            </div>
-          </div>
-        )}
-      </Dialog>
-
-      <Dialog open={!!musicaRenameTarget} onClose={() => setMusicaRenameTarget(null)} title="Renomear música">
-        {musicaRenameTarget && (
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="musica-rename">Nome</Label>
-              <Input id="musica-rename" value={musicaRenameDraft} onChange={e => setMusicaRenameDraft(e.target.value)} autoFocus />
-            </div>
-            <Button className="w-full" onClick={handleSaveMusicaRename} disabled={savingMusicaRename || !musicaRenameDraft.trim()}>
-              {savingMusicaRename && <Spinner size="sm" className="border-white/40 border-t-white" />}
-              Salvar
-            </Button>
-          </div>
-        )}
-      </Dialog>
     </div>
   )
 }

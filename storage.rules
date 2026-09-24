@@ -1,12 +1,11 @@
 rules_version = '2';
 
-// Arquivos por cena: fotos de referência de figurino e músicas. A autorização de "quem pode
-// vincular isso a uma cena" (admin/líder pra figurino, só admin pra música) é feita no Firestore
-// (firestore.rules, `updateCenaFigurinos`/`updateCenaMusicas`) — cross-service `firestore.get()`
-// aqui no Storage não funcionou de forma confiável nesse projeto, então o Storage em si só exige
-// estar autenticado + limite de tamanho/tipo do arquivo. Um upload direto por fora do app (sem
-// passar pela tela) fica órfão: nunca aparece em lugar nenhum, já que a referência no Firestore
-// é o que realmente controla o que é exibido.
+// Arquivos de músicas e figurinos, em `cenas/{cenaId}/...` (ou `cenas/geral/...` quando não são de
+// nenhuma cena). Quem pode cadastrar/editar é decidido no Firestore (coleções `musicas` e
+// `figurinos` em firestore.rules: admin, equipe responsável, participantes da cena pra figurino) —
+// cross-service `firestore.get()` aqui no Storage não funcionou de forma confiável nesse projeto,
+// então o Storage em si só exige estar autenticado + limite de tamanho/tipo do arquivo. Um upload
+// direto por fora do app fica órfão: nunca aparece, já que o doc no Firestore é o que é exibido.
 service firebase.storage {
   match /b/{bucket}/o {
     function isSignedIn() {

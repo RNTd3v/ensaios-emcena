@@ -11,6 +11,8 @@ function fromSnap(id: string, data: Record<string, unknown>): Equipe {
     liderUid: (data.liderUid as string | null) ?? undefined,
     assistentes: (data.assistentes as string[]) ?? [],
     membros: (data.membros as string[]) ?? [],
+    gerencia: (data.gerencia as Equipe['gerencia']) ?? [],
+    prazoFigurino: data.prazoFigurino as string | undefined,
     createdAt: (data.createdAt as { toDate?: () => Date })?.toDate?.().toISOString() ?? new Date().toISOString(),
   }
 }
@@ -32,9 +34,15 @@ export function subscribeToEquipe(id: string, callback: (equipe: Equipe | null) 
 }
 
 /** Só admin (garantido pelas firestore.rules). Retorna o id criado. */
-export async function createEquipe(input: { nome: string; icone?: string; descricao?: string }): Promise<string> {
+export async function createEquipe(input: {
+  nome: string
+  icone?: string
+  descricao?: string
+  gerencia?: Equipe['gerencia']
+}): Promise<string> {
   const ref = await addDoc(collection(db, 'equipes'), {
     nome: input.nome.trim(),
+    gerencia: input.gerencia ?? [],
     ...(input.icone ? { icone: input.icone } : {}),
     ...(input.descricao?.trim() ? { descricao: input.descricao.trim() } : {}),
     assistentes: [],
@@ -44,10 +52,10 @@ export async function createEquipe(input: { nome: string; icone?: string; descri
   return ref.id
 }
 
-export async function createEquipes(inputs: { nome: string; icone: string }[]): Promise<void> {
+export async function createEquipes(inputs: { nome: string; icone: string; gerencia?: Equipe['gerencia'] }[]): Promise<void> {
   const batch = writeBatch(db)
   for (const e of inputs) {
-    batch.set(doc(collection(db, 'equipes')), { ...e, assistentes: [], membros: [], createdAt: serverTimestamp() })
+    batch.set(doc(collection(db, 'equipes')), { ...e, gerencia: e.gerencia ?? [], assistentes: [], membros: [], createdAt: serverTimestamp() })
   }
   await batch.commit()
 }
@@ -58,10 +66,11 @@ export async function createEquipes(inputs: { nome: string; icone: string }[]): 
  */
 export async function updateEquipeInfo(
   equipe: Equipe,
-  input: { nome: string; icone?: string; descricao?: string; liderUid?: string },
+  input: { nome: string; icone?: string; descricao?: string; liderUid?: string; gerencia?: Equipe['gerencia'] },
 ): Promise<void> {
   const data: Record<string, unknown> = {
     nome: input.nome.trim(),
+    gerencia: input.gerencia ?? [],
     icone: input.icone || deleteField(),
     descricao: input.descricao?.trim() || deleteField(),
   }
@@ -73,6 +82,11 @@ export async function updateEquipeInfo(
     }
   }
   await updateDoc(doc(db, 'equipes', equipe.id), data)
+}
+
+/** Prazo de envio da foto do figurino (equipe de figurino) — admin, líder ou assistente da equipe. */
+export async function updateEquipePrazoFigurino(id: string, prazo: string): Promise<void> {
+  await updateDoc(doc(db, 'equipes', id), { prazoFigurino: prazo || deleteField() })
 }
 
 /** Só a descrição — o que o líder (não admin) pode editar. */

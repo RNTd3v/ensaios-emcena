@@ -125,6 +125,22 @@ export interface FigurinoImagem {
   personagemId?: string
   uploadedByUid: string
   uploadedAt: string
+  /** Campos da coleção `figurinos` (fase 4) — no legado (array dentro da cena) não existem. */
+  cenaId?: string
+  cenaNome?: string
+  personagemNome?: string
+  legenda?: string
+  /** Equipe (com `gerencia` incluindo 'figurinos') em nome de quem foi cadastrado — base da permissão. */
+  equipeId?: string
+  /**
+   * Foto enviada pelo ator/atriz do próprio figurino (página do personagem) passa por aprovação do
+   * líder da cena. Ausente = cadastrada pela equipe (referência), já vale. Só `aprovado` (ou
+   * ausente) aparece nas galerias.
+   */
+  aprovacao?: 'pendente' | 'aprovado' | 'reprovado'
+  avaliadoPorUid?: string
+  avaliadoEm?: string
+  motivoReprovacao?: string
 }
 
 /** Uma faixa de música da cena, guardada no Storage — mesmo raciocínio de `uploadedAt` do FigurinoImagem. */
@@ -135,7 +151,14 @@ export interface Musica {
   path: string
   uploadedByUid: string
   uploadedAt: string
+  /** Campos da coleção `musicas` (fase 4) — cena é opcional. */
+  cenaId?: string
+  cenaNome?: string
+  equipeId?: string
 }
+
+/** O que uma equipe pode cadastrar em nome da peça toda (fase 4 — permissões por equipe). */
+export type MidiaTipo = 'musicas' | 'figurinos'
 
 /**
  * Grupo de ensaio: um conjunto de participantes reunidos num dia/horário, com os personagens da
@@ -324,7 +347,36 @@ export interface Equipe {
   liderUid?: string
   assistentes: string[]
   membros: string[]
+  /** O que os membros dessa equipe podem cadastrar/editar em qualquer cena (só admin define). */
+  gerencia?: MidiaTipo[]
+  /** Equipe de figurino: prazo (YYYY-MM-DD) pro elenco mandar a foto do figurino — líder/assistentes definem. */
+  prazoFigurino?: string
   createdAt: string
+}
+
+export type TarefaStatus = 'a_fazer' | 'fazendo' | 'feito' | 'bloqueado' | 'cancelado'
+
+/**
+ * Tarefa de uma equipe (`equipes/{equipeId}/tarefas/{id}`). Admin, líder e assistentes da equipe
+ * criam e editam; membros só atualizam o status. Bloqueado/cancelado exigem `justificativa`.
+ */
+export interface Tarefa {
+  id: string
+  equipeId: string
+  titulo: string
+  descricao?: string
+  status: TarefaStatus
+  justificativa?: string
+  responsavelUid?: string
+  /** YYYY-MM-DD */
+  prazo?: string
+  cenaId?: string
+  /** Nome da cena copiado na tarefa — quem não enxerga a cena (regras) ainda vê de qual se trata. */
+  cenaNome?: string
+  createdByUid: string
+  createdAt: string
+  statusAtualizadoPorUid?: string
+  statusAtualizadoEm?: string
 }
 
 export interface AppSettings {

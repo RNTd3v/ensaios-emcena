@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, CheckCircle2, Clock, ExternalLink, Plus, MapPin, Music, NotebookPen, Pause, Pencil, Play, RotateCcw, Shirt, Star, Users, X, XCircle, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Check, CheckCircle2, Clock, ExternalLink, Plus, MapPin, NotebookPen, Pause, Pencil, Play, RotateCcw, Shirt, Star, Users, X, XCircle, RefreshCw } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -43,6 +43,7 @@ import { cn } from '@/lib/utils'
 import { ensaioStatus } from '@/lib/ensaioStatus'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
+import { MusicasCard } from '@/components/midia/MusicasCard'
 
 /**
  * A página de um ensaio. Rotas: `/cenas/:id/ensaios/:ensaioId` (um ensaio específico),
@@ -394,24 +395,7 @@ export function EnsaioAoVivo() {
             </Card>
           )}
 
-          {!!cena.musicas?.length && (
-            <Card>
-              <CardContent className="space-y-2.5">
-                <p className="flex items-center gap-1.5 text-sm font-semibold">
-                  <Music className="h-4 w-4 text-primary" />
-                  Músicas
-                </p>
-                <div className="space-y-2.5">
-                  {cena.musicas.map(m => (
-                    <div key={m.id} className="space-y-1">
-                      <p className="truncate text-sm font-medium">{m.nome}</p>
-                      <audio controls src={m.url} className="h-9 w-full" />
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          <MusicasCard cena={cena} />
 
           <CheckinCard ensaio={ensaio} elenco={elenco} checkinLimiteHoras={checkinLimiteHoras} />
 

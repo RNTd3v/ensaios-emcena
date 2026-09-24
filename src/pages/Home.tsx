@@ -6,6 +6,7 @@ import { ProximoEnsaioCard } from '@/components/home/ProximoEnsaioCard'
 import { ApresentacoesCard } from '@/components/home/ApresentacoesCard'
 import { FinanceiroCards } from '@/components/home/FinanceiroCards'
 import { OrandoAgoraCard } from '@/components/oracao/OrandoAgora'
+import { AtalhosMidia } from '@/components/home/AtalhosMidia'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useAuthStore } from '@/stores/authStore'
 import { getVersiculos, type VersiculoInput } from '@/services/firebase/versiculos'
@@ -61,6 +62,8 @@ export function Home() {
       <OrandoAgoraCard linkParaPagina />
 
       <ApresentacoesCard />
+
+      <AtalhosMidia />
 
       <FinanceiroCards />
 

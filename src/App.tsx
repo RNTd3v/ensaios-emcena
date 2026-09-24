@@ -20,6 +20,7 @@ import { Calendario } from '@/pages/Calendario'
 import { Oracao } from '@/pages/Oracao'
 import { Equipes } from '@/pages/Equipes'
 import { EquipeDetalhe } from '@/pages/EquipeDetalhe'
+import { FigurinosPage, MusicasPage } from '@/pages/Midias'
 import { AdminLocais } from '@/pages/AdminLocais'
 import { AdminVersiculos } from '@/pages/AdminVersiculos'
 import { Disponibilidade } from '@/pages/Disponibilidade'
@@ -104,6 +105,8 @@ function App() {
           <Route path="oracao" element={<Oracao />} />
           <Route path="equipes" element={<Equipes />} />
           <Route path="equipes/:id" element={<EquipeDetalhe />} />
+          <Route path="musicas" element={<MusicasPage />} />
+          <Route path="figurinos" element={<FigurinosPage />} />
           <Route path="cenas" element={<Cenas />} />
           <Route path="cenas/:id" element={<CenaDetalhe />} />
           <Route path="cenas/:id/iniciar-ensaio" element={<EnsaioAoVivo />} />

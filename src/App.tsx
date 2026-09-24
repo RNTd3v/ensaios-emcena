@@ -13,6 +13,7 @@ import { AdminConfig } from '@/pages/AdminConfig'
 import { EmConstrucao } from '@/pages/EmConstrucao'
 import { Cenas } from '@/pages/Cenas'
 import { CenaDetalhe } from '@/pages/CenaDetalhe'
+import { EnsaioAoVivo } from '@/pages/EnsaioAoVivo'
 import { PersonagemDetalhe } from '@/pages/PersonagemDetalhe'
 import { Disponibilidade } from '@/pages/Disponibilidade'
 import { initAuth } from '@/stores/authStore'
@@ -63,7 +64,7 @@ function App() {
           />
           <Route path="cenas" element={<Cenas />} />
           <Route path="cenas/:id" element={<CenaDetalhe />} />
-          <Route path="cenas/:id/iniciar-ensaio" element={<EmConstrucao />} />
+          <Route path="cenas/:id/iniciar-ensaio" element={<EnsaioAoVivo />} />
           <Route path="cenas/:cenaId/personagens/:personagemId" element={<PersonagemDetalhe />} />
           <Route
             path="disponibilidade"

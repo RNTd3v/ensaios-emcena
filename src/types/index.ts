@@ -82,6 +82,45 @@ export interface Personagem {
   participanteUid?: string
   /** Se true, esse personagem pode ser reaproveitado (por nome) ao cadastrar personagens em outras cenas. */
   recorrente?: boolean
+  /** "Ficha do personagem" preenchida por quem interpreta — só o próprio ator/atriz edita, os demais só veem. */
+  ficha?: PersonagemFicha
+  /** Data limite (YYYY-MM-DD) pra enviar a foto do figurino — definida por admin/líder. */
+  prazoFigurino?: string
+}
+
+export interface PersonagemFicha {
+  idade?: string
+  sexo?: string
+  profissao?: string
+  personalidade?: string
+  estiloMusical?: string
+  descricao?: string
+}
+
+/**
+ * Uma foto de referência de figurino guardada no Storage. `uploadedAt` é gerado no cliente (ISO)
+ * em vez de `serverTimestamp()` porque o item vive dentro de um array — precisa ser um valor
+ * estável pra `arrayUnion`/`arrayRemove` conseguirem casar o mesmo item depois.
+ */
+export interface FigurinoImagem {
+  id: string
+  url: string
+  /** Path no Storage — usado pra excluir o arquivo. */
+  path: string
+  /** id de um personagem da cena — ausente/undefined significa "geral" (não é de um personagem específico). */
+  personagemId?: string
+  uploadedByUid: string
+  uploadedAt: string
+}
+
+/** Uma faixa de música da cena, guardada no Storage — mesmo raciocínio de `uploadedAt` do FigurinoImagem. */
+export interface Musica {
+  id: string
+  nome: string
+  url: string
+  path: string
+  uploadedByUid: string
+  uploadedAt: string
 }
 
 /**
@@ -107,6 +146,10 @@ export interface Cena {
    */
   roteiroReferencia?: string
   roteiroUrl?: string
+  /** Fotos de referência de figurino — armazenadas no Storage, quem sobe/exclui é admin ou o líder da cena. */
+  figurinos?: FigurinoImagem[]
+  /** Faixas de música da cena — armazenadas no Storage, só admin sobe/troca/exclui. */
+  musicas?: Musica[]
   /** Data (YYYY-MM-DD) a partir da qual os ensaios dessa cena passam a valer. */
   inicioEnsaios?: string
   observacao?: string
@@ -145,6 +188,15 @@ export interface Ensaio {
   /** Setado quando o ensaio é cancelado — o documento continua existindo (pra mostrar quem cancelou). */
   canceledByUid?: string
   canceledAt?: string
+  /**
+   * Preenchidos ao encerrar o ensaio pela tela "Iniciar ensaio" — o registro do que aconteceu
+   * na sessão (duração cronometrada, anotações). Um ensaio com `finalizadoAt` vira um registro
+   * consultável no card "Anotações" da cena.
+   */
+  anotacoes?: string
+  duracaoSegundos?: number
+  finalizadoByUid?: string
+  finalizadoAt?: string
 }
 
 export interface AppSettings {

@@ -8,6 +8,16 @@ export function formatHoraCompacta(horario: string): string {
   return m === '00' ? `${hora}h` : `${hora}h${m}`
 }
 
+/** Formata uma duração em segundos como "mm:ss" (ou "h:mm:ss" acima de 1h). */
+export function formatDuracao(totalSegundos: number): string {
+  const h = Math.floor(totalSegundos / 3600)
+  const m = Math.floor((totalSegundos % 3600) / 60)
+  const s = totalSegundos % 60
+  const mm = String(m).padStart(2, '0')
+  const ss = String(s).padStart(2, '0')
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
+}
+
 /** O horário de um dia específico da cena (por dia se houver, senão o comum). */
 export function horarioDoDia(cena: Pick<Cena, 'horario' | 'horarios'>, dia: DiaSemana): string | undefined {
   return cena.horarios?.[dia] ?? cena.horario

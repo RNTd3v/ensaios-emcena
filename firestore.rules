@@ -59,7 +59,13 @@ service cloud.firestore {
     // admin vê todas; líder só as que ele lidera (liderUid); participante só as que participa
     // (array-contains). Só admin cria. "Excluir" é soft delete (ativo=false) via update; líder
     // pode desativar a própria cena mas não reativar (só admin) nem excluir de verdade (delete é
-    // ação separada, só admin).
+    // ação separada, só admin). `musicas` é campo admin-only mesmo pro líder — ele pode mexer em
+    // qualquer outro campo (nome, figurinos, personagens etc.), mas não pode alterar `musicas`
+    // (updateCenaMusicas só é chamado pela UI quando isAdmin, mas a regra reforça isso mesmo se
+    // alguém tentar direto pelo client). Qualquer participante da cena (não só líder/admin) pode
+    // mexer em `figurinos` (fotos de referência) e `personagens` (a "ficha do personagem" que o
+    // próprio ator/atriz preenche na página do personagem) — mas só nesses campos, nada mais; a UI
+    // garante que cada um só edita a própria ficha dentro do array, a regra não valida isso.
     match /cenas/{id} {
       allow read: if isAdmin()
         || (isAuthenticated() && resource.data.liderUid == request.auth.uid)
@@ -67,7 +73,10 @@ service cloud.firestore {
       allow create: if isAdmin();
       allow update: if isAdmin()
         || (isAuthenticated() && resource.data.liderUid == request.auth.uid
-            && !(resource.data.ativo == false && request.resource.data.ativo == true));
+            && !(resource.data.ativo == false && request.resource.data.ativo == true)
+            && request.resource.data.musicas == resource.data.musicas)
+        || (isAuthenticated() && request.auth.uid in resource.data.participantes
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['figurinos', 'personagens', 'updatedByUid', 'updatedAt']));
       allow delete: if isAdmin();
     }
 

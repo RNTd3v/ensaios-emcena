@@ -11,11 +11,15 @@ import {
   Crown,
   ExternalLink,
   Info,
+  Image,
   MessageCircle,
+  Music,
+  NotebookPen,
   Pencil,
   Pin,
   Play,
   Plus,
+  RefreshCw,
   Shirt,
   Star,
   Trash2,
@@ -31,23 +35,29 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
+import { Textarea } from '@/components/ui/Textarea'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers, updateUserRole } from '@/services/firebase/auth'
 import {
   subscribeToCena,
   subscribeToCenas,
   updateCenaAgenda,
+  updateCenaFigurinos,
   updateCenaLider,
+  updateCenaMusicas,
   updateCenaNome,
   updateCenaParticipantes,
   updateCenaPersonagens,
   updateCenaRoteiro,
 } from '@/services/firebase/cenas'
+import { deleteCenaFile, uploadCenaFile } from '@/services/firebase/storage'
 import {
   cancelarEnsaio,
   confirmarPresenca,
   createEnsaio,
   reconfirmarEnsaio,
+  removerPresenca,
+  salvarRegistroEnsaio,
   subscribeToEnsaiosDaCena,
   updateEnsaioFlags,
   updateEnsaioHorario,
@@ -55,9 +65,20 @@ import {
 } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { DIA_SEMANA_LABELS, type AppUser, type Cena, type DiaSemana, type Ensaio, type Inscricao, type Personagem } from '@/types'
+import {
+  DIA_SEMANA_LABELS,
+  type AppUser,
+  type Cena,
+  type DiaSemana,
+  type Ensaio,
+  type FigurinoImagem,
+  type Inscricao,
+  type Musica,
+  type Personagem,
+} from '@/types'
 import { DIAS_ORDER, sortDias } from '@/lib/dias'
-import { formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
+import { formatDuracao, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
+import { FIGURINO_MAX_BYTES, MUSICA_MAX_BYTES } from '@/lib/uploads'
 import { whatsappLink } from '@/lib/formatters'
 import { addDays, canCheckin, DIA_TO_WEEKDAY, formatRelativeDia, toDateKey, weekDates } from '@/lib/agenda'
 import { cn } from '@/lib/utils'
@@ -138,6 +159,30 @@ export function CenaDetalhe() {
   const [savingParticipante, setSavingParticipante] = useState(false)
   const [participanteError, setParticipanteError] = useState('')
   const personagemNomeInputRef = useRef<HTMLInputElement>(null)
+
+  const [anotacoesOpen, setAnotacoesOpen] = useState(false)
+  const [ensaioRegistroAnotacoesDraft, setEnsaioRegistroAnotacoesDraft] = useState('')
+  const [ensaioRegistroDuracaoDraft, setEnsaioRegistroDuracaoDraft] = useState('')
+  const [savingEnsaioRegistro, setSavingEnsaioRegistro] = useState(false)
+
+  const figurinoInputRef = useRef<HTMLInputElement>(null)
+  const [uploadingFigurino, setUploadingFigurino] = useState(false)
+  const [figurinoError, setFigurinoError] = useState('')
+  const [figurinoViewerIndex, setFigurinoViewerIndex] = useState<number | null>(null)
+  const [figurinoUploadModalOpen, setFigurinoUploadModalOpen] = useState(false)
+  const [figurinoUploadEscopo, setFigurinoUploadEscopo] = useState<'geral' | 'personagem'>('geral')
+  const [figurinoUploadPersonagemId, setFigurinoUploadPersonagemId] = useState('')
+  const [figurinoDeleteTarget, setFigurinoDeleteTarget] = useState<FigurinoImagem | null>(null)
+
+  const musicaInputRef = useRef<HTMLInputElement>(null)
+  const trocarMusicaInputRef = useRef<HTMLInputElement>(null)
+  const [uploadingMusica, setUploadingMusica] = useState(false)
+  const [musicaError, setMusicaError] = useState('')
+  const [trocandoMusicaId, setTrocandoMusicaId] = useState<string | null>(null)
+  const [musicaDeleteTarget, setMusicaDeleteTarget] = useState<Musica | null>(null)
+  const [musicaRenameTarget, setMusicaRenameTarget] = useState<Musica | null>(null)
+  const [musicaRenameDraft, setMusicaRenameDraft] = useState('')
+  const [savingMusicaRename, setSavingMusicaRename] = useState(false)
 
   const [weekBase, setWeekBase] = useState(() => new Date())
 
@@ -232,11 +277,25 @@ export function CenaDetalhe() {
     [cena?.participantes, cena?.liderUid],
   )
 
+  /** Ensaios finalizados pela tela "Iniciar ensaio" — os registros exibidos no card Anotações. */
+  const registros = useMemo(
+    () => (ensaios ?? []).filter(e => e.finalizadoAt).sort((a, b) => b.data.localeCompare(a.data) || b.horario.localeCompare(a.horario)),
+    [ensaios],
+  )
+
   /** Personagens recorrentes primeiro, na exibição da lista. */
   const personagensOrdenados = useMemo(
     () => [...(cena?.personagens ?? [])].sort((a, b) => Number(!!b.recorrente) - Number(!!a.recorrente)),
     [cena?.personagens],
   )
+
+  /** Figurinos na ordem de exibição da galeria: gerais primeiro, depois agrupados por personagem. */
+  const figurinosOrdenados = useMemo(() => {
+    const figurinos = cena?.figurinos ?? []
+    const gerais = figurinos.filter(f => !f.personagemId)
+    const porPersonagem = (cena?.personagens ?? []).flatMap(p => figurinos.filter(f => f.personagemId === p.id))
+    return [...gerais, ...porPersonagem]
+  }, [cena?.figurinos, cena?.personagens])
 
   const availableParaAdicionar = useMemo(
     () =>
@@ -665,7 +724,192 @@ export function CenaDetalhe() {
     setHorarioDraft(ensaio.horario)
     setGeralDraft(!!ensaio.geral)
     setComFigurinoDraft(!!ensaio.comFigurino)
+    setEnsaioRegistroAnotacoesDraft(ensaio.anotacoes ?? '')
+    setEnsaioRegistroDuracaoDraft(ensaio.duracaoSegundos !== undefined ? String(Math.round(ensaio.duracaoSegundos / 60)) : '')
     setSelectedEnsaio(ensaio)
+  }
+
+  async function toggleSelectedPresenca(uid: string) {
+    if (!selectedEnsaio) return
+    const presente = selectedEnsaio.presencas?.includes(uid)
+    if (presente) await removerPresenca(selectedEnsaio.id, uid)
+    else await confirmarPresenca(selectedEnsaio.id, uid)
+    setSelectedEnsaio({
+      ...selectedEnsaio,
+      presencas: presente ? (selectedEnsaio.presencas ?? []).filter(u => u !== uid) : [...(selectedEnsaio.presencas ?? []), uid],
+    })
+  }
+
+  async function handleSaveEnsaioRegistro() {
+    if (!selectedEnsaio || !currentUser) return
+    setSavingEnsaioRegistro(true)
+    try {
+      const duracaoSegundos = (parseInt(ensaioRegistroDuracaoDraft, 10) || 0) * 60
+      await salvarRegistroEnsaio(selectedEnsaio.id, { anotacoes: ensaioRegistroAnotacoesDraft, duracaoSegundos }, currentUser.uid)
+      setSelectedEnsaio({
+        ...selectedEnsaio,
+        anotacoes: ensaioRegistroAnotacoesDraft.trim() || undefined,
+        duracaoSegundos,
+        finalizadoByUid: currentUser.uid,
+        finalizadoAt: new Date().toISOString(),
+      })
+    } finally {
+      setSavingEnsaioRegistro(false)
+    }
+  }
+
+  function openFigurinoUploadModal() {
+    setFigurinoUploadEscopo('geral')
+    setFigurinoUploadPersonagemId('')
+    setFigurinoError('')
+    setFigurinoUploadModalOpen(true)
+  }
+
+  async function handleUploadFigurino(fileList: FileList | null) {
+    if (!fileList || !cena || !currentUser) return
+    const personagemId = figurinoUploadEscopo === 'personagem' ? figurinoUploadPersonagemId || undefined : undefined
+    const files = Array.from(fileList)
+    setFigurinoError('')
+    setUploadingFigurino(true)
+    try {
+      const novos: FigurinoImagem[] = []
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) {
+          setFigurinoError('Só imagens são aceitas.')
+          continue
+        }
+        if (file.size > FIGURINO_MAX_BYTES) {
+          setFigurinoError('Cada imagem precisa ter até 5MB.')
+          continue
+        }
+        const uploaded = await uploadCenaFile(cena.id, 'figurino', file)
+        novos.push({
+          id: uploaded.id,
+          url: uploaded.url,
+          path: uploaded.path,
+          personagemId,
+          uploadedByUid: currentUser.uid,
+          uploadedAt: new Date().toISOString(),
+        })
+      }
+      if (novos.length) {
+        await updateCenaFigurinos(cena.id, [...(cena.figurinos ?? []), ...novos], currentUser.uid)
+        setFigurinoUploadModalOpen(false)
+      }
+    } catch {
+      setFigurinoError('Não foi possível enviar. Tente de novo.')
+    } finally {
+      setUploadingFigurino(false)
+    }
+  }
+
+  async function handleDeleteFigurino(item: FigurinoImagem) {
+    if (!cena || !currentUser) return
+    setUploadingFigurino(true)
+    try {
+      await updateCenaFigurinos(cena.id, (cena.figurinos ?? []).filter(f => f.id !== item.id), currentUser.uid)
+      await deleteCenaFile(item.path)
+      setFigurinoDeleteTarget(null)
+      setFigurinoViewerIndex(null)
+    } finally {
+      setUploadingFigurino(false)
+    }
+  }
+
+  async function handleUploadMusica(fileList: FileList | null) {
+    if (!fileList || !cena || !currentUser) return
+    const files = Array.from(fileList)
+    setMusicaError('')
+    setUploadingMusica(true)
+    try {
+      const novas: Musica[] = []
+      for (const file of files) {
+        if (!file.type.startsWith('audio/')) {
+          setMusicaError('Só arquivos de áudio são aceitos.')
+          continue
+        }
+        if (file.size > MUSICA_MAX_BYTES) {
+          setMusicaError('Cada música precisa ter até 15MB.')
+          continue
+        }
+        const uploaded = await uploadCenaFile(cena.id, 'musicas', file)
+        novas.push({
+          id: uploaded.id,
+          nome: file.name.replace(/\.[^.]+$/, ''),
+          url: uploaded.url,
+          path: uploaded.path,
+          uploadedByUid: currentUser.uid,
+          uploadedAt: new Date().toISOString(),
+        })
+      }
+      if (novas.length) {
+        await updateCenaMusicas(cena.id, [...(cena.musicas ?? []), ...novas], currentUser.uid)
+      }
+    } catch {
+      setMusicaError('Não foi possível enviar. Tente de novo.')
+    } finally {
+      setUploadingMusica(false)
+    }
+  }
+
+  async function handleDeleteMusica(item: Musica) {
+    if (!cena || !currentUser) return
+    setUploadingMusica(true)
+    try {
+      await updateCenaMusicas(cena.id, (cena.musicas ?? []).filter(m => m.id !== item.id), currentUser.uid)
+      await deleteCenaFile(item.path)
+      setMusicaDeleteTarget(null)
+    } finally {
+      setUploadingMusica(false)
+    }
+  }
+
+  function openMusicaRename(item: Musica) {
+    setMusicaRenameDraft(item.nome)
+    setMusicaRenameTarget(item)
+  }
+
+  async function handleSaveMusicaRename() {
+    if (!cena || !currentUser || !musicaRenameTarget) return
+    const nome = musicaRenameDraft.trim()
+    if (!nome) return
+    setSavingMusicaRename(true)
+    try {
+      const novaLista = (cena.musicas ?? []).map(m => (m.id === musicaRenameTarget.id ? { ...m, nome } : m))
+      await updateCenaMusicas(cena.id, novaLista, currentUser.uid)
+      setMusicaRenameTarget(null)
+    } finally {
+      setSavingMusicaRename(false)
+    }
+  }
+
+  async function handleTrocarMusica(item: Musica, file: File) {
+    if (!cena || !currentUser) return
+    setMusicaError('')
+    if (!file.type.startsWith('audio/')) {
+      setMusicaError('Só arquivos de áudio são aceitos.')
+      return
+    }
+    if (file.size > MUSICA_MAX_BYTES) {
+      setMusicaError('Cada música precisa ter até 15MB.')
+      return
+    }
+    setUploadingMusica(true)
+    try {
+      const uploaded = await uploadCenaFile(cena.id, 'musicas', file)
+      const novaLista = (cena.musicas ?? []).map(m =>
+        m.id === item.id
+          ? { ...m, url: uploaded.url, path: uploaded.path, uploadedByUid: currentUser.uid, uploadedAt: new Date().toISOString() }
+          : m,
+      )
+      await updateCenaMusicas(cena.id, novaLista, currentUser.uid)
+      await deleteCenaFile(item.path)
+    } catch {
+      setMusicaError('Não foi possível trocar. Tente de novo.')
+    } finally {
+      setUploadingMusica(false)
+      setTrocandoMusicaId(null)
+    }
   }
 
   async function handleSaveObrigatorios() {
@@ -751,11 +995,11 @@ export function CenaDetalhe() {
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button
-                        variant="ghost"
+                        variant={hasPendingConfirmation ? 'default' : 'outline'}
                         size="icon"
                         onClick={openConfirmModal}
                         title="Confirmar ensaios da semana"
-                        className={cn('text-primary', hasPendingConfirmation && 'bg-primary/10')}
+                        className={cn(!hasPendingConfirmation && 'border-primary text-primary')}
                       >
                         <Check className="h-4 w-4" />
                       </Button>
@@ -800,20 +1044,32 @@ export function CenaDetalhe() {
                     const jaConfirmou = !!currentUser && !!e.presencas?.includes(currentUser.uid)
                     const podeConfirmar = !!myPersonagem && !jaConfirmou && canCheckin(e.data, e.horario, checkinLimiteHoras)
                     return (
-                      <button
-                        type="button"
-                        key={e.id}
-                        disabled={!podeConfirmar || confirmingPresenca}
-                        onClick={() => handleConfirmPresenca(e)}
-                        title={podeConfirmar ? 'Toque pra confirmar presença' : undefined}
-                        className="flex w-full items-center gap-2.5 rounded-lg px-1 py-1 text-left text-sm"
-                      >
-                        <span className={cn('h-2 w-2 shrink-0 rounded-full', jaConfirmou ? 'bg-emerald-500' : 'bg-gray-300')} />
-                        <span className={cn('flex-1 truncate', !jaConfirmou && 'text-gray-400')}>
-                          {formatRelativeDia(e.data, todayKey)} · {formatHoraCompacta(e.horario)}
-                        </span>
-                        {jaConfirmou && <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500" />}
-                      </button>
+                      <div key={e.id} className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={!podeConfirmar || confirmingPresenca}
+                          onClick={() => handleConfirmPresenca(e)}
+                          title={podeConfirmar ? 'Toque pra confirmar presença' : undefined}
+                          className="flex flex-1 items-center gap-2.5 rounded-lg px-2 py-2.5 text-left text-base"
+                        >
+                          <span className={cn('h-2 w-2 shrink-0 rounded-full', jaConfirmou ? 'bg-emerald-500' : 'bg-gray-300')} />
+                          <span className={cn('flex-1 truncate', !jaConfirmou && 'text-gray-400')}>
+                            {formatRelativeDia(e.data, todayKey)} · {formatHoraCompacta(e.horario)}
+                          </span>
+                          {jaConfirmou && <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500" />}
+                        </button>
+                        {e.data === todayKey && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => navigate(`/cenas/${cena.id}/iniciar-ensaio`)}
+                            title="Iniciar ensaio"
+                            className="shrink-0 text-primary"
+                          >
+                            <Play className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     )
                   })}
                 </div>
@@ -838,8 +1094,8 @@ export function CenaDetalhe() {
                         const ativo = ensaio && !canceled
                         const occurrence = !ensaio ? weekOccurrencesByDate[dateKey] : undefined
                         return (
+                          <div key={dateKey} className="flex items-center gap-1">
                           <button
-                            key={dateKey}
                             type="button"
                             disabled={!ensaio && !canManageAgenda}
                             onClick={() => {
@@ -848,7 +1104,7 @@ export function CenaDetalhe() {
                               else openCreateEnsaioModal(date)
                             }}
                             className={cn(
-                              'flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm',
+                              'flex flex-1 items-center gap-2.5 rounded-lg px-2 py-2.5 text-left text-base',
                               ativo && 'bg-primary text-white',
                               canceled && 'bg-red-50 text-red-400',
                               !ensaio && !occurrence && 'text-gray-600',
@@ -905,6 +1161,17 @@ export function CenaDetalhe() {
                             )}
                             {!ensaio && !occurrence && canManageAgenda && <Plus className="h-4 w-4 shrink-0 text-gray-400" />}
                           </button>
+                          {ativo && dateKey === todayKey && (
+                            <Button
+                              size="icon"
+                              onClick={() => navigate(`/cenas/${cena.id}/iniciar-ensaio`)}
+                              title="Iniciar ensaio"
+                              className="shrink-0"
+                            >
+                              <Play className="h-4 w-4" />
+                            </Button>
+                          )}
+                          </div>
                         )
                       })}
                 </div>
@@ -970,41 +1237,240 @@ export function CenaDetalhe() {
                   <div className="space-y-1 pt-2">
                     {personagensOrdenados.map(p => (
                       <div key={p.id} className="flex items-center gap-2.5 rounded-lg px-1 py-1.5">
-                        <Avatar
-                          photoURL={p.participanteUid ? users[p.participanteUid]?.photoURL : undefined}
-                          name={p.nome}
-                          className="h-9 w-9 text-xs"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="flex items-center gap-1 text-sm font-medium">
-                            <span className="min-w-0 truncate">{p.nome}</span>
-                            {p.recorrente && (
-                              <span title="Personagem recorrente em outras cenas" className="shrink-0 text-primary">
-                                <Pin className="h-3 w-3" />
-                              </span>
-                            )}
-                          </p>
-                          {p.participanteUid && <p className="text-xs text-gray-500 truncate">{nameFor(p.participanteUid)}</p>}
-                        </div>
-                        {isAdmin ? (
-                          <Button variant="ghost" size="icon" onClick={() => openEditPersonagem(p)} className="shrink-0" title="Editar">
+                        <Link to={`/cenas/${cena.id}/personagens/${p.id}`} className="flex min-w-0 flex-1 items-center gap-2.5">
+                          <Avatar
+                            photoURL={p.participanteUid ? users[p.participanteUid]?.photoURL : undefined}
+                            name={p.nome}
+                            className="h-9 w-9 text-xs"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="flex items-center gap-1 text-sm font-medium">
+                              <span className="min-w-0 truncate">{p.nome}</span>
+                              {p.recorrente && (
+                                <span title="Personagem recorrente em outras cenas" className="shrink-0 text-primary">
+                                  <Pin className="h-3 w-3" />
+                                </span>
+                              )}
+                            </p>
+                            {p.participanteUid && <p className="text-xs text-gray-500 truncate">{nameFor(p.participanteUid)}</p>}
+                          </div>
+                        </Link>
+                        {isAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEditPersonagem(p)}
+                            className="shrink-0"
+                            title="Editar"
+                          >
                             <Pencil className="h-4 w-4" />
                           </Button>
-                        ) : (
-                          <Link
-                            to={`/cenas/${cena.id}/personagens/${p.id}`}
-                            className="shrink-0 rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                            title="Ver detalhes"
-                          >
-                            <ChevronRight className="h-4 w-4" />
-                          </Link>
                         )}
+                        <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
                       </div>
                     ))}
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground pt-2">Nenhum personagem cadastrado ainda.</p>
                 ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-base font-semibold">
+                  <Music className="h-4 w-4 text-primary" />
+                  Músicas
+                </p>
+                {isAdmin && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => musicaInputRef.current?.click()}
+                    disabled={uploadingMusica}
+                    title="Adicionar música"
+                  >
+                    {uploadingMusica ? <Spinner size="sm" /> : <Plus className="h-4 w-4" />}
+                  </Button>
+                )}
+              </div>
+              <input
+                ref={musicaInputRef}
+                type="file"
+                accept="audio/*"
+                multiple
+                className="hidden"
+                onChange={e => {
+                  handleUploadMusica(e.target.files)
+                  e.target.value = ''
+                }}
+              />
+              <input
+                ref={trocarMusicaInputRef}
+                type="file"
+                accept="audio/*"
+                className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  const item = cena.musicas?.find(m => m.id === trocandoMusicaId)
+                  if (file && item) handleTrocarMusica(item, file)
+                  e.target.value = ''
+                }}
+              />
+              {musicaError && <p className="text-xs text-red-600">{musicaError}</p>}
+              {!cena.musicas?.length ? (
+                <p className="text-xs text-muted-foreground py-1">Nenhuma música ainda.</p>
+              ) : (
+                <div className="space-y-2.5">
+                  {cena.musicas.map(m => (
+                    <div key={m.id} className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-sm font-medium">{m.nome}</p>
+                        {isAdmin && (
+                          <div className="flex shrink-0 items-center gap-0.5">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openMusicaRename(m)}
+                              disabled={uploadingMusica}
+                              title="Renomear"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setTrocandoMusicaId(m.id)
+                                trocarMusicaInputRef.current?.click()
+                              }}
+                              disabled={uploadingMusica}
+                              title="Trocar arquivo"
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setMusicaDeleteTarget(m)}
+                              disabled={uploadingMusica}
+                              title="Excluir"
+                              className="text-red-600"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      <audio controls src={m.url} className="h-9 w-full" />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {registros.length > 0 && (
+            <Card>
+              <CardContent>
+                <div className={cn('flex items-center gap-2', anotacoesOpen && 'pb-2.5 border-b border-gray-100')}>
+                  <button
+                    type="button"
+                    onClick={() => setAnotacoesOpen(v => !v)}
+                    className="flex flex-1 items-center gap-1.5 text-left text-base font-semibold"
+                  >
+                    <ChevronDown className={cn('h-4 w-4 text-gray-400 transition-transform', !anotacoesOpen && '-rotate-90')} />
+                    Anotações
+                  </button>
+                  <span className="text-xs text-muted-foreground">{registros.length}</span>
+                </div>
+
+                {anotacoesOpen && (
+                  <div className="space-y-1 pt-2">
+                    {registros.map(e => {
+                      const elencoCount = cena.personagens.filter(p => p.participanteUid).length
+                      return (
+                        <button
+                          key={e.id}
+                          type="button"
+                          onClick={() => openSelectedEnsaio(e)}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-1 py-1.5 text-left text-sm hover:bg-gray-50"
+                        >
+                          <NotebookPen className="h-4 w-4 shrink-0 text-primary" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium">
+                              {formatRelativeDia(e.data, todayKey)} · {formatHoraCompacta(e.horario)}
+                            </p>
+                            {e.anotacoes && <p className="truncate text-xs text-gray-500">{e.anotacoes}</p>}
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                            {e.duracaoSegundos !== undefined && <span>{formatDuracao(e.duracaoSegundos)}</span>}
+                            <span>
+                              {e.presencas?.length ?? 0}/{elencoCount}
+                            </span>
+                          </div>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          <Button className="w-full gap-1.5" onClick={() => navigate(`/cenas/${cena.id}/iniciar-ensaio`)}>
+            <Play className="h-4 w-4" />
+            Iniciar ensaio
+          </Button>
+
+          <Card>
+            <CardContent className="space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-base font-semibold">
+                  <Image className="h-4 w-4 text-primary" />
+                  Ideias de figurinos
+                </p>
+                {canManageAgenda && (
+                  <Button variant="ghost" size="icon" onClick={openFigurinoUploadModal} title="Adicionar foto">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              <input
+                ref={figurinoInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={e => {
+                  handleUploadFigurino(e.target.files)
+                  e.target.value = ''
+                }}
+              />
+              {!cena.figurinos?.length ? (
+                <p className="text-xs text-muted-foreground py-1">Sem ideias ainda.</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-1.5">
+                  {figurinosOrdenados.map((f, index) => {
+                    const personagemNome = f.personagemId ? cena.personagens.find(p => p.id === f.personagemId)?.nome : undefined
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setFigurinoViewerIndex(index)}
+                        className="relative aspect-square overflow-hidden rounded-lg bg-gray-100"
+                      >
+                        <img src={f.url} alt="" className="h-full w-full object-cover" />
+                        <span className="absolute inset-x-0 bottom-0 truncate bg-black/50 px-1.5 py-0.5 text-[10px] text-white">
+                          {personagemNome ?? 'Geral'}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -1091,11 +1557,6 @@ export function CenaDetalhe() {
                 ))}
             </CardContent>
           </Card>
-
-          <Button className="w-full gap-1.5" onClick={() => navigate(`/cenas/${cena.id}/iniciar-ensaio`)}>
-            <Play className="h-4 w-4" />
-            Iniciar ensaio
-          </Button>
         </>
       )}
 
@@ -1712,7 +2173,11 @@ export function CenaDetalhe() {
         </Dialog>
       )}
 
-      <Dialog open={!!selectedEnsaio} onClose={() => setSelectedEnsaio(null)} title="Ensaio">
+      <Dialog
+        open={!!selectedEnsaio}
+        onClose={() => setSelectedEnsaio(null)}
+        title={selectedEnsaio?.finalizadoAt ? 'Registro do ensaio' : 'Ensaio'}
+      >
         {selectedEnsaio && (
           <div className="space-y-4">
             <div>
@@ -1811,14 +2276,23 @@ export function CenaDetalhe() {
                 return (
                   <div>
                     <p className="text-sm font-medium mb-1.5">
-                      Confirmados ({selectedEnsaio.presencas?.length ?? 0}/{elenco.length})
+                      {canManageAgenda ? 'Presença' : 'Confirmados'} ({selectedEnsaio.presencas?.length ?? 0}/{elenco.length})
                     </p>
                     {elenco.length ? (
                       <div className="space-y-1">
                         {elenco.map(p => {
                           const confirmado = !!selectedEnsaio.presencas?.includes(p.participanteUid!)
                           return (
-                            <div key={p.id} className="flex items-center gap-2.5 rounded-lg px-1 py-1">
+                            <button
+                              key={p.id}
+                              type="button"
+                              disabled={!canManageAgenda}
+                              onClick={() => toggleSelectedPresenca(p.participanteUid!)}
+                              className={cn(
+                                'flex w-full items-center gap-2.5 rounded-lg px-1 py-1 text-left disabled:cursor-default',
+                                canManageAgenda && 'hover:bg-gray-50',
+                              )}
+                            >
                               <div className="relative shrink-0">
                                 <Avatar
                                   photoURL={users[p.participanteUid!]?.photoURL}
@@ -1831,8 +2305,11 @@ export function CenaDetalhe() {
                                   </span>
                                 )}
                               </div>
-                              <p className="text-sm truncate">{p.nome}</p>
-                            </div>
+                              <p className="text-sm truncate flex-1">{p.nome}</p>
+                              {canManageAgenda && (
+                                <span className="text-xs text-muted-foreground">{confirmado ? 'presente' : 'ausente'}</span>
+                              )}
+                            </button>
                           )
                         })}
                       </div>
@@ -1842,6 +2319,64 @@ export function CenaDetalhe() {
                   </div>
                 )
               })()
+            )}
+
+            {!canManageAgenda && selectedEnsaio.finalizadoAt && (
+              <div className="space-y-1.5 rounded-lg border border-gray-200 p-3">
+                <p className="flex items-center gap-1.5 text-sm font-medium">
+                  <NotebookPen className="h-4 w-4 text-primary" />
+                  Anotações do ensaio
+                </p>
+                {selectedEnsaio.duracaoSegundos !== undefined && (
+                  <p className="text-xs text-muted-foreground">Duração: {formatDuracao(selectedEnsaio.duracaoSegundos)}</p>
+                )}
+                <p className="whitespace-pre-wrap text-sm text-gray-700">
+                  {selectedEnsaio.anotacoes || 'Nenhuma anotação registrada.'}
+                </p>
+              </div>
+            )}
+
+            {canManageAgenda && !selectedEnsaio.canceledByUid && (
+              <div className="space-y-2.5 rounded-lg border border-gray-200 p-3">
+                <p className="flex items-center gap-1.5 text-sm font-medium">
+                  <NotebookPen className="h-4 w-4 text-primary" />
+                  Registro do ensaio
+                </p>
+                <div>
+                  <Label htmlFor="ensaio-registro-duracao">Duração (minutos)</Label>
+                  <Input
+                    id="ensaio-registro-duracao"
+                    type="number"
+                    min={0}
+                    value={ensaioRegistroDuracaoDraft}
+                    onChange={e => setEnsaioRegistroDuracaoDraft(e.target.value)}
+                    placeholder="Ex.: 90"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="ensaio-registro-anotacoes">Anotações</Label>
+                  <Textarea
+                    id="ensaio-registro-anotacoes"
+                    value={ensaioRegistroAnotacoesDraft}
+                    onChange={e => setEnsaioRegistroAnotacoesDraft(e.target.value)}
+                    className="mt-1.5"
+                    placeholder="Ex.: revisar a coreografia do duelo, testar troca de figurino..."
+                  />
+                </div>
+                {(ensaioRegistroAnotacoesDraft !== (selectedEnsaio.anotacoes ?? '') ||
+                  ensaioRegistroDuracaoDraft !==
+                    (selectedEnsaio.duracaoSegundos !== undefined ? String(Math.round(selectedEnsaio.duracaoSegundos / 60)) : '')) && (
+                  <Button size="sm" onClick={handleSaveEnsaioRegistro} disabled={savingEnsaioRegistro}>
+                    {savingEnsaioRegistro && <Spinner size="sm" className="border-white/40 border-t-white" />}
+                    Salvar registro
+                  </Button>
+                )}
+                {selectedEnsaio.finalizadoAt && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Última atualização por {nameFor(selectedEnsaio.finalizadoByUid!)}
+                  </p>
+                )}
+              </div>
             )}
 
             {!selectedEnsaio.canceledByUid && !!cena?.personagens.length && (
@@ -1946,6 +2481,177 @@ export function CenaDetalhe() {
                 )
               })()
             )}
+          </div>
+        )}
+      </Dialog>
+
+      <Dialog open={figurinoUploadModalOpen} onClose={() => setFigurinoUploadModalOpen(false)} title="Adicionar figurino">
+        <div className="space-y-4">
+          <div>
+            <Label>Essa foto é</Label>
+            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setFigurinoUploadEscopo('geral')}
+                className={cn(
+                  'rounded-lg border py-2 text-sm font-medium transition-colors',
+                  figurinoUploadEscopo === 'geral' ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-700',
+                )}
+              >
+                Geral
+              </button>
+              <button
+                type="button"
+                onClick={() => setFigurinoUploadEscopo('personagem')}
+                className={cn(
+                  'rounded-lg border py-2 text-sm font-medium transition-colors',
+                  figurinoUploadEscopo === 'personagem'
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-gray-300 bg-white text-gray-700',
+                )}
+              >
+                De um personagem
+              </button>
+            </div>
+          </div>
+
+          {figurinoUploadEscopo === 'personagem' && (
+            <div>
+              <Label htmlFor="figurino-personagem">Personagem</Label>
+              <Select
+                id="figurino-personagem"
+                value={figurinoUploadPersonagemId}
+                onChange={e => setFigurinoUploadPersonagemId(e.target.value)}
+                className="mt-1.5"
+              >
+                <option value="">Selecione um personagem</option>
+                {personagensOrdenados.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.nome}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+
+          {figurinoError && <p className="text-sm text-red-600">{figurinoError}</p>}
+
+          <Button
+            className="w-full gap-1.5"
+            onClick={() => figurinoInputRef.current?.click()}
+            disabled={uploadingFigurino || (figurinoUploadEscopo === 'personagem' && !figurinoUploadPersonagemId)}
+          >
+            {uploadingFigurino && <Spinner size="sm" className="border-white/40 border-t-white" />}
+            Escolher fotos
+          </Button>
+        </div>
+      </Dialog>
+
+      <Dialog open={figurinoViewerIndex !== null} onClose={() => setFigurinoViewerIndex(null)} title="Figurino">
+        {figurinoViewerIndex !== null &&
+          figurinosOrdenados[figurinoViewerIndex] &&
+          (() => {
+            const item = figurinosOrdenados[figurinoViewerIndex]
+            const personagemNome = item.personagemId ? cena?.personagens.find(p => p.id === item.personagemId)?.nome : undefined
+            return (
+              <div className="space-y-3">
+                <div className="relative">
+                  <img src={item.url} alt="" className="w-full rounded-lg" />
+                  {figurinoViewerIndex > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setFigurinoViewerIndex(i => (i ?? 0) - 1)}
+                      className="absolute left-1.5 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white"
+                      title="Anterior"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                  )}
+                  {figurinoViewerIndex < figurinosOrdenados.length - 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setFigurinoViewerIndex(i => (i ?? 0) + 1)}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white"
+                      title="Próxima"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{personagemNome ?? 'Geral'}</span>
+                  <span>
+                    {figurinoViewerIndex + 1}/{figurinosOrdenados.length}
+                  </span>
+                </div>
+                {canManageAgenda && (
+                  <Button variant="destructive" className="w-full gap-1.5" onClick={() => setFigurinoDeleteTarget(item)}>
+                    <Trash2 className="h-4 w-4" />
+                    Excluir
+                  </Button>
+                )}
+              </div>
+            )
+          })()}
+      </Dialog>
+
+      <Dialog open={!!figurinoDeleteTarget} onClose={() => setFigurinoDeleteTarget(null)} title="Excluir foto">
+        {figurinoDeleteTarget && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700">Excluir essa foto de figurino? Essa ação não pode ser desfeita.</p>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setFigurinoDeleteTarget(null)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={() => handleDeleteFigurino(figurinoDeleteTarget)}
+                disabled={uploadingFigurino}
+              >
+                {uploadingFigurino && <Spinner size="sm" className="border-white/40 border-t-white" />}
+                Excluir
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+
+      <Dialog open={!!musicaDeleteTarget} onClose={() => setMusicaDeleteTarget(null)} title="Excluir música">
+        {musicaDeleteTarget && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700">
+              Excluir <span className="font-medium">{musicaDeleteTarget.nome}</span>? Essa ação não pode ser desfeita.
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setMusicaDeleteTarget(null)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={() => handleDeleteMusica(musicaDeleteTarget)}
+                disabled={uploadingMusica}
+              >
+                {uploadingMusica && <Spinner size="sm" className="border-white/40 border-t-white" />}
+                Excluir
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+
+      <Dialog open={!!musicaRenameTarget} onClose={() => setMusicaRenameTarget(null)} title="Renomear música">
+        {musicaRenameTarget && (
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="musica-rename">Nome</Label>
+              <Input id="musica-rename" value={musicaRenameDraft} onChange={e => setMusicaRenameDraft(e.target.value)} autoFocus />
+            </div>
+            <Button className="w-full" onClick={handleSaveMusicaRename} disabled={savingMusicaRename || !musicaRenameDraft.trim()}>
+              {savingMusicaRename && <Spinner size="sm" className="border-white/40 border-t-white" />}
+              Salvar
+            </Button>
           </div>
         )}
       </Dialog>

@@ -1,4 +1,4 @@
-import { addDoc, arrayUnion, collection, deleteField, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore'
+import { addDoc, arrayRemove, arrayUnion, collection, deleteField, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore'
 import { db } from './config'
 import type { Ensaio } from '@/types'
 
@@ -14,6 +14,7 @@ function fromSnap(id: string, data: Record<string, unknown>): Ensaio {
     confirmedAt: toIso(data.confirmedAt) ?? new Date().toISOString(),
     canceledAt: toIso(data.canceledAt),
     createdAt: toIso(data.createdAt) ?? new Date().toISOString(),
+    finalizadoAt: toIso(data.finalizadoAt),
   } as Ensaio
 }
 
@@ -76,6 +77,35 @@ export async function reconfirmarEnsaio(id: string, confirmedByUid: string): Pro
 /** Confirma a presença de `uid` (elenco com personagem na cena) nesse ensaio. */
 export async function confirmarPresenca(id: string, uid: string): Promise<void> {
   await updateDoc(doc(db, 'ensaios', id), { presencas: arrayUnion(uid) })
+}
+
+/** Desmarca a presença de `uid` nesse ensaio — usado por quem gerencia a agenda na tela ao vivo. */
+export async function removerPresenca(id: string, uid: string): Promise<void> {
+  await updateDoc(doc(db, 'ensaios', id), { presencas: arrayRemove(uid) })
+}
+
+/** Salva o rascunho de anotações durante a sessão ao vivo, sem marcar o ensaio como finalizado. */
+export async function updateEnsaioAnotacoes(id: string, anotacoes: string): Promise<void> {
+  await updateDoc(doc(db, 'ensaios', id), { anotacoes: anotacoes.trim() || deleteField() })
+}
+
+/**
+ * Grava (ou atualiza) o registro do ensaio: duração, anotações — feito ao encerrar a sessão ao
+ * vivo, ou manualmente por quem gerencia a agenda direto no ensaio (inclusive um já passado sem
+ * ter sido "iniciado" pela tela ao vivo). Reaplicar isso num registro existente atualiza
+ * `finalizadoByUid`/`finalizadoAt` pra quem editou por último.
+ */
+export async function salvarRegistroEnsaio(
+  id: string,
+  data: { anotacoes?: string; duracaoSegundos: number },
+  finalizadoByUid: string,
+): Promise<void> {
+  await updateDoc(doc(db, 'ensaios', id), {
+    anotacoes: data.anotacoes?.trim() || deleteField(),
+    duracaoSegundos: data.duracaoSegundos,
+    finalizadoByUid,
+    finalizadoAt: serverTimestamp(),
+  })
 }
 
 /** Todos os ensaios (confirmados e cancelados) de uma cena, em tempo real — sem paginação. */

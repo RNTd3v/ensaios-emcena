@@ -12,7 +12,7 @@ import {
   where,
 } from 'firebase/firestore'
 import { db } from './config'
-import type { Cena, DiaSemana, Personagem, UserRole } from '@/types'
+import type { Cena, DiaSemana, FigurinoImagem, Musica, Personagem, UserRole } from '@/types'
 
 export interface CenaInput {
   nome: string
@@ -35,6 +35,8 @@ function fromSnap(id: string, data: Record<string, unknown>): Cena {
     id,
     ...data,
     personagens: (data.personagens as Personagem[]) ?? [],
+    figurinos: (data.figurinos as FigurinoImagem[]) ?? [],
+    musicas: (data.musicas as Musica[]) ?? [],
     ativo: data.ativo !== false,
     createdAt: toIso(data.createdAt) ?? new Date().toISOString(),
     updatedAt: toIso(data.updatedAt),
@@ -111,6 +113,16 @@ export async function updateCenaPersonagens(id: string, personagens: Personagem[
 
 export async function updateCenaParticipantes(id: string, participantes: string[], updatedByUid: string): Promise<void> {
   await updateDoc(doc(db, 'cenas', id), { participantes, updatedByUid, updatedAt: serverTimestamp() })
+}
+
+/** Admin ou o líder da cena podem mexer nas fotos de figurino (garantido também pelas storage.rules/firestore.rules). */
+export async function updateCenaFigurinos(id: string, figurinos: FigurinoImagem[], updatedByUid: string): Promise<void> {
+  await updateDoc(doc(db, 'cenas', id), { figurinos, updatedByUid, updatedAt: serverTimestamp() })
+}
+
+/** Só admin mexe nas músicas (garantido também pelas storage.rules/firestore.rules). */
+export async function updateCenaMusicas(id: string, musicas: Musica[], updatedByUid: string): Promise<void> {
+  await updateDoc(doc(db, 'cenas', id), { musicas, updatedByUid, updatedAt: serverTimestamp() })
 }
 
 export async function updateCenaAgenda(

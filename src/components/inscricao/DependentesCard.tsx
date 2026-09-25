@@ -120,7 +120,6 @@ function DependenteDialog({ uid, responsavel, dependente, users, onClose }: Dial
   const [outrosResponsaveis, setOutrosResponsaveis] = useState<string[]>(
     (dependente?.responsaveisUids ?? []).filter(r => r !== uid),
   )
-  const [novoResponsavel, setNovoResponsavel] = useState('')
   const [foto, setFoto] = useState<File | null>(null)
   const [previa, setPrevia] = useState<string | undefined>(dependente?.fotoUrl)
   const [saving, setSaving] = useState(false)
@@ -293,29 +292,20 @@ function DependenteDialog({ uid, responsavel, dependente, users, onClose }: Dial
               ))}
             </div>
           )}
-          <div className="mt-1.5 flex items-center gap-1.5">
-            <div className="flex-1">
-              <Select value={novoResponsavel} onChange={e => setNovoResponsavel(e.target.value)} aria-label="Adicionar responsável">
-                <option value="">Escolher pessoa...</option>
-                {candidatos.map(u => (
-                  <option key={u.uid} value={u.uid}>
-                    {u.displayName}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <Button
-              size="icon"
-              className="shrink-0 bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
-              disabled={!novoResponsavel}
-              onClick={() => {
-                setOutrosResponsaveis(prev => [...prev, novoResponsavel])
-                setNovoResponsavel('')
-              }}
-              title="Adicionar"
+          {/* Escolher já adiciona — antes dependia de um "+" ao lado, e quem só escolhia e salvava perdia a pessoa. */}
+          <div className="mt-1.5">
+            <Select
+              value=""
+              onChange={e => e.target.value && setOutrosResponsaveis(prev => [...prev, e.target.value])}
+              aria-label="Adicionar responsável"
             >
-              <Plus className="h-4 w-4" />
-            </Button>
+              <option value="">{outrosResponsaveis.length ? 'Adicionar mais alguém...' : 'Escolher pessoa...'}</option>
+              {candidatos.map(u => (
+                <option key={u.uid} value={u.uid}>
+                  {u.displayName}
+                </option>
+              ))}
+            </Select>
           </div>
         </div>
 

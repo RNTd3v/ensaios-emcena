@@ -647,7 +647,37 @@ export function Admin() {
                 <p className="text-sm text-muted-foreground">Email</p>
                 <p className="text-base">{selected.email}</p>
               </div>
-              {selected.menorDeIdade && selected.responsavel && (
+              {selected.dependente ? (
+                // Dependente: `responsavel` guarda só quem salvou por último — os responsáveis de
+                // verdade são `responsaveisUids`, com nome/telefone vindos da inscrição de cada um.
+                <div className="py-3">
+                  <p className="text-sm text-muted-foreground">Responsáveis</p>
+                  <div className="mt-1 space-y-1">
+                    {(selected.responsaveisUids ?? []).map(r => {
+                      const insc = inscricoes?.find(x => x.uid === r)
+                      return (
+                        <p key={r} className="text-base">
+                          {insc?.nomeCompleto ?? users[r]?.displayName ?? 'Sem nome'}
+                          {insc?.telefone && (
+                            <>
+                              {' · '}
+                              <a
+                                href={whatsappLink(insc.telefone)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-primary hover:underline"
+                              >
+                                <MessageCircle className="h-3.5 w-3.5" />
+                                {insc.telefone}
+                              </a>
+                            </>
+                          )}
+                        </p>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : selected.menorDeIdade && selected.responsavel && (
                 <div className="py-3">
                   <p className="text-sm text-muted-foreground">Responsável (menor de idade)</p>
                   <p className="text-base">

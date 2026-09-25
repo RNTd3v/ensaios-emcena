@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, ShieldCheck, X } from 'lucide-react'
+import { CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useSelectionStore } from '@/stores/selectionStore'
 import { useInscricaoStore } from '@/stores/inscricaoStore'
+import { useThemeStore, type Tema } from '@/stores/themeStore'
 import { useOracaoVisivel } from '@/hooks/useOracaoVisivel'
 import { useEquipesVisivel } from '@/hooks/useEquipesVisivel'
 import { APP_DOCES_URL, APP_RIFAS_URL } from '@/services/externo/vendas'
@@ -137,6 +138,7 @@ export function AppLayout() {
               {!semInscricao && <MenuDivider />}
               <MenuItem to="/inscricao" label="Minha inscrição" icon={ClipboardList} end onClick={() => setMenuOpen(false)} />
             </div>
+            <SeletorTema />
             <button
               onClick={() => logout()}
               className="mt-2 flex shrink-0 items-center gap-3 rounded-xl px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] text-base text-white/80 hover:bg-white/10"
@@ -147,6 +149,36 @@ export function AppLayout() {
         </div>
       )}
     </PhoneMockup>
+  )
+}
+
+const OPCOES_TEMA: { value: Tema; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { value: 'claro', label: 'Claro', icon: Sun },
+  { value: 'escuro', label: 'Escuro', icon: Moon },
+  { value: 'sistema', label: 'Sistema', icon: Monitor },
+]
+
+/** Alterna entre tema claro, escuro ou o do aparelho. */
+function SeletorTema() {
+  const { tema, setTema } = useThemeStore()
+  return (
+    <div className="mt-2 flex shrink-0 gap-1 rounded-xl bg-white/10 p-1" role="radiogroup" aria-label="Tema">
+      {OPCOES_TEMA.map(({ value, label, icon: Icon }) => (
+        <button
+          key={value}
+          role="radio"
+          aria-checked={tema === value}
+          onClick={() => setTema(value)}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium',
+            tema === value ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10',
+          )}
+        >
+          <Icon className="h-4 w-4" />
+          {label}
+        </button>
+      ))}
+    </div>
   )
 }
 

@@ -28,7 +28,8 @@
   --color-foreground: hsl(140 20% 95%);
   --color-card: hsl(150 20% 12%);
   --color-card-foreground: hsl(140 20% 95%);
-  --color-primary: #9c5da0;
+  /* Roxo claro pra texto, borda e fundos translúcidos (bg-primary/10); o sólido é escurecido abaixo. */
+  --color-primary: hsl(297 48% 76%);
   --color-primary-foreground: hsl(0 0% 100%);
   --color-accent: hsl(4 72% 58%);
   --color-accent-foreground: hsl(0 0% 100%);
@@ -39,7 +40,86 @@
   --color-destructive: hsl(4 72% 58%);
   --color-success: hsl(150 55% 48%);
   --color-sidebar: hsl(150 22% 10%);
+
+  /* Os componentes usam muito a paleta fixa do Tailwind (bg-white, text-gray-*, bg-red-50...).
+     Em vez de espalhar `dark:` pelos arquivos, a paleta é remapeada aqui: cinzas invertidos e
+     tons pastel viram tons escuros. Os tons "sólidos" (400-600, usados em botões com texto
+     branco) ficam como estão; textos coloridos são clareados logo abaixo, por classe. */
+  --color-gray-50: hsl(150 16% 15%);
+  --color-gray-100: hsl(150 15% 17%);
+  --color-gray-200: hsl(150 14% 22%);
+  --color-gray-300: hsl(150 12% 28%);
+  --color-gray-400: hsl(150 8% 46%);
+  --color-gray-500: hsl(140 8% 60%);
+  --color-gray-600: hsl(140 10% 70%);
+  --color-gray-700: hsl(140 12% 80%);
+  --color-gray-800: hsl(140 15% 88%);
+  --color-gray-900: hsl(140 20% 95%);
+
+  --color-red-50: hsl(4 45% 21%);
+  --color-red-100: hsl(4 48% 25%);
+  --color-red-200: hsl(4 45% 36%);
+  --color-red-300: hsl(4 40% 38%);
+  --color-emerald-50: hsl(155 40% 17%);
+  --color-emerald-100: hsl(155 42% 21%);
+  --color-emerald-200: hsl(155 38% 32%);
+  --color-emerald-300: hsl(155 35% 34%);
+  --color-amber-50: hsl(38 42% 18%);
+  --color-amber-100: hsl(38 45% 22%);
+  --color-amber-200: hsl(38 42% 33%);
+  --color-amber-300: hsl(38 40% 36%);
+  --color-sky-50: hsl(200 40% 18%);
+  --color-sky-200: hsl(200 35% 28%);
+  --color-blue-100: hsl(220 40% 24%);
+  --color-blue-200: hsl(220 35% 30%);
+  --color-violet-50: hsl(265 30% 21%);
+  --color-violet-200: hsl(265 25% 30%);
+
+  color-scheme: dark;
 }
+
+/* Superfícies brancas (cartões, chips, contornos de avatar) viram a cor de cartão. Só a classe
+   exata: bg-white/10 etc. ficam sobre o fundo com imagem e continuam claros. */
+.dark .bg-white {
+  background-color: var(--color-card);
+}
+.dark .border-white {
+  border-color: var(--color-card);
+}
+.dark .ring-white {
+  --tw-ring-color: var(--color-card);
+}
+.dark .text-black {
+  color: var(--color-foreground);
+}
+
+/* Roxo sólido (botões, bolinhas com ícone branco) num tom que segura o texto branco. */
+.dark .bg-primary {
+  background-color: hsl(297 32% 44%);
+}
+/* Os fundos roxos translúcidos somem no cartão escuro com a opacidade do tema claro. */
+.dark .bg-primary\/10 {
+  background-color: color-mix(in oklab, var(--color-primary) 16%, transparent);
+}
+.dark .hover\:bg-primary\/15:hover {
+  background-color: color-mix(in oklab, var(--color-primary) 24%, transparent);
+}
+
+/* Textos coloridos escuros (feitos pra fundo branco) ganham versões claras. */
+.dark .text-red-500,
+.dark .text-red-600 { color: hsl(4 85% 70%); }
+.dark .text-red-700,
+.dark .text-red-800 { color: hsl(4 90% 78%); }
+.dark .text-red-300 { color: hsl(4 45% 60%); }
+.dark .text-emerald-600 { color: hsl(152 60% 55%); }
+.dark .text-emerald-700,
+.dark .text-emerald-800 { color: hsl(152 60% 68%); }
+.dark .text-amber-600 { color: hsl(40 90% 60%); }
+.dark .text-amber-700,
+.dark .text-amber-800 { color: hsl(42 90% 70%); }
+.dark .text-sky-700 { color: hsl(200 80% 72%); }
+.dark .text-blue-700 { color: hsl(215 85% 75%); }
+.dark .text-violet-700 { color: hsl(265 80% 80%); }
 
 @layer base {
   * {
@@ -173,4 +253,15 @@ input:autofill {
   box-shadow: 0 0 0px 1000px #f9fafb inset !important;
   background-color: #f9fafb !important;
   transition: background-color 9999s ease-in-out 0s;
+}
+
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus,
+.dark input:autofill {
+  -webkit-text-fill-color: var(--color-foreground) !important;
+  caret-color: var(--color-foreground);
+  -webkit-box-shadow: 0 0 0px 1000px var(--color-gray-50) inset !important;
+  box-shadow: 0 0 0px 1000px var(--color-gray-50) inset !important;
+  background-color: var(--color-gray-50) !important;
 }

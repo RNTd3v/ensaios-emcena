@@ -30,6 +30,7 @@ import { CreateCenaModal } from '@/components/cena/CreateCenaModal'
 import { subscribeToAllInscricoes, updateInscricaoStatus } from '@/services/firebase/inscricoes'
 import { getUsers, setUserActive, updateUserRole } from '@/services/firebase/auth'
 import { subscribeToCenas } from '@/services/firebase/cenas'
+import { desvincularPessoa } from '@/services/firebase/desvinculo'
 import { useAuthStore } from '@/stores/authStore'
 import {
   AREA_LABELS,
@@ -52,6 +53,8 @@ import { useSelectionVisibility } from '@/hooks/useSelectionVisibility'
 type AreaFilter = 'todas' | Area
 type RoleFilter = 'todos' | UserRole
 type SortOption = 'recentes' | 'antigos' | 'nome'
+/** Revogados ficam fora da lista por padrão — só aparecem escolhendo no filtro. */
+type AcessoFilter = 'ativos' | 'revogados' | 'todos'
 
 const SORT_LABELS: Record<SortOption, string> = {
   recentes: 'Mais recentes',
@@ -70,9 +73,14 @@ export function Admin() {
   const [diaMatchMode, setDiaMatchMode] = useState<'any' | 'all'>('any')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('todos')
   const [sortBy, setSortBy] = useState<SortOption>('recentes')
+  const [acessoFilter, setAcessoFilter] = useState<AcessoFilter>('ativos')
   const [selected, setSelected] = useState<Inscricao | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const hasActiveFilters = areaFilter !== 'todas' || diaFilter.length > 0 || roleFilter !== 'todos'
+  /** Recusar a inscrição ou revogar o acesso tira a pessoa das cenas/equipes — pede confirmação antes. */
+  const [desvinculo, setDesvinculo] = useState<{ uid: string; acao: 'recusar' | 'revogar' } | null>(null)
+  const [desvinculando, setDesvinculando] = useState(false)
+  const [desvinculoErro, setDesvinculoErro] = useState('')
+  const hasActiveFilters = areaFilter !== 'todas' || diaFilter.length > 0 || roleFilter !== 'todos' || acessoFilter !== 'ativos'
 
   const [selectedUids, setSelectedUids] = useState<Set<string>>(new Set())
   const [cenaModalOpen, setCenaModalOpen] = useState(false)
@@ -93,7 +101,7 @@ export function Admin() {
   }
 
   function selectAllFiltered() {
-    setSelectedUids(new Set(filtered.map(i => i.uid)))
+    setSelectedUids(new Set(filtered.filter(i => users[i.uid]?.active !== false).map(i => i.uid)))
   }
 
   useEffect(() => subscribeToAllInscricoes(setInscricoes), [])
@@ -109,6 +117,8 @@ export function Admin() {
 
   const filtered = useMemo(() => {
     const result = (inscricoes ?? []).filter(i => {
+      const revogado = users[i.uid]?.active === false
+      if (acessoFilter === 'ativos' ? revogado : acessoFilter === 'revogados' ? !revogado : false) return false
       if (areaFilter !== 'todas' && !i.areas.includes(areaFilter)) return false
       if (diaFilter.length > 0) {
         const disponivel =
@@ -130,7 +140,7 @@ export function Admin() {
       result.reverse()
     }
     return result
-  }, [inscricoes, areaFilter, diaFilter, diaMatchMode, roleFilter, users, search, sortBy])
+  }, [inscricoes, acessoFilter, areaFilter, diaFilter, diaMatchMode, roleFilter, users, search, sortBy])
 
   const pendentesCount = useMemo(() => (inscricoes ?? []).filter(i => i.status === 'pendente').length, [inscricoes])
 
@@ -164,6 +174,10 @@ export function Admin() {
   }, [cenas])
 
   async function handleStatusChange(uid: string, status: InscricaoStatus) {
+    if (status === 'recusado' && selected?.status !== 'recusado') {
+      setDesvinculoErro('')
+      return setDesvinculo({ uid, acao: 'recusar' })
+    }
     await updateInscricaoStatus(uid, status)
     setSelected(sel => (sel && sel.uid === uid ? { ...sel, status } : sel))
   }
@@ -172,6 +186,32 @@ export function Admin() {
     if (!currentUser) return
     await setUserActive(uid, active, currentUser.uid)
     setUsers(prev => ({ ...prev, [uid]: { ...prev[uid], active } }))
+  }
+
+  async function confirmarDesvinculo() {
+    if (!desvinculo || !currentUser) return
+    setDesvinculando(true)
+    setDesvinculoErro('')
+    try {
+      await desvincularPessoa(desvinculo.uid, currentUser.uid)
+      if (desvinculo.acao === 'recusar') {
+        await updateInscricaoStatus(desvinculo.uid, 'recusado')
+        setSelected(sel => (sel && sel.uid === desvinculo.uid ? { ...sel, status: 'recusado' } : sel))
+      } else {
+        await handleToggleActive(desvinculo.uid, false)
+        setSelectedUids(prev => {
+          const next = new Set(prev)
+          next.delete(desvinculo.uid)
+          return next
+        })
+      }
+      setDesvinculo(null)
+    } catch (err) {
+      console.error('[admin] Falha ao desvincular:', err)
+      setDesvinculoErro('Não foi possível concluir. Tente de novo.')
+    } finally {
+      setDesvinculando(false)
+    }
   }
 
   async function handleRoleChange(uid: string, role: UserRole) {
@@ -242,7 +282,7 @@ export function Admin() {
       </div>
 
       <SelectAllRow
-        totalCount={filtered.length}
+        totalCount={filtered.filter(i => users[i.uid]?.active !== false).length}
         hasSelection={selectedUids.size > 0}
         onSelectAll={selectAllFiltered}
         onClear={() => setSelectedUids(new Set())}
@@ -268,24 +308,27 @@ export function Admin() {
           return (
             <div
               key={i.uid}
-              role="button"
-              tabIndex={0}
-              onClick={() => toggleSelectUid(i.uid)}
-              onKeyDown={e => e.key === 'Enter' && toggleSelectUid(i.uid)}
-              className="w-full text-left cursor-pointer"
+              // Revogado não entra em cena: o card não seleciona, só o "Detalhes" (pra ver e reativar).
+              role={active ? 'button' : undefined}
+              tabIndex={active ? 0 : undefined}
+              onClick={active ? () => toggleSelectUid(i.uid) : undefined}
+              onKeyDown={active ? e => e.key === 'Enter' && toggleSelectUid(i.uid) : undefined}
+              className={cn('w-full text-left', active && 'cursor-pointer')}
             >
               <Card className={cn('p-0', !active && 'opacity-60', selectedUids.has(i.uid) && 'ring-2 ring-primary')}>
                 <CardContent className="px-4 py-3">
                   <div className="flex items-center justify-between gap-3 pb-3">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <span
-                        className={cn(
-                          'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
-                          selectedUids.has(i.uid) ? 'border-primary bg-primary text-white' : 'border-gray-300',
-                        )}
-                      >
-                        {selectedUids.has(i.uid) && <Check className="h-3 w-3" />}
-                      </span>
+                      {active && (
+                        <span
+                          className={cn(
+                            'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
+                            selectedUids.has(i.uid) ? 'border-primary bg-primary text-white' : 'border-gray-300',
+                          )}
+                        >
+                          {selectedUids.has(i.uid) && <Check className="h-3 w-3" />}
+                        </span>
+                      )}
                       <Avatar photoURL={users[i.uid]?.photoURL} name={i.apelido || i.nomeCompleto} className="h-8 w-8 text-xs" />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
@@ -391,6 +434,42 @@ export function Admin() {
         onClear={() => setSelectedUids(new Set())}
       />
 
+      <Dialog
+        open={!!desvinculo}
+        onClose={() => !desvinculando && setDesvinculo(null)}
+        title={desvinculo?.acao === 'recusar' ? 'Recusar inscrição' : 'Revogar acesso'}
+      >
+        {desvinculo && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{users[desvinculo.uid]?.displayName ?? 'Essa pessoa'}</span> sai de todas as
+              cenas e equipes (inclusive como líder ou assistente), e as tarefas em aberto dela ficam sem responsável. Os personagens
+              dela continuam nas cenas, sem ninguém vinculado, até alguém colocar outra pessoa.
+            </p>
+            {!!cenasByUid[desvinculo.uid]?.length && (
+              <div className="flex flex-wrap gap-1.5">
+                {cenasByUid[desvinculo.uid].map(cena => (
+                  <Badge key={cena.id} variant="outline">
+                    {cena.nome}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">Reativar depois não devolve a pessoa pras cenas e equipes.</p>
+            {desvinculoErro && <p className="text-sm text-red-600">{desvinculoErro}</p>}
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setDesvinculo(null)} disabled={desvinculando}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" className="flex-1" onClick={confirmarDesvinculo} disabled={desvinculando}>
+                {desvinculando && <Spinner size="sm" className="border-white/40 border-t-white" />}
+                {desvinculo.acao === 'recusar' ? 'Recusar' : 'Revogar'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+
       <Dialog open={semInscricaoOpen} onClose={() => setSemInscricaoOpen(false)} title="Sem inscrição">
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
@@ -424,6 +503,14 @@ export function Admin() {
                   {SORT_LABELS[s]}
                 </option>
               ))}
+            </Select>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground mb-1.5">Acesso</p>
+            <Select value={acessoFilter} onChange={e => setAcessoFilter(e.target.value as AcessoFilter)}>
+              <option value="ativos">Só com acesso ativo</option>
+              <option value="revogados">Só revogados</option>
+              <option value="todos">Todos</option>
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -501,6 +588,7 @@ export function Admin() {
                 setDiaFilter([])
                 setDiaMatchMode('any')
                 setRoleFilter('todos')
+                setAcessoFilter('ativos')
               }}
             >
               Limpar filtros
@@ -655,7 +743,14 @@ export function Admin() {
             </div>
 
             {users[selected.uid]?.active !== false ? (
-              <Button variant="destructive" className="w-full" onClick={() => handleToggleActive(selected.uid, false)}>
+              <Button
+                variant="destructive"
+                className="w-full"
+                onClick={() => {
+                  setDesvinculoErro('')
+                  setDesvinculo({ uid: selected.uid, acao: 'revogar' })
+                }}
+              >
                 <ShieldOff className="h-4 w-4" />
                 Revogar acesso
               </Button>

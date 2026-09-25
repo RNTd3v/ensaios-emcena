@@ -127,13 +127,6 @@ function DependenteDialog({ uid, responsavel, dependente, users, onClose }: Dial
   const [error, setError] = useState('')
   const fotoRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (!foto) return
-    const url = URL.createObjectURL(foto)
-    setPrevia(url)
-    return () => URL.revokeObjectURL(url)
-  }, [foto])
-
   // Quem pode ser o outro responsável: contas de verdade (não outros dependentes), ativas.
   const candidatos = useMemo(
     () =>
@@ -153,6 +146,11 @@ function DependenteDialog({ uid, responsavel, dependente, users, onClose }: Dial
     if (file.size > FOTO_MAX_BYTES) return setError('A foto precisa ter até 5MB.')
     setError('')
     setFoto(file)
+    // Prévia como data: URL, não blob: — o index.html que o PWA guarda em cache pode vir com uma
+    // CSP antiga, e `data:` sempre esteve liberado em img-src.
+    const reader = new FileReader()
+    reader.onload = () => setPrevia(reader.result as string)
+    reader.readAsDataURL(file)
   }
 
   async function handleSave() {

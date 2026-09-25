@@ -126,7 +126,7 @@
     box-sizing: border-box;
   }
   body {
-    background-color: var(--color-background);
+    background-color: hsl(68 46% 75%);
     color: var(--color-foreground);
     font-family:
       'Inter',
@@ -135,6 +135,9 @@
       sans-serif;
     margin: 0;
     -webkit-font-smoothing: antialiased;
+  }
+  .dark body {
+    background-color: hsl(225 46% 33%);
   }
   #root {
     min-height: 100svh;

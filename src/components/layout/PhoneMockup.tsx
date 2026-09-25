@@ -9,11 +9,11 @@ import { cn } from '@/lib/utils'
  */
 export function PhoneMockup({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className="sm:flex sm:min-h-screen sm:items-center sm:justify-center sm:overflow-hidden sm:bg-gradient-to-br sm:from-primary/15 sm:via-background sm:to-muted sm:px-8">
+    <div className="sm:flex sm:min-h-screen sm:items-center sm:justify-center sm:overflow-hidden sm:bg-gradient-to-br sm:from-primary/15 sm:via-[hsl(297_44%_85%)] sm:to-[#52467f] sm:dark:via-[#7b467f] sm:dark:to-[hsl(270_14%_22%)] sm:px-8">
       <div
         className={cn(
           'relative flex h-screen flex-col overflow-hidden bg-background',
-          'sm:h-[780px] sm:w-[370px] sm:shrink-0 sm:overflow-hidden sm:rounded-[3rem] sm:border-[12px] sm:border-neutral-900 sm:shadow-2xl',
+          'sm:h-[min(880px,calc(100svh-2rem))] sm:w-[420px] sm:shrink-0 sm:overflow-hidden sm:rounded-[3rem] sm:border-[12px] sm:border-neutral-900 sm:shadow-2xl',
           className,
         )}
       >

@@ -59,7 +59,7 @@ export function AppLayout() {
         {/* Sem inscrição ainda: nada além do formulário (o sino levaria pra fora dele). */}
         {!semInscricao && <SinoNotificacoes />}
         <div className="flex justify-center">
-          <img src="/logo-musical.png" alt={settings.eventName} className="w-full max-w-[80vw] h-auto mt-8" />
+          <img src="/logo-musical.png" alt={settings.eventName} className="w-[80%] h-auto mt-8" />
         </div>
       </header>
 
@@ -68,7 +68,7 @@ export function AppLayout() {
       </main>
 
       <footer className={cn('relative z-10 flex shrink-0 items-center justify-center py-4', hasSelection && 'hidden')}>
-        <img src="/logo-emcena.png" alt="EmCena 575" className="w-full max-w-[120px] h-auto opacity-90" />
+        <img src="/logo-emcena.png" alt="#EMCENA575 575" className="w-full max-w-[120px] h-auto opacity-90" />
       </footer>
 
       {menuOpen && (

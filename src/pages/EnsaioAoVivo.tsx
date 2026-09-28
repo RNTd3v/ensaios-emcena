@@ -45,6 +45,7 @@ import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
 import { subscribeToDependentes } from '@/services/firebase/dependentes'
 import { MusicasCard } from '@/components/midia/MusicasCard'
 import { PessoaSelect, pessoaOpcao, type PessoaOpcao } from '@/components/ui/PessoaSelect'
+import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 /**
  * A página de um ensaio. Rotas: `/cenas/:id/ensaios/:ensaioId` (um ensaio específico),
@@ -691,13 +692,15 @@ function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, p
             <p className="mb-1 text-xs font-medium text-muted-foreground">Também presentes</p>
             <div className="space-y-1">
               {extras.map(uid => (
-                <div key={uid} className="flex items-center gap-2.5 rounded-lg bg-emerald-50 px-2 py-1.5 text-sm">
-                  <Avatar photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-8 w-8 shrink-0 text-xs" />
-                  <p className="min-w-0 flex-1 truncate font-medium">{nameFor(uid)}</p>
+                <PessoaLinha
+                  key={uid}
+                  pessoa={pessoaOpcao(uid, users[uid])}
+                  className="rounded-lg bg-emerald-50 px-2 py-1.5"
+                >
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-emerald-500 bg-emerald-500 text-white">
                     <Check className="h-3 w-3" />
                   </span>
-                </div>
+                </PessoaLinha>
               ))}
             </div>
           </div>
@@ -987,8 +990,11 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
             {extras.length > 0 && (
               <div className="mb-2 space-y-1">
                 {extras.map(uid => (
-                  <div key={uid} className="flex items-center gap-2.5 rounded-lg bg-emerald-50 px-2 py-1.5 text-sm">
-                    <p className="min-w-0 flex-1 truncate font-medium">{nameFor(uid)}</p>
+                  <PessoaLinha
+                    key={uid}
+                    pessoa={pessoas.find(p => p.uid === uid) ?? { uid, nome: nameFor(uid) }}
+                    className="rounded-lg bg-emerald-50 px-2 py-1.5"
+                  >
                     <button
                       type="button"
                       onClick={() => togglePresenca(uid)}
@@ -997,7 +1003,7 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
-                  </div>
+                  </PessoaLinha>
                 ))}
               </div>
             )}

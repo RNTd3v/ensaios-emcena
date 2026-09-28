@@ -16,6 +16,7 @@ import { DIAS_OBRIGATORIOS, diasDisponiveis } from '@/lib/dias'
 import { cn } from '@/lib/utils'
 import { AREA_LABELS, DIA_SEMANA_LABELS, type AppUser, type Area, type DiaSemana, type Inscricao, type InscricaoStatus } from '@/types'
 import { PessoaSelect, inscritosConfirmados, pessoaOpcao } from '@/components/ui/PessoaSelect'
+import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 const AREAS = Object.keys(AREA_LABELS) as Area[]
 const DIAS = Object.keys(DIA_SEMANA_LABELS) as DiaSemana[]
@@ -278,18 +279,16 @@ function DependenteDialog({ uid, responsavel, dependente, users, onClose }: Dial
           {outrosResponsaveis.length > 0 && (
             <div className="mb-2 mt-1.5 space-y-1">
               {outrosResponsaveis.map(r => (
-                <div key={r} className="flex items-center gap-2 rounded-lg bg-gray-50 px-2 py-1.5 text-sm">
-                  <Avatar photoURL={users[r]?.photoURL} name={users[r]?.displayName} className="h-7 w-7 text-[10px]" />
-                  <span className="min-w-0 flex-1 truncate">{users[r]?.displayName ?? '...'}</span>
+                <PessoaLinha key={r} pessoa={pessoaOpcao(r, users[r])} className="rounded-lg bg-gray-50 px-2 py-1.5">
                   <button
                     type="button"
                     onClick={() => setOutrosResponsaveis(prev => prev.filter(x => x !== r))}
                     title="Remover"
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
-                </div>
+                </PessoaLinha>
               ))}
             </div>
           )}

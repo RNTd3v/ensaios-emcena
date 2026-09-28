@@ -48,6 +48,7 @@ import { formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { whatsappLink } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import { PessoaSelect, pessoaOpcao } from '@/components/ui/PessoaSelect'
+import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 /** Próximo ensaio confirmado dessa cena (qualquer data futura, sem paginação). */
 function useProximoEnsaio(cena: Cena) {
@@ -994,14 +995,10 @@ export function Cenas() {
           open={!!liderModalCena}
           onClose={() => setLiderModalCena(null)}
           title={
-            <span className="flex items-center gap-2.5">
-              <Avatar
-                photoURL={users[liderModalCena.liderUid]?.photoURL}
-                name={nameFor(liderModalCena.liderUid)}
-                className="h-9 w-9 text-sm"
-              />
-              {nameFor(liderModalCena.liderUid)}
-            </span>
+            <PessoaLinha
+              pessoa={pessoaOpcao(liderModalCena.liderUid, users[liderModalCena.liderUid], inscricoesByUid[liderModalCena.liderUid])}
+              funcao="lider"
+            />
           }
         >
           {(() => {

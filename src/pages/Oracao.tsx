@@ -38,6 +38,7 @@ import {
 import { cn } from '@/lib/utils'
 import type { AppUser, HorarioOracao, OracaoConfig, PedidoOracao } from '@/types'
 import { PessoaSelect, inscritosConfirmados, pessoaOpcao } from '@/components/ui/PessoaSelect'
+import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 const chipClass = (ativo: boolean) =>
   cn(
@@ -92,7 +93,7 @@ export function Oracao() {
 
       {isAdmin && <LiberarOracaoCard />}
 
-      <EquipeCard config={config} users={users} nameFor={nameFor} isAdmin={isAdmin} onEditar={() => setEquipeOpen(true)} />
+      <EquipeCard config={config} users={users} isAdmin={isAdmin} onEditar={() => setEquipeOpen(true)} />
 
       <OrientacoesCard config={config} podeEditar={podeGerenciar} />
 
@@ -166,12 +167,11 @@ function LiberarOracaoCard() {
 interface EquipeCardProps {
   config: OracaoConfig
   users: Record<string, AppUser>
-  nameFor: (uid: string) => string
   isAdmin: boolean
   onEditar: () => void
 }
 
-function EquipeCard({ config, users, nameFor, isAdmin, onEditar }: EquipeCardProps) {
+function EquipeCard({ config, users, isAdmin, onEditar }: EquipeCardProps) {
   const assistentes = config.assistentes ?? []
   if (!config.liderUid && !assistentes.length && !isAdmin) return null
   return (
@@ -192,9 +192,9 @@ function EquipeCard({ config, users, nameFor, isAdmin, onEditar }: EquipeCardPro
           <p className="text-xs text-muted-foreground">Ninguém definido ainda.</p>
         ) : (
           <div className="space-y-1.5">
-            {config.liderUid && <PessoaFuncao uid={config.liderUid} users={users} nameFor={nameFor} funcao="lider" />}
+            {config.liderUid && <PessoaFuncao uid={config.liderUid} users={users} funcao="lider" />}
             {assistentes.map(a => (
-              <PessoaFuncao key={a} uid={a} users={users} nameFor={nameFor} funcao="assistente" />
+              <PessoaFuncao key={a} uid={a} users={users} funcao="assistente" />
             ))}
           </div>
         )}
@@ -203,36 +203,8 @@ function EquipeCard({ config, users, nameFor, isAdmin, onEditar }: EquipeCardPro
   )
 }
 
-function PessoaFuncao({
-  uid,
-  users,
-  nameFor,
-  funcao,
-}: {
-  uid: string
-  users: Record<string, AppUser>
-  nameFor: (uid: string) => string
-  funcao: 'lider' | 'assistente'
-}) {
-  return (
-    <div className="flex items-center gap-2.5">
-      <Avatar photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-8 w-8 text-xs" />
-      <p className="min-w-0 flex-1 truncate text-sm">{nameFor(uid)}</p>
-      <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-        {funcao === 'lider' ? (
-          <>
-            <Crown className="h-3.5 w-3.5 text-amber-500" />
-            Líder
-          </>
-        ) : (
-          <>
-            <HandHelping className="h-3.5 w-3.5 text-primary" />
-            Assistente
-          </>
-        )}
-      </span>
-    </div>
-  )
+function PessoaFuncao({ uid, users, funcao }: { uid: string; users: Record<string, AppUser>; funcao: 'lider' | 'assistente' }) {
+  return <PessoaLinha pessoa={pessoaOpcao(uid, users[uid])} funcao={funcao} className="py-0" />
 }
 
 function EquipeDialog({
@@ -298,17 +270,16 @@ function EquipeDialog({
           {assistentes.length > 0 && (
             <div className="mb-2 mt-1.5 space-y-1">
               {assistentes.map(a => (
-                <div key={a} className="flex items-center gap-2 rounded-lg bg-gray-50 px-2 py-1.5 text-sm">
-                  <span className="min-w-0 flex-1 truncate">{users[a]?.displayName ?? 'Sem nome'}</span>
+                <PessoaLinha key={a} pessoa={pessoaOpcao(a, users[a])} funcao="assistente" className="rounded-lg bg-gray-50 px-2 py-1.5">
                   <button
                     type="button"
                     onClick={() => setAssistentes(prev => prev.filter(x => x !== a))}
                     title="Remover"
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
-                </div>
+                </PessoaLinha>
               ))}
             </div>
           )}

@@ -80,6 +80,7 @@ import { whatsappLink } from '@/lib/formatters'
 import { addDays, canCheckin, DIA_TO_WEEKDAY, formatRelativeDia, toDateKey, weekDates } from '@/lib/agenda'
 import { cn } from '@/lib/utils'
 import { PessoaSelect, pessoaOpcao } from '@/components/ui/PessoaSelect'
+import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 interface Occurrence {
   dateKey: string
@@ -1078,35 +1079,22 @@ export function CenaDetalhe() {
                 (outrosParticipantes.length || cena.liderUid ? (
                   <div className="space-y-1 pt-2">
                     {cena.liderUid && (
-                      <button type="button" onClick={() => setLiderModalOpen(true)} className="flex w-full items-center gap-2.5 rounded-lg px-1 py-1.5">
-                        <div className="relative shrink-0">
-                          <Avatar photoURL={users[cena.liderUid]?.photoURL} name={nameFor(cena.liderUid)} className="h-9 w-9 text-xs" />
-                          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 ring-2 ring-white">
-                            <Crown className="h-2.5 w-2.5 text-white" />
-                          </span>
-                        </div>
-                        <div className="min-w-0 flex-1 text-left">
-                          <p className="text-sm font-medium truncate">{nameFor(cena.liderUid)}</p>
-                          <p className="text-xs text-amber-600">Líder</p>
-                        </div>
-                      </button>
+                      <PessoaLinha
+                        pessoa={pessoaOpcao(cena.liderUid, users[cena.liderUid], inscricoesByUid[cena.liderUid])}
+                        funcao="lider"
+                        onClick={() => setLiderModalOpen(true)}
+                        className="rounded-lg px-1 py-1.5"
+                      />
                     )}
                     {outrosParticipantes.map(uid => {
                       const assistente = !!cena.assistentes?.includes(uid)
                       return (
-                        <div key={uid} className="flex items-center gap-2.5 rounded-lg px-1 py-1.5">
-                          <div className="relative shrink-0">
-                            <Avatar photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-9 w-9 text-xs" />
-                            {assistente && (
-                              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary ring-2 ring-white">
-                                <HandHelping className="h-2.5 w-2.5 text-white" />
-                              </span>
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium truncate">{nameFor(uid)}</p>
-                            {assistente && <p className="text-xs text-primary">Assistente</p>}
-                          </div>
+                        <PessoaLinha
+                          key={uid}
+                          pessoa={pessoaOpcao(uid, users[uid], inscricoesByUid[uid])}
+                          funcao={assistente ? 'assistente' : undefined}
+                          className="rounded-lg px-1 py-1.5"
+                        >
                           {canManageCena && (
                             <Button
                               variant="ghost"
@@ -1132,7 +1120,7 @@ export function CenaDetalhe() {
                               <X className="h-4 w-4" />
                             </Button>
                           )}
-                        </div>
+                        </PessoaLinha>
                       )
                     })}
                   </div>
@@ -1149,10 +1137,7 @@ export function CenaDetalhe() {
           open={liderModalOpen}
           onClose={() => setLiderModalOpen(false)}
           title={
-            <span className="flex items-center gap-2.5">
-              <Avatar photoURL={users[cena.liderUid]?.photoURL} name={nameFor(cena.liderUid)} className="h-9 w-9 text-sm" />
-              {nameFor(cena.liderUid)}
-            </span>
+            <PessoaLinha pessoa={pessoaOpcao(cena.liderUid, users[cena.liderUid], inscricoesByUid[cena.liderUid])} funcao="lider" />
           }
         >
           {(() => {

@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/Spinner'
 import type { AppUser } from '@/types'
 import { PessoaSelect, inscritosConfirmados, pessoaOpcao } from '@/components/ui/PessoaSelect'
+import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 interface Props {
   titulo: string
@@ -70,17 +71,16 @@ export function LiderAssistentesDialog({ titulo, liderUid, assistentes: iniciais
           {assistentes.length > 0 && (
             <div className="mb-2 mt-1.5 space-y-1">
               {assistentes.map(a => (
-                <div key={a} className="flex items-center gap-2 rounded-lg bg-gray-50 px-2 py-1.5 text-sm">
-                  <span className="min-w-0 flex-1 truncate">{users[a]?.displayName ?? 'Sem nome'}</span>
+                <PessoaLinha key={a} pessoa={pessoaOpcao(a, users[a])} funcao="assistente" className="rounded-lg bg-gray-50 px-2 py-1.5">
                   <button
                     type="button"
                     onClick={() => setAssistentes(prev => prev.filter(x => x !== a))}
                     title="Remover"
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
-                </div>
+                </PessoaLinha>
               ))}
             </div>
           )}

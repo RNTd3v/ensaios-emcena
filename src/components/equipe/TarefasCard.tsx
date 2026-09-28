@@ -335,7 +335,7 @@ function TarefaRow({ tarefa, users, hoje, onAbrir, onStatus }: TarefaRowProps) {
                 name={users[tarefa.responsavelUid]?.displayName}
                 className="h-4 w-4 text-[8px]"
               />
-              {users[tarefa.responsavelUid]?.displayName?.split(' ')[0] ?? '...'}
+              {users[tarefa.responsavelUid]?.apelido || users[tarefa.responsavelUid]?.displayName?.split(' ')[0] || '...'}
             </span>
           )}
           {tarefa.prazo && (

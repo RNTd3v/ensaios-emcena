@@ -1,15 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, Crown, HandHelping, Plus, Sparkles } from 'lucide-react'
+import { ArrowLeft, CalendarClock, ChevronDown, ChevronRight, CircleDashed, Crown, HandHelping, ListChecks, Plus, Sparkles, Users } from 'lucide-react'
+import { Avatar } from '@/components/ui/Avatar'
+import { pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/Spinner'
 import { EquipeFormDialog } from '@/components/equipe/EquipeFormDialog'
 import { useUsersMap } from '@/components/oracao/OrandoAgora'
 import { createEquipes, subscribeToEquipes } from '@/services/firebase/equipes'
+import { subscribeToTarefas } from '@/services/firebase/tarefas'
+import { estaAberta } from '@/lib/tarefas'
+import { toDateKey } from '@/lib/agenda'
+import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
 import { EQUIPES_PADRAO, equipeIcon } from '@/lib/equipeIcons'
-import type { Equipe } from '@/types'
+import type { AppUser, Equipe, Tarefa } from '@/types'
 
 type MinhaFuncao = 'lider' | 'assistente' | 'membro'
 
@@ -86,9 +92,9 @@ export function Equipes() {
         <p className="py-6 text-center text-sm text-white/80">Nenhuma equipe criada ainda.</p>
       ) : (
         <>
-          {minhas.length > 0 && <Lista titulo="Minhas equipes" equipes={minhas} users={users} uid={currentUser?.uid} />}
+          {minhas.length > 0 && <Lista titulo="Minhas equipes" equipes={minhas} users={users} uid={currentUser?.uid} abertas />}
           {outras.length > 0 && (
-            <Lista titulo={minhas.length ? 'Outras equipes' : 'Todas as equipes'} equipes={outras} users={users} uid={currentUser?.uid} />
+            <Lista titulo={minhas.length ? 'Outras equipes' : 'Todas as equipes'} equipes={outras} users={users} uid={currentUser?.uid} abertas={false} />
           )}
         </>
       )}
@@ -100,43 +106,148 @@ export function Equipes() {
   )
 }
 
-function Lista({
-  titulo,
-  equipes,
-  users,
-  uid,
-}: {
-  titulo: string
-  equipes: Equipe[]
-  users: Record<string, { displayName: string }>
-  uid?: string
-}) {
+function Lista({ titulo, equipes, users, uid, abertas }: { titulo: string; equipes: Equipe[]; users: Record<string, AppUser>; uid?: string; abertas: boolean }) {
   return (
     <div className="space-y-2">
       <p className="text-xs font-semibold uppercase tracking-wide text-white/80">{titulo}</p>
-      <Card className="p-2">
-        {equipes.map(e => {
-          const Icon = equipeIcon(e.icone)
-          const funcao = funcaoNaEquipe(e, uid)
-          return (
-            <Link key={e.id} to={`/equipes/${e.id}`} className="flex items-center gap-3 rounded-2xl px-2 py-2.5 hover:bg-gray-50">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-                <Icon className="h-5 w-5" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{e.nome}</p>
-                <p className="truncate text-xs text-gray-500">
-                  {e.liderUid ? `Líder: ${users[e.liderUid]?.displayName ?? '...'}` : 'Sem líder'} · {e.membros.length}{' '}
-                  {e.membros.length === 1 ? 'pessoa' : 'pessoas'}
-                </p>
-              </div>
-              {funcao === 'lider' && <Crown className="h-4 w-4 shrink-0 text-amber-500" aria-label="Você é líder" />}
-              {funcao === 'assistente' && <HandHelping className="h-4 w-4 shrink-0 text-primary" aria-label="Você é assistente" />}
-              <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
-            </Link>
-          )
-        })}
-      </Card>
+      {equipes.map(e => (
+        <EquipeCard key={e.id} equipe={e} users={users} uid={uid} abertaInicial={abertas} />
+      ))}
     </div>
+  )
+}
+
+function formatPrazo(prazo: string) {
+  return new Date(`${prazo}T00:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+}
+
+/**
+ * Uma equipe: fechada mostra ícone, nome e líder; aberta mostra quantas pessoas, o total de
+ * tarefas e as que estão em andamento com o prazo. As tarefas só são lidas com o card aberto.
+ */
+function EquipeCard({ equipe, users, uid, abertaInicial }: { equipe: Equipe; users: Record<string, AppUser>; uid?: string; abertaInicial: boolean }) {
+  const [aberta, setAberta] = useState(abertaInicial)
+  const [tarefas, setTarefas] = useState<Tarefa[] | null>(null)
+
+  useEffect(() => {
+    if (!aberta) return
+    return subscribeToTarefas(equipe.id, setTarefas)
+  }, [aberta, equipe.id])
+
+  const Icon = equipeIcon(equipe.icone)
+  const funcao = funcaoNaEquipe(equipe, uid)
+  const lider = equipe.liderUid ? pessoaOpcao(equipe.liderUid, users[equipe.liderUid]) : undefined
+  const todayKey = toDateKey(new Date())
+
+  const emAndamento = (tarefas ?? [])
+    .filter(t => t.status === 'fazendo')
+    .sort((a, b) => (a.prazo ?? '9999').localeCompare(b.prazo ?? '9999'))
+  const abertasCount = (tarefas ?? []).filter(t => estaAberta(t.status)).length
+  const feitasCount = (tarefas ?? []).filter(t => t.status === 'feito').length
+
+  return (
+    <Card className="overflow-hidden p-0">
+      <button type="button" onClick={() => setAberta(v => !v)} className="flex w-full items-center gap-3 px-4 py-3 text-left" aria-expanded={aberta}>
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+          <Icon className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1.5 truncate text-base font-semibold">
+            <span className="truncate">{equipe.nome}</span>
+            {funcao === 'lider' && <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-label="Você é líder" />}
+            {funcao === 'assistente' && <HandHelping className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Você é assistente" />}
+          </p>
+          {lider ? (
+            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Avatar photoURL={lider.photoURL} name={lider.nome} className="h-5 w-5 text-[9px]" />
+              <span className="truncate">
+                <span className="text-amber-600">Líder</span> · {lider.nome}
+                {lider.apelido && <span className="text-muted-foreground/80"> ({lider.apelido})</span>}
+              </span>
+            </p>
+          ) : (
+            <p className="mt-0.5 text-xs text-muted-foreground">Sem líder</p>
+          )}
+        </div>
+        <ChevronDown className={cn('h-5 w-5 shrink-0 text-gray-400 transition-transform', aberta && 'rotate-180')} />
+      </button>
+
+      {aberta && (
+        <div className="space-y-3 border-t border-gray-100 px-4 pb-4 pt-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-xl bg-gray-50 px-3 py-2">
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Users className="h-3.5 w-3.5" />
+                Pessoas
+              </p>
+              <p className="text-lg font-semibold text-gray-900">{equipe.membros.length}</p>
+            </div>
+            <div className="rounded-xl bg-gray-50 px-3 py-2">
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <ListChecks className="h-3.5 w-3.5" />
+                Tarefas
+              </p>
+              {tarefas ? (
+                <p className="text-lg font-semibold text-gray-900">
+                  {tarefas.length}
+                  {tarefas.length > 0 && (
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                      {abertasCount} {abertasCount === 1 ? 'aberta' : 'abertas'} · {feitasCount} {feitasCount === 1 ? 'feita' : 'feitas'}
+                    </span>
+                  )}
+                </p>
+              ) : (
+                <Spinner size="sm" className="mt-1.5" />
+              )}
+            </div>
+          </div>
+
+          {tarefas && (
+            <div>
+              <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-blue-700">
+                <CircleDashed className="h-3.5 w-3.5" />
+                Em andamento
+              </p>
+              {emAndamento.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Nenhuma tarefa em andamento.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {emAndamento.map(t => {
+                    const atrasada = !!t.prazo && t.prazo < todayKey
+                    const responsavel = t.responsavelUid ? pessoaOpcao(t.responsavelUid, users[t.responsavelUid]) : undefined
+                    return (
+                      <div key={t.id} className="flex items-center gap-2.5 rounded-xl border border-blue-200 bg-blue-100/60 px-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-gray-900">{t.titulo}</p>
+                          <p className={cn('flex items-center gap-1 text-xs text-muted-foreground', atrasada && 'font-medium text-red-600')}>
+                            <CalendarClock className="h-3 w-3" />
+                            {t.prazo ? `Prazo ${formatPrazo(t.prazo)}${atrasada ? ' · atrasada' : ''}` : 'Sem prazo'}
+                          </p>
+                        </div>
+                        {responsavel && (
+                          <Avatar
+                            photoURL={responsavel.photoURL}
+                            name={responsavel.nome}
+                            className="h-7 w-7 text-[10px]"
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <Link
+            to={`/equipes/${equipe.id}`}
+            className="flex items-center justify-center gap-1 rounded-full border border-gray-200 py-2 text-sm font-medium text-primary hover:bg-gray-50"
+          >
+            Abrir equipe
+            <ChevronRight className="h-4 w-4" />
+          </Link>
+        </div>
+      )}
+    </Card>
   )
 }

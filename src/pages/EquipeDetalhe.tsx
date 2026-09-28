@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Crown, HandHelping, Pencil, Plus, Trash2, X } from 'lucide-react'
-import { Avatar } from '@/components/ui/Avatar'
+import { ArrowLeft, HandHelping, Pencil, Plus, Trash2, X } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/Spinner'
@@ -17,6 +17,7 @@ import { equipeIcon } from '@/lib/equipeIcons'
 import { cn } from '@/lib/utils'
 import type { Equipe } from '@/types'
 import { PessoaSelect, inscritosConfirmados, pessoaOpcao } from '@/components/ui/PessoaSelect'
+import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 /**
  * Detalhe de uma equipe: tarefas, líder, assistentes e membros. Admin e o líder da equipe
@@ -150,18 +151,7 @@ export function EquipeDetalhe() {
           <p className="text-sm font-semibold">Pessoas ({equipe.membros.length})</p>
 
           {equipe.liderUid ? (
-            <div className="flex items-center gap-2.5">
-              <div className="relative shrink-0">
-                <Avatar photoURL={users[equipe.liderUid]?.photoURL} name={nameFor(equipe.liderUid)} className="h-9 w-9 text-xs" />
-                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 ring-2 ring-white">
-                  <Crown className="h-2.5 w-2.5 text-white" />
-                </span>
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{nameFor(equipe.liderUid)}</p>
-                <p className="text-xs text-amber-600">Líder</p>
-              </div>
-            </div>
+            <PessoaLinha pessoa={pessoaOpcao(equipe.liderUid, users[equipe.liderUid])} funcao="lider" className="py-0" />
           ) : (
             <p className="text-xs text-muted-foreground">
               Sem líder definido{isAdmin ? ' — escolha pelo lápis.' : '.'}
@@ -173,19 +163,7 @@ export function EquipeDetalhe() {
               {outros.map(uid => {
                 const assistente = equipe.assistentes.includes(uid)
                 return (
-                  <div key={uid} className="flex items-center gap-2.5 py-1">
-                    <div className="relative shrink-0">
-                      <Avatar photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-9 w-9 text-xs" />
-                      {assistente && (
-                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary ring-2 ring-white">
-                          <HandHelping className="h-2.5 w-2.5 text-white" />
-                        </span>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{nameFor(uid)}</p>
-                      {assistente && <p className="text-xs text-primary">Assistente</p>}
-                    </div>
+                  <PessoaLinha key={uid} pessoa={pessoaOpcao(uid, users[uid])} funcao={assistente ? 'assistente' : undefined}>
                     {podeGerenciar && (
                       <>
                         <Button
@@ -221,7 +199,7 @@ export function EquipeDetalhe() {
                         </Button>
                       </>
                     )}
-                  </div>
+                  </PessoaLinha>
                 )
               })}
             </div>

@@ -27,7 +27,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { SelectAllRow } from '@/components/cena/SelectAllRow'
 import { SelectionFloatingBar } from '@/components/cena/SelectionFloatingBar'
 import { CreateCenaModal } from '@/components/cena/CreateCenaModal'
-import { subscribeToAllInscricoes, updateInscricaoStatus } from '@/services/firebase/inscricoes'
+import { sincronizarPerfilPeloAdmin, subscribeToAllInscricoes, updateInscricaoStatus } from '@/services/firebase/inscricoes'
 import { getUsers, setUserActive, updateUserRole } from '@/services/firebase/auth'
 import { subscribeToCenas } from '@/services/firebase/cenas'
 import { desvincularPessoa } from '@/services/firebase/desvinculo'
@@ -109,6 +109,25 @@ export function Admin() {
   useEffect(() => {
     getUsers().then(list => setUsers(Object.fromEntries(list.map(u => [u.uid, u]))))
   }, [])
+
+  // Inscrições feitas antes da cópia pública de nome/apelido/status no perfil (seletores de
+  // pessoa): o admin, que lê tudo, completa o que falta ao abrir a tela.
+  const [perfisSincronizados, setPerfisSincronizados] = useState(false)
+  useEffect(() => {
+    if (perfisSincronizados || !inscricoes || !Object.keys(users).length) return
+    setPerfisSincronizados(true)
+    for (const i of inscricoes) {
+      const u = users[i.uid]
+      if (!u) continue
+      if (
+        (u.apelido ?? '') === (i.apelido ?? '').trim() &&
+        (u.nomeCompleto ?? '') === (i.nomeCompleto ?? '').trim() &&
+        u.inscricaoStatus === i.status
+      )
+        continue
+      sincronizarPerfilPeloAdmin(i).catch(() => {})
+    }
+  }, [inscricoes, users, perfisSincronizados])
 
   useEffect(() => {
     if (!currentUser) return

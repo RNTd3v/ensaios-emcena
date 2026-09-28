@@ -7,7 +7,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
 import { Textarea } from '@/components/ui/Textarea'
 import { getUsers } from '@/services/firebase/auth'
@@ -16,6 +15,7 @@ import { AREA_ICONS } from '@/lib/areaIcons'
 import { DIAS_OBRIGATORIOS, diasDisponiveis } from '@/lib/dias'
 import { cn } from '@/lib/utils'
 import { AREA_LABELS, DIA_SEMANA_LABELS, type AppUser, type Area, type DiaSemana, type Inscricao, type InscricaoStatus } from '@/types'
+import { PessoaSelect, inscritosConfirmados, pessoaOpcao } from '@/components/ui/PessoaSelect'
 
 const AREAS = Object.keys(AREA_LABELS) as Area[]
 const DIAS = Object.keys(DIA_SEMANA_LABELS) as DiaSemana[]
@@ -129,9 +129,10 @@ function DependenteDialog({ uid, responsavel, dependente, users, onClose }: Dial
   // Quem pode ser o outro responsável: contas de verdade (não outros dependentes), ativas.
   const candidatos = useMemo(
     () =>
-      Object.values(users)
-        .filter(u => u.active !== false && !u.dependente && u.uid !== uid && !outrosResponsaveis.includes(u.uid))
-        .sort((a, b) => a.displayName.localeCompare(b.displayName, 'pt-BR')),
+      inscritosConfirmados(users)
+        .filter(u => !u.dependente && u.uid !== uid && !outrosResponsaveis.includes(u.uid))
+        .map(u => pessoaOpcao(u.uid, u))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
     [users, uid, outrosResponsaveis],
   )
 
@@ -294,18 +295,14 @@ function DependenteDialog({ uid, responsavel, dependente, users, onClose }: Dial
           )}
           {/* Escolher já adiciona — antes dependia de um "+" ao lado, e quem só escolhia e salvava perdia a pessoa. */}
           <div className="mt-1.5">
-            <Select
+            <PessoaSelect
               value=""
-              onChange={e => e.target.value && setOutrosResponsaveis(prev => [...prev, e.target.value])}
+              onChange={v => v && setOutrosResponsaveis(prev => [...prev, v])}
+              pessoas={candidatos}
+              placeholder={outrosResponsaveis.length ? 'Adicionar mais alguém...' : 'Escolher pessoa...'}
+              titulo="Adicionar responsável"
               aria-label="Adicionar responsável"
-            >
-              <option value="">{outrosResponsaveis.length ? 'Adicionar mais alguém...' : 'Escolher pessoa...'}</option>
-              {candidatos.map(u => (
-                <option key={u.uid} value={u.uid}>
-                  {u.displayName}
-                </option>
-              ))}
-            </Select>
+            />
           </div>
         </div>
 

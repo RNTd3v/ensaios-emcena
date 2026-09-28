@@ -8,7 +8,6 @@ import { Card } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers } from '@/services/firebase/auth'
@@ -26,6 +25,7 @@ import { DIA_SEMANA_LABELS, type AppUser, type Cena, type DiaSemana, type Inscri
 import { DIAS_ORDER, diasDisponiveis, sortDias } from '@/lib/dias'
 import { agregarPersonagens, cenaCabeNaDisponibilidade, isCoro, personagemKey, type PersonagemAgregado } from '@/lib/personagens'
 import { cn } from '@/lib/utils'
+import { PessoaSelect, pessoaOpcao, type PessoaOpcao } from '@/components/ui/PessoaSelect'
 
 /**
  * Tela de personagens (só admin): junta os personagens de todas as cenas, sem duplicar por nome,
@@ -87,9 +87,13 @@ export function Personagens() {
   const pessoas = useMemo(
     () =>
       inscricoes
-        .filter(i => users[i.uid]?.active !== false)
+        .filter(i => i.status === 'confirmado' && users[i.uid]?.active !== false)
         .filter(i => i.areas.some(a => a === 'elenco' || a === 'tecnica'))
-        .sort((a, b) => (a.apelido || a.nomeCompleto).localeCompare(b.apelido || b.nomeCompleto, 'pt-BR')),
+        .map(i => {
+          const dias = diasDisponiveis(i.disponibilidade.dias).map(d => DIA_SEMANA_LABELS[d])
+          return pessoaOpcao(i.uid, users[i.uid], i, dias.length ? `Disponível: ${dias.join(', ')}` : 'Sem disponibilidade')
+        })
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
     [inscricoes, users],
   )
 
@@ -197,21 +201,11 @@ export function Personagens() {
   )
 }
 
-function PessoaOption({ i }: { i: Inscricao }) {
-  const dias = diasDisponiveis(i.disponibilidade.dias).map(d => DIA_SEMANA_LABELS[d])
-  return (
-    <option value={i.uid}>
-      {i.apelido || i.nomeCompleto}
-      {dias.length ? ` (${dias.join(', ')})` : ' (sem disponibilidade)'}
-    </option>
-  )
-}
-
 interface CreatePersonagemDialogProps {
   open: boolean
   onClose: () => void
   personagens: PersonagemAgregado[]
-  pessoas: Inscricao[]
+  pessoas: PessoaOpcao[]
   onCreated: (key: string) => void
 }
 
@@ -260,12 +254,14 @@ function CreatePersonagemDialog({ open, onClose, personagens, pessoas, onCreated
         </div>
         <div>
           <Label htmlFor="novo-personagem-pessoa">Pessoa</Label>
-          <Select id="novo-personagem-pessoa" value={participanteUid} onChange={e => setParticipanteUid(e.target.value)}>
-            <option value="">Sem pessoa vinculada</option>
-            {pessoas.map(i => (
-              <PessoaOption key={i.uid} i={i} />
-            ))}
-          </Select>
+          <PessoaSelect
+            id="novo-personagem-pessoa"
+            value={participanteUid}
+            onChange={setParticipanteUid}
+            pessoas={pessoas}
+            extras={[{ value: '', label: 'Sem pessoa vinculada' }]}
+            titulo="Quem interpreta"
+          />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <Button className="w-full" onClick={handleSave} disabled={saving || !nome.trim()}>
@@ -282,7 +278,7 @@ interface PersonagemDialogProps {
   onClose: () => void
   onRenamed: (key: string) => void
   personagens: PersonagemAgregado[]
-  pessoas: Inscricao[]
+  pessoas: PessoaOpcao[]
   cenas: Cena[]
   users: Record<string, AppUser>
   nameFor: (uid: string) => string
@@ -392,16 +388,19 @@ function PersonagemDialog({
           </div>
           <div>
             <Label htmlFor="personagem-pessoa">Pessoa</Label>
-            <Select id="personagem-pessoa" value={participanteUid} onChange={e => setParticipanteUid(e.target.value)}>
-              <option value="">Sem pessoa vinculada</option>
-              {/* Mantém a pessoa atual na lista mesmo que ela não passe no filtro (ex.: acesso revogado). */}
-              {personagem.participanteUid && !pessoas.some(i => i.uid === personagem.participanteUid) && (
-                <option value={personagem.participanteUid}>{nameFor(personagem.participanteUid)}</option>
-              )}
-              {pessoas.map(i => (
-                <PessoaOption key={i.uid} i={i} />
-              ))}
-            </Select>
+            <PessoaSelect
+              id="personagem-pessoa"
+              value={participanteUid}
+              onChange={setParticipanteUid}
+              pessoas={
+                // Mantém a pessoa atual na lista mesmo que ela não passe no filtro (ex.: acesso revogado).
+                personagem.participanteUid && !pessoas.some(i => i.uid === personagem.participanteUid)
+                  ? [pessoaOpcao(personagem.participanteUid, users[personagem.participanteUid]), ...pessoas]
+                  : pessoas
+              }
+              extras={[{ value: '', label: 'Sem pessoa vinculada' }]}
+              titulo="Quem interpreta"
+            />
           </div>
           {dirty && conflitosDraft.length > 0 && (
             <p className="flex gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">

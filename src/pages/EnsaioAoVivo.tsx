@@ -8,7 +8,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
 import { Textarea } from '@/components/ui/Textarea'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
@@ -45,6 +44,7 @@ import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
 import { subscribeToDependentes } from '@/services/firebase/dependentes'
 import { MusicasCard } from '@/components/midia/MusicasCard'
+import { PessoaSelect, pessoaOpcao, type PessoaOpcao } from '@/components/ui/PessoaSelect'
 
 /**
  * A página de um ensaio. Rotas: `/cenas/:id/ensaios/:ensaioId` (um ensaio específico),
@@ -127,8 +127,8 @@ export function EnsaioAoVivo() {
   const pessoas = useMemo(
     () =>
       (inscricoes ?? [])
-        .filter(i => users[i.uid]?.active !== false)
-        .map(i => ({ uid: i.uid, nome: i.apelido || i.nomeCompleto }))
+        .filter(i => i.status === 'confirmado' && users[i.uid]?.active !== false)
+        .map(i => pessoaOpcao(i.uid, users[i.uid], i))
         .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
     [inscricoes, users],
   )
@@ -767,7 +767,7 @@ interface EditarEnsaioDialogProps {
   /** Todos os personagens da cena — pra marcar os obrigatórios. */
   personagens: Personagem[]
   elenco: Personagem[]
-  pessoas: { uid: string; nome: string }[]
+  pessoas: PessoaOpcao[]
   nameFor: (uid: string) => string
 }
 
@@ -1003,14 +1003,13 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
             )}
             <div className="flex items-center gap-1.5">
               <div className="flex-1">
-                <Select value={extraUid} onChange={e => setExtraUid(e.target.value)}>
-                  <option value="">Adicionar pessoa...</option>
-                  {disponiveisExtra.map(p => (
-                    <option key={p.uid} value={p.uid}>
-                      {p.nome}
-                    </option>
-                  ))}
-                </Select>
+                <PessoaSelect
+                  value={extraUid}
+                  onChange={setExtraUid}
+                  pessoas={disponiveisExtra}
+                  placeholder="Adicionar pessoa..."
+                  titulo="Adicionar ao ensaio"
+                />
               </div>
               <Button
                 size="icon"

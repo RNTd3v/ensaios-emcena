@@ -1,4 +1,5 @@
 import { collection, doc, onSnapshot, query, serverTimestamp, where, writeBatch } from 'firebase/firestore'
+import { sincronizarNomeNoPerfil } from './inscricoes'
 import { db } from './config'
 import { deleteCenaFile, uploadArquivo } from './storage'
 import type { Area, DiaSemana, Inscricao } from '@/types'
@@ -103,5 +104,6 @@ export async function salvarDependente(
   else batch.set(inscricaoRef, { ...dados, status: 'pendente', createdAt: serverTimestamp() })
 
   await batch.commit()
+  await sincronizarNomeNoPerfil(id, nome, apelido).catch(() => {})
   return id
 }

@@ -47,6 +47,7 @@ import { formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { whatsappLink } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
+import { PessoaSelect, pessoaOpcao } from '@/components/ui/PessoaSelect'
 
 /** Próximo ensaio confirmado dessa cena (qualquer data futura, sem paginação). */
 function useProximoEnsaio(cena: Cena) {
@@ -237,7 +238,9 @@ export function Cenas() {
 
   const lideres = useMemo(() => {
     const uids = new Set((cenas ?? []).map(c => c.liderUid).filter((uid): uid is string => !!uid))
-    return [...uids].map(uid => ({ uid, nome: nameFor(uid) })).sort((a, b) => a.nome.localeCompare(b.nome, undefined, { sensitivity: 'base' }))
+    return [...uids]
+      .map(uid => pessoaOpcao(uid, users[uid], inscricoesByUid[uid]))
+      .sort((a, b) => a.nome.localeCompare(b.nome, undefined, { sensitivity: 'base' }))
   }, [cenas, inscricoesByUid, users])
 
   const filteredCenas = useMemo(() => {
@@ -698,14 +701,15 @@ export function Cenas() {
           </div>
           <div>
             <Label htmlFor="filtro-lider">Líder</Label>
-            <Select id="filtro-lider" value={liderFilter} onChange={e => setLiderFilter(e.target.value)} className="mt-1.5">
-              <option value="">Todos</option>
-              {lideres.map(l => (
-                <option key={l.uid} value={l.uid}>
-                  {l.nome}
-                </option>
-              ))}
-            </Select>
+            <PessoaSelect
+              id="filtro-lider"
+              value={liderFilter}
+              onChange={setLiderFilter}
+              pessoas={lideres}
+              extras={[{ value: '', label: 'Todos' }]}
+              titulo="Filtrar por líder"
+              className="mt-1.5"
+            />
           </div>
           <div>
             <Label>Dia(s)</Label>

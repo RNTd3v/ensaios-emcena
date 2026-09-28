@@ -23,6 +23,7 @@ import { TAREFA_STATUS, estaAberta, exigeJustificativa, statusInfo } from '@/lib
 import { toDateKey } from '@/lib/agenda'
 import { cn } from '@/lib/utils'
 import type { AppUser, Cena, Equipe, Tarefa, TarefaStatus } from '@/types'
+import { PessoaSelect, pessoaOpcao } from '@/components/ui/PessoaSelect'
 
 interface Props {
   equipe: Equipe
@@ -220,18 +221,18 @@ export function TarefasCard({ equipe, users, podeGerenciar }: Props) {
           </div>
           <div>
             <Label htmlFor="filtro-tarefa-responsavel">Responsável</Label>
-            <Select id="filtro-tarefa-responsavel" value={filtroResponsavel} onChange={e => setFiltroResponsavel(e.target.value)}>
-              <option value="todos">Todos</option>
-              <option value="minhas">Minhas</option>
-              <option value="ninguem">Sem responsável</option>
-              {[...equipe.membros]
-                .sort((a, b) => (users[a]?.displayName ?? '').localeCompare(users[b]?.displayName ?? '', 'pt-BR'))
-                .map(uid => (
-                  <option key={uid} value={uid}>
-                    {users[uid]?.displayName ?? '...'}
-                  </option>
-                ))}
-            </Select>
+            <PessoaSelect
+              id="filtro-tarefa-responsavel"
+              value={filtroResponsavel}
+              onChange={setFiltroResponsavel}
+              pessoas={equipe.membros.map(uid => pessoaOpcao(uid, users[uid])).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))}
+              extras={[
+                { value: 'todos', label: 'Todos' },
+                { value: 'minhas', label: 'Minhas' },
+                { value: 'ninguem', label: 'Sem responsável' },
+              ]}
+              titulo="Filtrar por responsável"
+            />
           </div>
           {cenasDasTarefas.length > 0 && (
             <div>
@@ -472,7 +473,7 @@ function TarefaDialog({ tarefa, equipe, users, byUid, onClose }: TarefaDialogPro
   }, [currentUser])
 
   const membros = useMemo(
-    () => [...equipe.membros].sort((a, b) => (users[a]?.displayName ?? '').localeCompare(users[b]?.displayName ?? '', 'pt-BR')),
+    () => equipe.membros.map(uid => pessoaOpcao(uid, users[uid])).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
     [equipe.membros, users],
   )
 
@@ -540,14 +541,14 @@ function TarefaDialog({ tarefa, equipe, users, byUid, onClose }: TarefaDialogPro
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="tarefa-responsavel">Responsável</Label>
-            <Select id="tarefa-responsavel" value={responsavelUid} onChange={e => setResponsavelUid(e.target.value)}>
-              <option value="">Ninguém</option>
-              {membros.map(uid => (
-                <option key={uid} value={uid}>
-                  {users[uid]?.displayName ?? '...'}
-                </option>
-              ))}
-            </Select>
+            <PessoaSelect
+              id="tarefa-responsavel"
+              value={responsavelUid}
+              onChange={setResponsavelUid}
+              pessoas={membros}
+              extras={[{ value: '', label: 'Ninguém' }]}
+              titulo="Responsável pela tarefa"
+            />
           </div>
           <div>
             <Label htmlFor="tarefa-prazo">Prazo</Label>

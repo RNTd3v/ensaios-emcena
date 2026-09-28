@@ -24,6 +24,11 @@ export interface AppUser {
   email: string
   displayName: string
   photoURL: string | null
+  /** Cópia pública do nome completo/apelido da inscrição — as inscrições em si têm leitura restrita. */
+  nomeCompleto?: string
+  apelido?: string
+  /** Cópia do status da inscrição (só admin grava) — os seletores de pessoa mostram só confirmados. */
+  inscricaoStatus?: InscricaoStatus
   role: UserRole
   active: boolean
   /** uid de quem revogou o acesso (setado junto com active=false, limpo ao reativar). */

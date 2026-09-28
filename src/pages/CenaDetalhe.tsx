@@ -79,6 +79,7 @@ import { formatDuracao, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorar
 import { whatsappLink } from '@/lib/formatters'
 import { addDays, canCheckin, DIA_TO_WEEKDAY, formatRelativeDia, toDateKey, weekDates } from '@/lib/agenda'
 import { cn } from '@/lib/utils'
+import { PessoaSelect, pessoaOpcao } from '@/components/ui/PessoaSelect'
 
 interface Occurrence {
   dateKey: string
@@ -214,6 +215,8 @@ export function CenaDetalhe() {
     return inscricoesByUid[uid]?.apelido || inscricoesByUid[uid]?.nomeCompleto || users[uid]?.displayName || 'Sem nome'
   }
 
+  const participantesOpcoes = (cena?.participantes ?? []).map(uid => pessoaOpcao(uid, users[uid], inscricoesByUid[uid]))
+
   const ensaiosByDate = useMemo(() => Object.fromEntries((ensaios ?? []).map(e => [e.data, e])), [ensaios])
   const todayKey = toDateKey(new Date())
   const todayHasEnsaio = !!ensaiosByDate[todayKey]
@@ -260,11 +263,12 @@ export function CenaDetalhe() {
   const availableParaAdicionar = useMemo(
     () =>
       (inscricoes ?? [])
+        .filter(i => i.status === 'confirmado' && users[i.uid]?.active !== false)
         .filter(i => !cena?.participantes.includes(i.uid))
         .filter(i => i.areas.some(a => a === 'elenco' || a === 'tecnica'))
         .filter(i => !cena?.dias.length || cena.dias.every(d => diasDisponiveis(i.disponibilidade.dias).includes(d)))
         .sort((a, b) => (a.apelido || a.nomeCompleto).localeCompare(b.apelido || b.nomeCompleto)),
-    [inscricoes, cena?.participantes, cena?.dias],
+    [inscricoes, users, cena?.participantes, cena?.dias],
   )
 
   /**
@@ -1198,14 +1202,14 @@ export function CenaDetalhe() {
 
             <div>
               <Label htmlFor="cena-lider">Líder</Label>
-              <Select id="cena-lider" value={liderUidDraft} onChange={e => setLiderUidDraft(e.target.value)}>
-                <option value="">Sem líder definido</option>
-                {cena.participantes.map(uid => (
-                  <option key={uid} value={uid}>
-                    {nameFor(uid)}
-                  </option>
-                ))}
-              </Select>
+              <PessoaSelect
+                id="cena-lider"
+                value={liderUidDraft}
+                onChange={setLiderUidDraft}
+                pessoas={participantesOpcoes}
+                extras={[{ value: '', label: 'Sem líder definido' }]}
+                titulo="Líder da cena"
+              />
               {liderUidDraft && (users[liderUidDraft]?.role ?? 'participante') === 'participante' && (
                 <p className="text-xs text-muted-foreground mt-1">Essa pessoa vai virar Líder ao salvar.</p>
               )}
@@ -1352,18 +1356,14 @@ export function CenaDetalhe() {
 
             <div>
               <Label htmlFor="personagem-participante">Participante</Label>
-              <Select
+              <PessoaSelect
                 id="personagem-participante"
                 value={personagemParticipanteDraft}
-                onChange={e => setPersonagemParticipanteDraft(e.target.value)}
-              >
-                <option value="">Sem participante</option>
-                {cena.participantes.map(uid => (
-                  <option key={uid} value={uid}>
-                    {nameFor(uid)}
-                  </option>
-                ))}
-              </Select>
+                onChange={setPersonagemParticipanteDraft}
+                pessoas={participantesOpcoes}
+                extras={[{ value: '', label: 'Sem participante' }]}
+                titulo="Quem interpreta"
+              />
             </div>
 
             <label className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2.5">
@@ -1414,14 +1414,13 @@ export function CenaDetalhe() {
           <div className="space-y-4">
             <div>
               <Label htmlFor="participante-add">Pessoa</Label>
-              <Select id="participante-add" value={participanteAddUid} onChange={e => setParticipanteAddUid(e.target.value)}>
-                <option value="">Selecione</option>
-                {availableParaAdicionar.map(i => (
-                  <option key={i.uid} value={i.uid}>
-                    {i.apelido || i.nomeCompleto}
-                  </option>
-                ))}
-              </Select>
+              <PessoaSelect
+                id="participante-add"
+                value={participanteAddUid}
+                onChange={setParticipanteAddUid}
+                pessoas={availableParaAdicionar.map(i => pessoaOpcao(i.uid, users[i.uid], i))}
+                titulo="Adicionar participante"
+              />
               {availableParaAdicionar.length === 0 && (
                 <p className="text-xs text-muted-foreground mt-1">Não há mais ninguém disponível pra adicionar.</p>
               )}

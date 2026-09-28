@@ -47,6 +47,22 @@ export async function saveInscricao(input: InscricaoInput, isNew: boolean): Prom
     }),
     { merge: true },
   )
+  // Separado (e sem travar a inscrição se falhar): cópia pública pros seletores de pessoa.
+  await sincronizarNomeNoPerfil(input.uid, input.nomeCompleto, input.apelido).catch(() => {})
+}
+
+/** Grava nome completo/apelido da inscrição no perfil (`users`), que todo mundo logado lê. */
+export async function sincronizarNomeNoPerfil(uid: string, nomeCompleto: string, apelido: string): Promise<void> {
+  await updateDoc(doc(db, 'users', uid), { nomeCompleto: nomeCompleto.trim(), apelido: apelido.trim() })
+}
+
+/** Cópia completa da inscrição no perfil, incluindo o status — só admin (firestore.rules). */
+export async function sincronizarPerfilPeloAdmin(i: Pick<Inscricao, 'uid' | 'nomeCompleto' | 'apelido' | 'status'>): Promise<void> {
+  await updateDoc(doc(db, 'users', i.uid), {
+    nomeCompleto: (i.nomeCompleto ?? '').trim(),
+    apelido: (i.apelido ?? '').trim(),
+    inscricaoStatus: i.status,
+  })
 }
 
 /**
@@ -67,6 +83,7 @@ export async function getAllInscricoesOnce(): Promise<Inscricao[]> {
 
 export async function updateInscricaoStatus(uid: string, status: InscricaoStatus): Promise<void> {
   await updateDoc(doc(db, 'inscricoes', uid), { status, updatedAt: serverTimestamp() })
+  await updateDoc(doc(db, 'users', uid), { inscricaoStatus: status }).catch(() => {})
 }
 
 /**

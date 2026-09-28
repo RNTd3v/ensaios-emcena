@@ -3,9 +3,9 @@ import { Crown, HandHelping, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
 import type { AppUser } from '@/types'
+import { PessoaSelect, inscritosConfirmados, pessoaOpcao } from '@/components/ui/PessoaSelect'
 
 interface Props {
   titulo: string
@@ -26,10 +26,10 @@ export function LiderAssistentesDialog({ titulo, liderUid, assistentes: iniciais
 
   const pessoas = useMemo(
     () =>
-      Object.values(users)
-        .filter(u => u.active !== false)
-        .sort((a, b) => a.displayName.localeCompare(b.displayName, 'pt-BR')),
-    [users],
+      inscritosConfirmados(users, [liderUid, ...iniciais])
+        .map(u => pessoaOpcao(u.uid, u))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
+    [users, liderUid, iniciais],
   )
 
   async function handleSave() {
@@ -52,14 +52,14 @@ export function LiderAssistentesDialog({ titulo, liderUid, assistentes: iniciais
             <Crown className="h-3.5 w-3.5 text-amber-500" />
             Líder
           </Label>
-          <Select id="funcao-lider" value={lider} onChange={e => setLider(e.target.value)}>
-            <option value="">Sem líder</option>
-            {pessoas.map(p => (
-              <option key={p.uid} value={p.uid}>
-                {p.displayName}
-              </option>
-            ))}
-          </Select>
+          <PessoaSelect
+            id="funcao-lider"
+            value={lider}
+            onChange={setLider}
+            pessoas={pessoas}
+            extras={[{ value: '', label: 'Sem líder' }]}
+            titulo="Escolher líder"
+          />
         </div>
 
         <div>
@@ -86,16 +86,14 @@ export function LiderAssistentesDialog({ titulo, liderUid, assistentes: iniciais
           )}
           <div className="flex items-center gap-1.5">
             <div className="flex-1">
-              <Select value={novo} onChange={e => setNovo(e.target.value)} aria-label="Adicionar assistente">
-                <option value="">Adicionar assistente...</option>
-                {pessoas
-                  .filter(p => p.uid !== lider && !assistentes.includes(p.uid))
-                  .map(p => (
-                    <option key={p.uid} value={p.uid}>
-                      {p.displayName}
-                    </option>
-                  ))}
-              </Select>
+              <PessoaSelect
+                value={novo}
+                onChange={setNovo}
+                pessoas={pessoas.filter(p => p.uid !== lider && !assistentes.includes(p.uid))}
+                placeholder="Adicionar assistente..."
+                titulo="Adicionar assistente"
+                aria-label="Adicionar assistente"
+              />
             </div>
             <Button
               size="icon"

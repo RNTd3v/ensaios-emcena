@@ -4,13 +4,13 @@ import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
 import { Textarea } from '@/components/ui/Textarea'
 import { createEquipe, updateEquipeDescricao, updateEquipeInfo } from '@/services/firebase/equipes'
 import { DEFAULT_EQUIPE_ICON, EQUIPE_ICONS } from '@/lib/equipeIcons'
 import { cn } from '@/lib/utils'
 import type { AppUser, Equipe, MidiaTipo } from '@/types'
+import { PessoaSelect, inscritosConfirmados, pessoaOpcao } from '@/components/ui/PessoaSelect'
 
 interface Props {
   /** Ausente = criando uma equipe nova (só admin). */
@@ -36,10 +36,10 @@ export function EquipeFormDialog({ equipe, isAdmin, users = {}, onClose, onCreat
 
   const pessoas = useMemo(
     () =>
-      Object.values(users)
-        .filter(u => u.active !== false)
-        .sort((a, b) => a.displayName.localeCompare(b.displayName, 'pt-BR')),
-    [users],
+      inscritosConfirmados(users, [equipe?.liderUid])
+        .map(u => pessoaOpcao(u.uid, u))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
+    [users, equipe?.liderUid],
   )
 
   async function handleSave() {
@@ -110,14 +110,14 @@ export function EquipeFormDialog({ equipe, isAdmin, users = {}, onClose, onCreat
               <Crown className="h-3.5 w-3.5 text-amber-500" />
               Líder
             </Label>
-            <Select id="equipe-lider" value={liderUid} onChange={e => setLiderUid(e.target.value)}>
-              <option value="">Sem líder</option>
-              {pessoas.map(p => (
-                <option key={p.uid} value={p.uid}>
-                  {p.displayName}
-                </option>
-              ))}
-            </Select>
+            <PessoaSelect
+              id="equipe-lider"
+              value={liderUid}
+              onChange={setLiderUid}
+              pessoas={pessoas}
+              extras={[{ value: '', label: 'Sem líder' }]}
+              titulo="Escolher líder"
+            />
             <p className="mt-1 text-xs text-muted-foreground">Quem vira líder entra automaticamente na equipe.</p>
           </div>
         )}

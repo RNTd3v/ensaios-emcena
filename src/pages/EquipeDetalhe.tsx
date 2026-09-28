@@ -4,7 +4,6 @@ import { ArrowLeft, Crown, HandHelping, Pencil, Plus, Trash2, X } from 'lucide-r
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
 import { EquipeFormDialog } from '@/components/equipe/EquipeFormDialog'
 import { TarefasCard } from '@/components/equipe/TarefasCard'
@@ -17,6 +16,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { equipeIcon } from '@/lib/equipeIcons'
 import { cn } from '@/lib/utils'
 import type { Equipe } from '@/types'
+import { PessoaSelect, inscritosConfirmados, pessoaOpcao } from '@/components/ui/PessoaSelect'
 
 /**
  * Detalhe de uma equipe: tarefas, líder, assistentes e membros. Admin e o líder da equipe
@@ -64,9 +64,10 @@ export function EquipeDetalhe() {
 
   const disponiveis = useMemo(
     () =>
-      Object.values(users)
-        .filter(u => u.active !== false && !equipe?.membros.includes(u.uid))
-        .sort((a, b) => a.displayName.localeCompare(b.displayName, 'pt-BR')),
+      inscritosConfirmados(users)
+        .filter(u => !equipe?.membros.includes(u.uid))
+        .map(u => pessoaOpcao(u.uid, u))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
     [users, equipe?.membros],
   )
 
@@ -229,14 +230,13 @@ export function EquipeDetalhe() {
           {podeGerenciar && (
             <div className="flex items-center gap-1.5 border-t border-gray-100 pt-3">
               <div className="flex-1">
-                <Select value={novoMembro} onChange={e => setNovoMembro(e.target.value)}>
-                  <option value="">Adicionar pessoa...</option>
-                  {disponiveis.map(u => (
-                    <option key={u.uid} value={u.uid}>
-                      {u.displayName}
-                    </option>
-                  ))}
-                </Select>
+                <PessoaSelect
+                  value={novoMembro}
+                  onChange={setNovoMembro}
+                  pessoas={disponiveis}
+                  placeholder="Adicionar pessoa..."
+                  titulo="Adicionar à equipe"
+                />
               </div>
               <Button
                 size="icon"

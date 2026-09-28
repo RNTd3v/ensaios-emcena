@@ -1,4 +1,4 @@
-import { addDoc, collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { db } from './config'
 import type { AnotacaoMusica } from '@/types'
 
@@ -73,6 +73,20 @@ export async function editarAnotacao(
 
 export async function excluirAnotacao(id: string): Promise<void> {
   await deleteDoc(doc(db, COL, id))
+}
+
+/** Todas as anotações de uma música, de qualquer cena (ex.: pra perguntar ao trocar o arquivo). */
+export async function getAnotacoesDaMusica(musicaId: string): Promise<AnotacaoMusica[]> {
+  const snap = await getDocs(query(collection(db, COL), where('musicaId', '==', musicaId)))
+  return snap.docs.map(d => fromSnap(d.id, d.data() as Record<string, unknown>))
+}
+
+export async function excluirAnotacoes(ids: string[]): Promise<void> {
+  for (let i = 0; i < ids.length; i += 400) {
+    const batch = writeBatch(db)
+    for (const id of ids.slice(i, i + 400)) batch.delete(doc(db, COL, id))
+    await batch.commit()
+  }
 }
 
 /** "115" -> "1:55". */

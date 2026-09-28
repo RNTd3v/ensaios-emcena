@@ -22,7 +22,13 @@ import { cn } from '@/lib/utils'
 import type { AnotacaoMusica, Cena, Musica } from '@/types'
 import { CenaSelect } from '@/components/midia/CenaSelect'
 import { MusicaComAnotacoes } from '@/components/midia/MusicaComAnotacoes'
-import { subscribeToAnotacoesDaCena, subscribeToAnotacoesGlobais } from '@/services/firebase/anotacoesMusica'
+import {
+  excluirAnotacoes,
+  formatTempo,
+  getAnotacoesDaMusica,
+  subscribeToAnotacoesDaCena,
+  subscribeToAnotacoesGlobais,
+} from '@/services/firebase/anotacoesMusica'
 
 type MusicaItem = Musica & { legado?: boolean }
 
@@ -230,19 +236,44 @@ export function MusicasCard({ cena, gerenciar, ensaio, recolhivel, semTitulo, se
     }
   }
 
+  // Troca com anotações: antes pergunta se mantém ou apaga (os momentos podem não bater mais).
+  const [trocaPendente, setTrocaPendente] = useState<{ musica: Musica; file: File; anotacoes: AnotacaoMusica[] } | null>(null)
+
   async function handleTrocar(file: File) {
     if (!trocando || !currentUser) return
     const erro = validar(file)
-    if (erro) return setError(erro)
+    if (erro) {
+      setTrocando(null)
+      return setError(erro)
+    }
+    setError('')
+    const doArquivo = await getAnotacoesDaMusica(trocando.id).catch(() => [])
+    if (doArquivo.length) {
+      setTrocaPendente({ musica: trocando, file, anotacoes: doArquivo })
+      setTrocando(null)
+      return
+    }
+    await executarTroca(trocando, file, [])
+  }
+
+  async function executarTroca(musica: Musica, file: File, apagarIds: string[]) {
+    if (!currentUser) return
     setUploading(true)
     setError('')
     try {
-      await trocarArquivoMusica(trocando, file, currentUser.uid, equipeId)
+      await trocarArquivoMusica(musica, file, currentUser.uid, equipeId)
     } catch {
       setError('Não foi possível trocar. Tente de novo.')
+      return
     } finally {
       setUploading(false)
       setTrocando(null)
+      setTrocaPendente(null)
+    }
+    if (apagarIds.length) {
+      await excluirAnotacoes(apagarIds).catch(() =>
+        setError('O arquivo foi trocado, mas não foi possível apagar as anotações. Apague pela cena.'),
+      )
     }
   }
 
@@ -557,6 +588,51 @@ export function MusicasCard({ cena, gerenciar, ensaio, recolhivel, semTitulo, se
 
       {editando && (
         <EditarMusicaDialog musica={editando} cenas={cena ? undefined : cenasEscolha} equipeId={equipeId} onClose={() => setEditando(null)} />
+      )}
+
+      {trocaPendente && (
+        <Dialog open onClose={() => !uploading && setTrocaPendente(null)} title="Trocar arquivo">
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700">
+              <span className="font-medium">{trocaPendente.musica.nome}</span> tem {trocaPendente.anotacoes.length}{' '}
+              {trocaPendente.anotacoes.length === 1 ? 'anotação' : 'anotações'}. Com o arquivo novo, os momentos podem não bater mais.
+            </p>
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg bg-gray-50 p-2">
+              {[...trocaPendente.anotacoes]
+                .sort((a, b) => a.tempoSeg - b.tempoSeg)
+                .map(a => (
+                  <p key={a.id} className="flex gap-2 text-xs text-gray-700">
+                    <span className="shrink-0 font-mono font-semibold tabular-nums text-primary">{formatTempo(a.tempoSeg)}</span>
+                    <span className="min-w-0 truncate">{a.texto}</span>
+                    {a.cenaNome && <span className="ml-auto shrink-0 text-muted-foreground">{a.cenaNome}</span>}
+                  </p>
+                ))}
+            </div>
+            <p className="text-sm font-medium text-gray-900">Quer apagar as anotações?</p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                disabled={uploading}
+                onClick={() => executarTroca(trocaPendente.musica, trocaPendente.file, [])}
+              >
+                Manter
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                disabled={uploading}
+                onClick={() => executarTroca(trocaPendente.musica, trocaPendente.file, trocaPendente.anotacoes.map(a => a.id))}
+              >
+                {uploading && <Spinner size="sm" className="border-white/40 border-t-white" />}
+                Apagar e trocar
+              </Button>
+            </div>
+            <Button variant="ghost" className="w-full" disabled={uploading} onClick={() => setTrocaPendente(null)}>
+              Cancelar troca
+            </Button>
+          </div>
+        </Dialog>
       )}
 
       {excluindo && (

@@ -235,7 +235,9 @@ service cloud.firestore {
       allow update: if (isAdmin() || gerenciaEnsaios(cenaDoc(resource.data.cenaId)))
         && anotacaoValida(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['texto', 'tempoSeg', 'global', 'updatedByUid', 'updatedAt']);
-      allow delete: if isAdmin() || gerenciaEnsaios(cenaDoc(resource.data.cenaId));
+      // A equipe que cuida da música também apaga (ao trocar o arquivo, os momentos deixam de bater).
+      allow delete: if isAdmin() || gerenciaEnsaios(cenaDoc(resource.data.cenaId))
+        || membroDeEquipeQueGerencia(get(/databases/$(database)/documents/musicas/$(resource.data.musicaId)).data.get('equipeId', null), 'musicas');
     }
 
     match /musicas/{id} {

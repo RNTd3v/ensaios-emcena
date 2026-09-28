@@ -2,28 +2,10 @@ import { useEffect, useState } from 'react'
 import { CalendarDays, Clock } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { formatHoraCompacta } from '@/lib/cenaHorario'
+import { diffPartes, parseHorarios } from '@/lib/apresentacoes'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { DEFAULT_SETTINGS } from '@/services/firebase/settings'
 import { cn } from '@/lib/utils'
-
-function parseHorarios(value: string | undefined): string[] {
-  return (value ?? '')
-    .split(',')
-    .map(h => h.trim())
-    .filter(h => /^\d{1,2}:\d{2}$/.test(h))
-    .map(h => h.padStart(5, '0'))
-    .sort()
-}
-
-function diffPartes(ms: number) {
-  const totalSeg = Math.max(0, Math.floor(ms / 1000))
-  return {
-    dias: Math.floor(totalSeg / 86400),
-    horas: Math.floor((totalSeg % 86400) / 3600),
-    minutos: Math.floor((totalSeg % 3600) / 60),
-    segundos: totalSeg % 60,
-  }
-}
 
 /**
  * Data das apresentações (Configurações → data do espetáculo e horários) com contagem regressiva

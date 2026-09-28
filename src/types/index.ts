@@ -475,5 +475,14 @@ export interface AppSettings {
   welcomeMessage?: string
   /** Quantas horas antes do ensaio o check-in de presença fecha. */
   checkinLimiteHoras?: number
+  /** Bloco "Vem aí" na tela de login (ex.: reunião geral). Sem título, não aparece. */
+  loginDestaqueTitulo?: string
+  loginDestaqueData?: string // YYYY-MM-DD — o bloco some depois desse dia
+  loginDestaqueHora?: string // HH:MM
+  loginDestaqueLocal?: string
+  /** Até esse dia (YYYY-MM-DD), o login chama pra inscrição; depois, fala dos ensaios/cenas/avisos. */
+  loginLancamentoData?: string
+  /** Contagem regressiva das apresentações na tela de login (ligar depois do lançamento). */
+  loginContagemApresentacao?: boolean
   updatedAt?: string
 }

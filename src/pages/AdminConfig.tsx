@@ -93,6 +93,48 @@ export function AdminConfig() {
 
         <Card>
           <CardHeader>
+            <CardTitle>Tela de login</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="loginDestaqueTitulo">"Vem aí" — título</Label>
+              <Input id="loginDestaqueTitulo" placeholder="Reunião Geral" {...register('loginDestaqueTitulo')} />
+              <p className="text-xs text-muted-foreground mt-1">Sem título, o bloco não aparece. Some sozinho no dia seguinte à data.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="loginDestaqueData">Data</Label>
+                <Input id="loginDestaqueData" type="date" {...register('loginDestaqueData')} />
+              </div>
+              <div>
+                <Label htmlFor="loginDestaqueHora">Horário</Label>
+                <Input id="loginDestaqueHora" type="time" {...register('loginDestaqueHora')} />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="loginDestaqueLocal">Local</Label>
+              <Input id="loginDestaqueLocal" placeholder="IBP" {...register('loginDestaqueLocal')} />
+            </div>
+            <div>
+              <Label htmlFor="loginLancamentoData">Data do lançamento</Label>
+              <Input id="loginLancamentoData" type="date" {...register('loginLancamentoData')} />
+              <p className="text-xs text-muted-foreground mt-1">
+                Até esse dia, o login convida pra inscrição. Depois, fala dos ensaios, cenas e avisos.
+              </p>
+            </div>
+            <label className="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2.5">
+              <span className="text-sm text-gray-700">Contagem regressiva das apresentações</span>
+              <input
+                type="checkbox"
+                {...register('loginContagemApresentacao')}
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+            </label>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Arte / pôster</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">

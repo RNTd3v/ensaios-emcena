@@ -11,8 +11,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons/*.svg'],
       manifest: {
-        name: 'Ensaios #EMCENA575',
-        short_name: 'Ensaios',
+        name: 'Vila Esperança',
+        short_name: 'Vila Esperança',
         description: 'Inscrição e controle de ensaios do musical de Natal',
         theme_color: '#7c2d12',
         background_color: '#7c2d12',

@@ -3,6 +3,8 @@ import { Navigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PhoneMockup } from '@/components/layout/PhoneMockup'
+import { LoginContagem } from '@/components/login/LoginContagem'
+import { LoginDestaque } from '@/components/login/LoginDestaque'
 import { loginWithGoogle, loginWithMicrosoft } from '@/services/firebase/auth'
 import { useAuthStore, retryLoadProfile } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -40,6 +42,9 @@ export function Login() {
   }, [loaded, refresh])
 
   if (initialized && user) return <Navigate to="/" replace />
+
+  // Até o dia do lançamento, o texto abaixo do botão chama pra inscrição.
+  const preLancamento = !!settings.loginLancamentoData && new Date(`${settings.loginLancamentoData}T23:59:59`) >= new Date()
 
   async function handleGoogleLogin() {
     setError('')
@@ -81,8 +86,11 @@ export function Login() {
         </div>
       </header>
 
-      <main className="flex-1 relative z-10 flex flex-col items-center justify-center px-4 pb-4">
-        <div className="space-y-4 text-center">
+      <main className="flex-1 relative z-10 flex flex-col items-center justify-center gap-6 px-5 pb-4 overflow-y-auto">
+        <LoginContagem />
+        <LoginDestaque />
+
+        <div className="w-full space-y-3 text-center">
           {(error || redirectError) && (
             <div className="space-y-2">
               <p className="text-sm text-white bg-black/40 rounded-lg px-3 py-2">{error || redirectError}</p>
@@ -104,18 +112,27 @@ export function Login() {
             size="lg"
             onClick={handleGoogleLogin}
             disabled={loading !== null}
-            className="gap-2 rounded-full border border-white/30 bg-white/15 px-8 text-white backdrop-blur-md hover:bg-white/25"
+            className="h-12 w-full gap-2 rounded-full bg-[#fff] px-8 text-base font-semibold text-[#1c1620] shadow-lg shadow-black/30 hover:bg-white/90"
           >
             {loading === 'google' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
             Entrar com Google
           </Button>
+          {preLancamento ? (
+            <p className="text-sm text-white/75">
+              <span className="font-semibold text-white">Ainda não se inscreveu?</span>
+              <br />
+              Entre com o Google e faça sua inscrição no elenco ou na equipe.
+            </p>
+          ) : (
+            <p className="text-xs text-white/60">Entre para ver seus ensaios, cenas e avisos.</p>
+          )}
 
           {MICROSOFT_LOGIN_ENABLED && (
             <Button
               size="lg"
               onClick={handleMicrosoftLogin}
               disabled={loading !== null}
-              className="gap-2 rounded-full border border-white/30 bg-white/15 px-8 text-white backdrop-blur-md hover:bg-white/25"
+              className="h-12 w-full gap-2 rounded-full border border-white/30 bg-white/15 px-8 text-white backdrop-blur-md hover:bg-white/25"
             >
               {loading === 'microsoft' ? <Loader2 className="h-4 w-4 animate-spin" /> : <MicrosoftIcon />}
               Entrar com Microsoft

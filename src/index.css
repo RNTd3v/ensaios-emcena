@@ -231,6 +231,25 @@ select option {
   line-height: 1;
 }
 
+/* Serifada no estilo do logo "Vila Esperança" — títulos e números da tela de login. */
+.font-display {
+  font-family: 'Playfair Display', Georgia, serif;
+}
+
+/* Card "vidro" da tela de login: vidro fosco com borda clara e brilho roxo no canto. */
+.login-glass {
+  position: relative;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgb(123 70 127 / 0.45), transparent 60%),
+    linear-gradient(160deg, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.04));
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow:
+    0 20px 40px -18px rgb(0 0 0 / 0.6),
+    inset 0 1px 0 rgb(255 255 255 / 0.2);
+}
+
 .snow-badge {
   display: inline-flex;
   align-items: center;

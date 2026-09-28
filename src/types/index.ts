@@ -226,6 +226,8 @@ export interface AusenciaMotivo {
   uid: string
   motivo: string
   registradaEm: string
+  /** 'inscricao' = marcada automaticamente pela indisponibilidade informada na inscrição. */
+  origem?: 'inscricao'
 }
 
 /** Uma ocorrência de ensaio confirmada (data + horário) de uma cena — um documento por data. */

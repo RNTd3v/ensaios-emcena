@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Check, MessageSquareX, X } from 'lucide-react'
+import { CalendarX, Check, MessageSquareX, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/Spinner'
 import { Textarea } from '@/components/ui/Textarea'
-import { confirmarPresenca, registrarAusencia, subscribeToMinhaAusencia, uidsAusentes } from '@/services/firebase/ensaios'
+import {
+  MOTIVO_INDISPONIBILIDADE,
+  confirmarPresenca,
+  registrarAusencia,
+  subscribeToMinhaAusencia,
+  uidsAusentes,
+} from '@/services/firebase/ensaios'
 import { canCheckin } from '@/lib/agenda'
 import type { AusenciaMotivo, Ensaio } from '@/types'
 
@@ -23,7 +29,8 @@ interface Props {
 /**
  * A resposta da própria pessoa pra um ensaio: "Vou" (check-in, só na janela de `canCheckin`) ou
  * "Não vou" com o motivo (a qualquer momento antes do ensaio começar). Dá pra trocar de resposta
- * enquanto o ensaio não começou.
+ * enquanto o ensaio não começou. Se o "não vou" veio da indisponibilidade da inscrição, a pessoa
+ * pode mudar de ideia e confirmar a qualquer momento antes do ensaio, sem esperar a janela do check-in.
  */
 export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem }: Props) {
   const [escrevendoMotivo, setEscrevendoMotivo] = useState(false)
@@ -42,6 +49,7 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem }: 
   // Motivo privado (subcoleção), com fallback pro legado ainda não migrado.
   const ausencia = ausente ? { motivo: minhaAusencia?.motivo ?? ensaio.ausencias?.[uid]?.motivo ?? '' } : undefined
   const podeConfirmar = canCheckin(ensaio.data, ensaio.horario, checkinLimiteHoras)
+  const daInscricao = minhaAusencia?.origem === 'inscricao' || ausencia?.motivo === MOTIVO_INDISPONIBILIDADE
   const comecou = ensaioJaComecou(ensaio)
 
   async function run(fn: () => Promise<void>) {
@@ -103,6 +111,27 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem }: 
             Não vou mais
           </button>
         )}
+      </div>
+    )
+  }
+
+  if (ausencia && daInscricao) {
+    return (
+      <div className="space-y-2">
+        <div className="rounded-lg bg-amber-50 px-3 py-2">
+          <p className="flex items-center gap-2 text-sm font-medium text-amber-800">
+            <CalendarX className="h-4 w-4 shrink-0" />
+            {paraQuem ? `Na inscrição, ${paraQuem} não podia nesse dia` : 'Na inscrição, você marcou que não pode nesse dia'}
+          </p>
+          {!comecou && <p className="mt-0.5 text-xs text-amber-700">Mudou de ideia? Ainda dá tempo de confirmar.</p>}
+        </div>
+        {!comecou && (
+          <Button size="sm" className="w-full gap-1.5" onClick={() => run(() => confirmarPresenca(ensaio.id, uid))} disabled={saving}>
+            {saving ? <Spinner size="sm" className="border-white/40 border-t-white" /> : <Check className="h-4 w-4" />}
+            {paraQuem ? `${paraQuem} vai sim` : 'Mudei de ideia, vou!'}
+          </Button>
+        )}
+        {error && <p className="text-xs text-red-600">{error}</p>}
       </div>
     )
   }

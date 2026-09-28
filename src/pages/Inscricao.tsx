@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/Spinner'
 import { DateMultiSelect } from '@/components/ui/DateMultiSelect'
-import { formatPhone } from '@/lib/formatters'
+import { PhoneInput } from '@/components/ui/PhoneInput'
 import { cn } from '@/lib/utils'
 import { getInscricao, saveInscricao } from '@/services/firebase/inscricoes'
 import { useAuthStore } from '@/stores/authStore'
@@ -307,11 +307,11 @@ export function Inscricao() {
 
             <div>
               <Label htmlFor="telefone">Telefone (WhatsApp)</Label>
-              <Input
+              <PhoneInput
                 id="telefone"
                 placeholder="(00) 00000-0000"
                 value={watch('telefone')}
-                onChange={e => setValue('telefone', formatPhone(e.target.value), { shouldValidate: true })}
+                onChange={v => setValue('telefone', v, { shouldValidate: true })}
               />
               {errors.telefone && <p className="text-xs text-red-600 mt-1">{errors.telefone.message}</p>}
             </div>
@@ -335,11 +335,11 @@ export function Inscricao() {
                 </div>
                 <div>
                   <Label htmlFor="responsavelTelefone">Telefone do responsável (WhatsApp)</Label>
-                  <Input
+                  <PhoneInput
                     id="responsavelTelefone"
                     placeholder="(00) 00000-0000"
                     value={watch('responsavelTelefone')}
-                    onChange={e => setValue('responsavelTelefone', formatPhone(e.target.value), { shouldValidate: true })}
+                    onChange={v => setValue('responsavelTelefone', v, { shouldValidate: true })}
                   />
                   {errors.responsavelTelefone && (
                     <p className="text-xs text-red-600 mt-1">{errors.responsavelTelefone.message}</p>

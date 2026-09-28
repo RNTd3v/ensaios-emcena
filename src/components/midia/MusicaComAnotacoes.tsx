@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react'
-import { Globe, MessageSquarePlus, Pencil, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { CloudCheck, Globe, MessageSquarePlus, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/Spinner'
 import { Textarea } from '@/components/ui/Textarea'
 import { criarAnotacao, editarAnotacao, excluirAnotacao, formatTempo, parseTempo } from '@/services/firebase/anotacoesMusica'
+import { guardarMusica, musicaGuardada } from '@/lib/midiaCache'
 import { cn } from '@/lib/utils'
 import type { AnotacaoMusica, Cena, Musica } from '@/types'
 
@@ -43,6 +44,26 @@ export function MusicaComAnotacoes({ musica, anotacoes, contexto, uid, podeAnota
   const [erro, setErro] = useState('')
 
   const ordenadas = [...anotacoes].sort((a, b) => a.tempoSeg - b.tempoSeg)
+
+  // Já baixada antes: toca do aparelho. Só troca a fonte se o player ainda não começou.
+  const [src, setSrc] = useState(musica.url)
+  useEffect(() => {
+    let vivo = true
+    let local: string | null = null
+    setSrc(musica.url)
+    musicaGuardada(musica.url).then(blobUrl => {
+      if (!blobUrl) return
+      const audio = audioRef.current
+      if (!vivo || (audio && (!audio.paused || audio.currentTime > 0))) return URL.revokeObjectURL(blobUrl)
+      local = blobUrl
+      setSrc(blobUrl)
+    })
+    return () => {
+      vivo = false
+      if (local) URL.revokeObjectURL(local)
+    }
+  }, [musica.url])
+  const noAparelho = src !== musica.url
 
   function irPara(seg: number) {
     const audio = audioRef.current
@@ -111,10 +132,19 @@ export function MusicaComAnotacoes({ musica, anotacoes, contexto, uid, podeAnota
       <audio
         ref={audioRef}
         controls
-        src={musica.url}
+        src={src}
         className="h-9 w-full"
         onTimeUpdate={e => setTempoAtual(e.currentTarget.currentTime)}
+        onPlay={() => {
+          if (!noAparelho) guardarMusica(musica.url)
+        }}
       />
+      {noAparelho && (
+        <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
+          <CloudCheck className="h-3 w-3" />
+          Salva no aparelho
+        </p>
+      )}
 
       {ordenadas.length > 0 && (
         <div className="space-y-1">

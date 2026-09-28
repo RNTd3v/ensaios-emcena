@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -9,12 +10,17 @@ interface Props {
 
 /** Foto do usuário (Google), com fallback pras iniciais ou um ícone genérico. */
 export function Avatar({ photoURL, name, className }: Props) {
-  if (photoURL) {
+  // Foto que não carregou (link expirado, bloqueio, sem internet): cai pras iniciais, em vez do
+  // ícone de imagem quebrada. Volta a tentar se o link mudar.
+  const [falhou, setFalhou] = useState<string | null>(null)
+
+  if (photoURL && falhou !== photoURL) {
     return (
       <img
         src={photoURL}
         alt={name ?? ''}
         referrerPolicy="no-referrer"
+        onError={() => setFalhou(photoURL)}
         className={cn('rounded-full object-cover shrink-0', className)}
       />
     )

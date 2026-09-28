@@ -119,9 +119,11 @@ export function ehIOS(): boolean {
 export interface AvisoInput {
   titulo: string
   corpo: string
-  escopo: 'todos' | 'cena' | 'equipe'
+  escopo: 'todos' | 'cena' | 'equipe' | 'pessoas'
   escopoId?: string
   escopoNome?: string
+  /** Só com escopo 'pessoas': quem recebe (a Cloud Function confere se o remetente pode avisar cada um). */
+  destinatarios?: string[]
 }
 
 /** Cria o aviso — a Cloud Function `avisoCriado` gera as notificações e o push. */
@@ -131,6 +133,7 @@ export async function enviarAviso(input: AvisoInput, byUid: string): Promise<voi
     corpo: input.corpo.trim(),
     escopo: input.escopo,
     ...(input.escopoId ? { escopoId: input.escopoId, escopoNome: input.escopoNome ?? '' } : {}),
+    ...(input.escopo === 'pessoas' ? { destinatarios: input.destinatarios ?? [], escopoNome: input.escopoNome ?? '' } : {}),
     enviadoPorUid: byUid,
     createdAt: serverTimestamp(),
   })

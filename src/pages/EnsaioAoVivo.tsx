@@ -397,7 +397,7 @@ export function EnsaioAoVivo() {
             </Card>
           )}
 
-          <MusicasCard cena={cena} />
+          <MusicasCard cena={cena} ensaio={{ id: ensaio.id, data: ensaio.data }} />
 
           <CheckinCard ensaio={ensaio} elenco={elenco} checkinLimiteHoras={checkinLimiteHoras} />
 

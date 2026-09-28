@@ -975,7 +975,7 @@ export function CenaDetalhe() {
             </CardContent>
           </Card>
 
-          <MusicasCard cena={cena} />
+          <MusicasCard cena={cena} recolhivel />
 
           {registros.length > 0 && (
             <Card>
@@ -1033,7 +1033,7 @@ export function CenaDetalhe() {
 
           <AprovacoesFigurinoCard cena={cena} users={users} />
 
-          <FigurinosCard cena={cena} titulo="Figurinos" />
+          <FigurinosCard cena={cena} titulo="Figurinos" recolhivel />
 
           <Card>
             <CardContent>

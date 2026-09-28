@@ -301,6 +301,22 @@ export const tarefaAlterada = onDocumentWritten('equipes/{equipeId}/tarefas/{tar
 
 // ---------- Avisos manuais ----------
 
+/**
+ * Aviso pra pessoas escolhidas: admin avisa qualquer um; os demais, só quem está nas cenas ou
+ * equipes que lideram (as regras deixam qualquer um criar — o filtro de verdade é aqui).
+ */
+async function quemPodeAvisar(remetenteUid: string | undefined, escolhidos: string[]): Promise<string[]> {
+  if (!remetenteUid) return []
+  const remetente = (await db.collection('users').doc(remetenteUid).get()).data()
+  if (remetente?.role === 'admin') return escolhidos
+  const permitidos = new Set<string>()
+  const cenas = await db.collection('cenas').where('liderUid', '==', remetenteUid).get()
+  for (const c of cenas.docs) for (const u of (c.data().participantes as string[] | undefined) ?? []) permitidos.add(u)
+  const equipes = await db.collection('equipes').where('liderUid', '==', remetenteUid).get()
+  for (const e of equipes.docs) for (const u of (e.data().membros as string[] | undefined) ?? []) permitidos.add(u)
+  return escolhidos.filter(u => permitidos.has(u))
+}
+
 export const avisoCriado = onDocumentCreated('avisos/{id}', async event => {
   const a = event.data?.data()
   if (!a) return
@@ -312,6 +328,8 @@ export const avisoCriado = onDocumentCreated('avisos/{id}', async event => {
     destinatarios = (await getCena(a.escopoId))?.participantes ?? []
   } else if (a.escopo === 'equipe' && a.escopoId) {
     destinatarios = (await db.collection('equipes').doc(a.escopoId).get()).data()?.membros ?? []
+  } else if (a.escopo === 'pessoas' && Array.isArray(a.destinatarios)) {
+    destinatarios = await quemPodeAvisar(a.enviadoPorUid, a.destinatarios as string[])
   }
   await notificar(
     destinatarios,

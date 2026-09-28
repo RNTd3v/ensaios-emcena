@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Clapperboard, Music, Pencil, Plus, RefreshCw, Search, SlidersHorizontal, Trash2, X } from 'lucide-react'
+import { ChevronDown, Clapperboard, Music, Pencil, Plus, RefreshCw, Search, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
@@ -19,11 +19,15 @@ import {
 import { useAuthStore } from '@/stores/authStore'
 import { MUSICA_MAX_BYTES } from '@/lib/uploads'
 import { cn } from '@/lib/utils'
-import type { Cena, Musica } from '@/types'
+import type { AnotacaoMusica, Cena, Musica } from '@/types'
+import { CenaSelect } from '@/components/midia/CenaSelect'
+import { MusicaComAnotacoes } from '@/components/midia/MusicaComAnotacoes'
+import { subscribeToAnotacoesDaCena, subscribeToAnotacoesGlobais } from '@/services/firebase/anotacoesMusica'
 
 type MusicaItem = Musica & { legado?: boolean }
 
 const SEPARAR_POR_CENA_KEY = 'musicas.separarPorCena'
+const ABERTO_KEY = 'musicas.cardAberto'
 
 interface Props {
   /** Com cena: só as músicas dela. Sem cena: todas, agrupadas por cena. */
@@ -34,6 +38,10 @@ interface Props {
    * Ausente = só ouvir (cena, ensaio, página geral).
    */
   gerenciar?: { equipeId?: string }
+  /** Na tela do ensaio: as anotações feitas ali guardam o ensaio. */
+  ensaio?: { id: string; data: string }
+  /** Título vira botão de abrir/fechar; fechado mostra quantas músicas e anotações. */
+  recolhivel?: boolean
   /** Sem o título (a página já tem) — no lugar, só a contagem. */
   semTitulo?: boolean
   /** Sem o Card por fora (quando a página já tem o próprio layout). */
@@ -44,12 +52,64 @@ interface Props {
  * Músicas, com cena opcional. Só se gerencia na página da equipe responsável; no resto do app é só
  * pra ouvir. Itens ainda no formato antigo (array na cena, antes da migração) aparecem sem edição.
  */
-export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
+export function MusicasCard({ cena, gerenciar, ensaio, recolhivel, semTitulo, semCard }: Props) {
   const currentUser = useAuthStore(s => s.user)
   const pode = !!gerenciar
   const equipeId = gerenciar?.equipeId
   const [musicas, setMusicas] = useState<Musica[] | null>(null)
-  const [cenas, setCenas] = useState<Cena[]>([])
+  const [todasCenas, setTodasCenas] = useState<Cena[]>([])
+  const cenas = useMemo(() => todasCenas.filter(c => c.ativo), [todasCenas])
+  const isAdmin = currentUser?.role === 'admin'
+  // Só admin filtra por cenas inativas (as outras pessoas continuam vendo tudo junto, como antes).
+  const inativas = useMemo(
+    () => new Set(isAdmin ? todasCenas.filter(c => !c.ativo).map(c => c.id) : []),
+    [todasCenas, isAdmin],
+  )
+  /** Cenas escolhíveis ao cadastrar/editar: admin também vê as inativas (escondidas até pedir). */
+  const cenasEscolha = isAdmin ? todasCenas : cenas
+
+  // Anotações por momento: na cena, as dela; fora (página de músicas, sonoplastia), só as globais.
+  const [anotacoes, setAnotacoes] = useState<AnotacaoMusica[]>([])
+  useEffect(() => (cena ? subscribeToAnotacoesDaCena(cena.id, setAnotacoes) : subscribeToAnotacoesGlobais(setAnotacoes)), [cena?.id])
+  const anotacoesPorMusica = useMemo(() => {
+    const m = new Map<string, AnotacaoMusica[]>()
+    for (const a of anotacoes) m.set(a.musicaId, [...(m.get(a.musicaId) ?? []), a])
+    return m
+  }, [anotacoes])
+  const uid = currentUser?.uid
+  const gerenciaCena = isAdmin || (!!cena && !!uid && (cena.liderUid === uid || !!cena.assistentes?.includes(uid)))
+  const podeAnotar = !!cena && !!uid && (gerenciaCena || cena.participantes.includes(uid))
+
+  // Aberto/fechado (com `recolhivel`) fica salvo no aparelho — vale pra todas as cenas.
+  const [aberto, setAbertoState] = useState(() => {
+    try {
+      return localStorage.getItem(ABERTO_KEY) === 'sim'
+    } catch {
+      return false
+    }
+  })
+  function alternarAberto() {
+    setAbertoState(v => {
+      try {
+        localStorage.setItem(ABERTO_KEY, v ? 'nao' : 'sim')
+      } catch {
+        // storage indisponível — segue só em memória
+      }
+      return !v
+    })
+  }
+  const fechado = !!recolhivel && !aberto
+
+  // Blocos por cena (página de músicas, equipe): começam fechados; com busca ou filtro, abrem todos.
+  const [cenasAbertas, setCenasAbertas] = useState<Set<string>>(new Set())
+  function alternarCena(chave: string) {
+    setCenasAbertas(prev => {
+      const novo = new Set(prev)
+      if (novo.has(chave)) novo.delete(chave)
+      else novo.add(chave)
+      return novo
+    })
+  }
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const [editando, setEditando] = useState<Musica | null>(null)
@@ -61,7 +121,7 @@ export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
   const [trocando, setTrocando] = useState<Musica | null>(null)
   const [filtrosOpen, setFiltrosOpen] = useState(false)
   const [busca, setBusca] = useState('')
-  const [filtroCena, setFiltroCena] = useState<'todas' | 'sem' | string>('todas')
+  const [filtroCena, setFiltroCena] = useState<'todas' | 'sem' | 'inativas' | string>('todas')
   // "Separar por cena" é preferência de visualização (ex.: desligar no ensaio geral) — fica salva
   // no aparelho; se o storage não estiver disponível, só vale enquanto a página está aberta.
   const [separarPorCena, setSepararPorCenaState] = useState(() => {
@@ -83,13 +143,18 @@ export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
   useEffect(() => subscribeToMusicas(cena?.id, setMusicas), [cena?.id])
   useEffect(() => {
     if (cena || !currentUser || !pode) return
-    return subscribeToCenas(currentUser.role, currentUser.uid, lista => setCenas(lista.filter(c => c.ativo)))
+    return subscribeToCenas(currentUser.role, currentUser.uid, setTodasCenas)
   }, [cena, currentUser, pode])
 
   const itens: MusicaItem[] = useMemo(
     () => (cena ? juntarComLegado(musicas ?? [], cena.musicas, { cenaId: cena.id, cenaNome: cena.nome }) : (musicas ?? [])),
     [musicas, cena],
   )
+
+  const totalAnotacoes = useMemo(() => {
+    const ids = new Set(itens.map(m => m.id))
+    return anotacoes.filter(a => ids.has(a.musicaId)).length
+  }, [anotacoes, itens])
 
   /** Cenas que aparecem nas músicas (pelo nome copiado), pro filtro. */
   const cenasDosItens = useMemo(() => {
@@ -103,10 +168,11 @@ export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
     return itens.filter(m => {
       if (termo && !m.nome.toLowerCase().includes(termo)) return false
       if (filtroCena === 'sem' && m.cenaId) return false
+      if (filtroCena === 'inativas') return !!m.cenaId && inativas.has(m.cenaId)
       if (filtroCena !== 'todas' && filtroCena !== 'sem' && m.cenaId !== filtroCena) return false
       return true
     })
-  }, [itens, busca, filtroCena])
+  }, [itens, busca, filtroCena, inativas])
 
   /** A busca por nome fica no próprio card; o modal de filtros só tem a cena. */
   const filtrosAtivos = !!busca.trim() || filtroCena !== 'todas'
@@ -119,7 +185,7 @@ export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
     setSepararPorCena(true)
   }
   const resumoFiltros = [
-    filtroCena === 'sem' ? 'Sem cena' : filtroCena !== 'todas' ? (cenasDosItens.find(([id]) => id === filtroCena)?.[1] ?? 'Cena') : null,
+    filtroCena === 'sem' ? 'Sem cena' : filtroCena === 'inativas' ? 'Cenas inativas' : filtroCena !== 'todas' ? (cenasDosItens.find(([id]) => id === filtroCena)?.[1] ?? 'Cena') : null,
     !separarPorCena ? 'Sem separação por cena' : null,
   ].filter((x): x is string => !!x)
 
@@ -130,11 +196,12 @@ export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
     const porCena = new Map<string, { chave: string; titulo: string; itens: MusicaItem[] }>()
     for (const m of filtradas) {
       const chave = m.cenaId ?? ''
-      if (!porCena.has(chave)) porCena.set(chave, { chave, titulo: m.cenaNome ?? (m.cenaId ? 'Cena' : 'Sem cena'), itens: [] })
+      const titulo = m.cenaNome ?? (m.cenaId ? 'Cena' : 'Sem cena')
+      if (!porCena.has(chave)) porCena.set(chave, { chave, titulo: inativas.has(chave) ? `${titulo} (inativa)` : titulo, itens: [] })
       porCena.get(chave)!.itens.push(m)
     }
     return [...porCena.values()].sort((a, b) => (a.chave ? 0 : 1) - (b.chave ? 0 : 1) || a.titulo.localeCompare(b.titulo, 'pt-BR'))
-  }, [filtradas, cena, separarPorCena])
+  }, [filtradas, cena, separarPorCena, inativas])
 
   function validar(file: File) {
     if (!file.type.startsWith('audio/')) return 'Só arquivos de áudio são aceitos.'
@@ -206,6 +273,9 @@ export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
     </Button>
   )
 
+  const grupoAberto = (chave: string) => filtrosAtivos || cenasAbertas.has(chave)
+  const anotacoesDoGrupo = (lista: MusicaItem[]) => lista.reduce((n, m) => n + (anotacoesPorMusica.get(m.id)?.length ?? 0), 0)
+
   const conteudo = (
     <div className="space-y-2.5">
       {/* Título (quando a página não tem) + adicionar. Com busca, o filtro vai ao lado do campo. */}
@@ -213,6 +283,16 @@ export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
         <div className="flex items-center justify-between gap-2">
           {semTitulo ? (
             <span />
+          ) : recolhivel ? (
+            <button type="button" onClick={alternarAberto} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" aria-expanded={aberto}>
+              <ChevronDown className={cn('h-4 w-4 shrink-0 text-gray-400 transition-transform', !aberto && '-rotate-90')} />
+              <span className="text-base font-semibold">Músicas</span>
+              <span className="ml-auto truncate pl-2 text-xs text-muted-foreground">
+                {musicas
+                  ? `${itens.length} ${itens.length === 1 ? 'música' : 'músicas'} · ${totalAnotacoes} ${totalAnotacoes === 1 ? 'anotação' : 'anotações'}`
+                  : ''}
+              </span>
+            </button>
           ) : (
             <p className="flex items-center gap-1.5 text-base font-semibold">
               <Music className="h-4 w-4 text-primary" />
@@ -221,11 +301,13 @@ export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
             </p>
           )}
           <div className="flex shrink-0 items-center gap-0.5">
-            {!mostrarBusca && mostrarFiltros && botaoFiltro}
-            {pode && botaoAdicionar}
+            {!fechado && !mostrarBusca && mostrarFiltros && botaoFiltro}
+            {!fechado && pode && botaoAdicionar}
           </div>
         </div>
       )}
+      {!fechado && (
+        <>
       {mostrarBusca && (
         <div className="space-y-1">
           <div className="flex items-center gap-1.5">
@@ -277,7 +359,7 @@ export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
         multiple
         className="hidden"
         onChange={e => {
-          handleUpload(e.target.files, cena ?? cenas.find(c => c.id === novaCenaId))
+          handleUpload(e.target.files, cena ?? cenasEscolha.find(c => c.id === novaCenaId))
           e.target.value = ''
         }}
       />
@@ -306,15 +388,28 @@ export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
             // Cada cena num bloco próprio (com cabeçalho) e cada música separada por divisória.
             <div key={g.chave} className={cn(g.titulo && 'overflow-hidden rounded-xl border border-gray-200')}>
               {g.titulo && (
-                <div className="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() => alternarCena(g.chave)}
+                  aria-expanded={grupoAberto(g.chave)}
+                  className={cn(
+                    'flex w-full items-center justify-between gap-2 bg-gray-50 px-3 py-2 text-left',
+                    grupoAberto(g.chave) && 'border-b border-gray-200',
+                  )}
+                >
                   <p className="flex min-w-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-600">
                     {g.chave ? <Clapperboard className="h-3.5 w-3.5 shrink-0 text-primary" /> : <Music className="h-3.5 w-3.5 shrink-0 text-primary" />}
                     <span className="truncate">{g.titulo}</span>
                   </p>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">{g.itens.length}</span>
-                </div>
+                  <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                    {g.itens.length} {g.itens.length === 1 ? 'música' : 'músicas'}
+                    {anotacoesDoGrupo(g.itens) > 0 && ` · ${anotacoesDoGrupo(g.itens)} ${anotacoesDoGrupo(g.itens) === 1 ? 'anotação' : 'anotações'}`}
+                    <ChevronDown className={cn('h-4 w-4 text-gray-400 transition-transform', grupoAberto(g.chave) && 'rotate-180')} />
+                  </span>
+                </button>
               )}
-              <div className={cn('divide-y divide-gray-100', g.titulo && 'px-3')}>
+              {/* Fechado só esconde (não desmonta): uma música tocando continua tocando. */}
+              <div className={cn('divide-y divide-gray-100', g.titulo && 'px-3', g.titulo && !grupoAberto(g.chave) && 'hidden')}>
                 {g.itens.map(m => (
                   <div key={m.id} className="space-y-1 py-2.5 first:pt-2.5 last:pb-2.5">
                     <div className="flex items-center justify-between gap-2">
@@ -355,13 +450,28 @@ export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
                         </div>
                       )}
                     </div>
-                    <audio controls src={m.url} className="h-9 w-full" />
+                    {m.legado ? (
+                      <audio controls src={m.url} className="h-9 w-full" />
+                    ) : (
+                      <MusicaComAnotacoes
+                        musica={m}
+                        anotacoes={anotacoesPorMusica.get(m.id) ?? []}
+                        contexto={cena ? { cena, ensaioId: ensaio?.id, ensaioData: ensaio?.data } : undefined}
+                        uid={uid}
+                        podeAnotar={podeAnotar}
+                        podeGerenciar={() => (cena ? gerenciaCena : isAdmin)}
+                        podeMarcarGlobal={gerenciaCena}
+                        mostrarCena={!cena}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
             </div>
           ))}
         </div>
+      )}
+        </>
       )}
     </div>
   )
@@ -396,11 +506,25 @@ export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
               <Select id="filtro-musica-cena" value={filtroCena} onChange={e => setFiltroCena(e.target.value)}>
                 <option value="todas">Todas as cenas</option>
                 <option value="sem">Sem cena</option>
-                {cenasDosItens.map(([id, nome]) => (
-                  <option key={id} value={id}>
-                    {nome}
-                  </option>
-                ))}
+                {cenasDosItens.some(([id]) => inativas.has(id)) && <option value="inativas">Só cenas inativas</option>}
+                {cenasDosItens
+                  .filter(([id]) => !inativas.has(id))
+                  .map(([id, nome]) => (
+                    <option key={id} value={id}>
+                      {nome}
+                    </option>
+                  ))}
+                {cenasDosItens.some(([id]) => inativas.has(id)) && (
+                  <optgroup label="Cenas inativas">
+                    {cenasDosItens
+                      .filter(([id]) => inativas.has(id))
+                      .map(([id, nome]) => (
+                        <option key={id} value={id}>
+                          {nome}
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
               </Select>
             </div>
           )}
@@ -420,14 +544,7 @@ export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
           <div className="space-y-4">
             <div>
               <Label htmlFor="musica-cena">Cena (opcional)</Label>
-              <Select id="musica-cena" value={novaCenaId} onChange={e => setNovaCenaId(e.target.value)}>
-                <option value="">Nenhuma — vale pra peça toda</option>
-                {cenas.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome}
-                  </option>
-                ))}
-              </Select>
+              <CenaSelect id="musica-cena" value={novaCenaId} onChange={setNovaCenaId} cenas={cenasEscolha} vazio="Nenhuma — vale pra peça toda" />
             </div>
             {error && <p className="text-sm text-red-600">{error}</p>}
             <Button className="w-full gap-1.5" onClick={() => inputRef.current?.click()} disabled={uploading}>
@@ -439,7 +556,7 @@ export function MusicasCard({ cena, gerenciar, semTitulo, semCard }: Props) {
       )}
 
       {editando && (
-        <EditarMusicaDialog musica={editando} cenas={cena ? undefined : cenas} equipeId={equipeId} onClose={() => setEditando(null)} />
+        <EditarMusicaDialog musica={editando} cenas={cena ? undefined : cenasEscolha} equipeId={equipeId} onClose={() => setEditando(null)} />
       )}
 
       {excluindo && (
@@ -524,15 +641,14 @@ function EditarMusicaDialog({
         {cenas && (
           <div>
             <Label htmlFor="musica-editar-cena">Cena (opcional)</Label>
-            <Select id="musica-editar-cena" value={cenaId} onChange={e => setCenaId(e.target.value)}>
-              <option value="">Nenhuma — vale pra peça toda</option>
-              {cenaForaDaLista && <option value={musica.cenaId}>{musica.cenaNome ?? 'Cena'}</option>}
-              {cenas.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </Select>
+            <CenaSelect
+              id="musica-editar-cena"
+              value={cenaId}
+              onChange={setCenaId}
+              cenas={cenas}
+              vazio="Nenhuma — vale pra peça toda"
+              foraDaLista={cenaForaDaLista ? { value: musica.cenaId!, label: musica.cenaNome ?? 'Cena' } : undefined}
+            />
           </div>
         )}
         {error && <p className="text-sm text-red-600">{error}</p>}

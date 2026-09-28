@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, CalendarClock, ChevronDown, ChevronRight, CircleDashed, Crown, HandHelping, ListChecks, Plus, Sparkles, Users } from 'lucide-react'
+import { ArrowLeft, CalendarClock, ChevronDown, CircleDashed, Crown, HandHelping, ListChecks, Plus, Sparkles, Users } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { Button } from '@/components/ui/button'
@@ -147,7 +147,8 @@ function EquipeCard({ equipe, users, uid, abertaInicial }: { equipe: Equipe; use
 
   return (
     <Card className="overflow-hidden p-0">
-      <button type="button" onClick={() => setAberta(v => !v)} className="flex w-full items-center gap-3 px-4 py-3 text-left" aria-expanded={aberta}>
+      <div className="flex items-center">
+      <Link to={`/equipes/${equipe.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 text-left">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
           <Icon className="h-5 w-5" />
         </span>
@@ -158,22 +159,34 @@ function EquipeCard({ equipe, users, uid, abertaInicial }: { equipe: Equipe; use
             {funcao === 'assistente' && <HandHelping className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Você é assistente" />}
           </p>
           {lider ? (
-            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
               <Avatar photoURL={lider.photoURL} name={lider.nome} className="h-5 w-5 text-[9px]" />
               <span className="truncate">
                 <span className="text-amber-600">Líder</span> · {lider.nome}
                 {lider.apelido && <span className="text-muted-foreground/80"> ({lider.apelido})</span>}
               </span>
-            </p>
+            </div>
           ) : (
             <p className="mt-0.5 text-xs text-muted-foreground">Sem líder</p>
           )}
         </div>
-        <ChevronDown className={cn('h-5 w-5 shrink-0 text-gray-400 transition-transform', aberta && 'rotate-180')} />
+      </Link>
+      {/* Só o chevron abre/fecha o resumo; o resto do card leva pra equipe. */}
+      <button
+        type="button"
+        onClick={() => setAberta(v => !v)}
+        aria-expanded={aberta}
+        aria-label={aberta ? 'Fechar resumo' : 'Abrir resumo'}
+        className="flex shrink-0 items-center self-stretch pl-2 pr-2.5"
+      >
+        <span className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100">
+          <ChevronDown className={cn('h-5 w-5 text-gray-400 transition-transform', aberta && 'rotate-180')} />
+        </span>
       </button>
+      </div>
 
       {aberta && (
-        <div className="space-y-3 border-t border-gray-100 px-4 pb-4 pt-3">
+        <Link to={`/equipes/${equipe.id}`} className="block space-y-3 border-t border-gray-100 px-4 pb-4 pt-3">
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-xl bg-gray-50 px-3 py-2">
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -238,15 +251,7 @@ function EquipeCard({ equipe, users, uid, abertaInicial }: { equipe: Equipe; use
               )}
             </div>
           )}
-
-          <Link
-            to={`/equipes/${equipe.id}`}
-            className="flex items-center justify-center gap-1 rounded-full border border-gray-200 py-2 text-sm font-medium text-primary hover:bg-gray-50"
-          >
-            Abrir equipe
-            <ChevronRight className="h-4 w-4" />
-          </Link>
-        </div>
+        </Link>
       )}
     </Card>
   )

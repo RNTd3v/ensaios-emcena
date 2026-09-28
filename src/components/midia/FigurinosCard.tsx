@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Image as ImageIcon, Pencil, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { ChevronDown, Image as ImageIcon, Pencil, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
@@ -12,8 +12,12 @@ import { deleteFigurino, figurinoVisivel, juntarComLegado, subscribeToFigurinos,
 import { useAuthStore } from '@/stores/authStore'
 import { FIGURINO_MAX_BYTES } from '@/lib/uploads'
 import type { Cena, FigurinoImagem } from '@/types'
+import { CenaSelect } from '@/components/midia/CenaSelect'
+import { cn } from '@/lib/utils'
 
 type FigurinoItem = FigurinoImagem & { legado?: boolean }
+
+const ABERTO_KEY = 'figurinos.cardAberto'
 
 interface Props {
   /** Com cena: só os figurinos dela. Sem cena: todos, agrupados por cena. */
@@ -25,6 +29,8 @@ interface Props {
    */
   gerenciar?: { equipeId?: string }
   titulo?: string
+  /** Título vira botão de abrir/fechar; fechado mostra quantas fotos. */
+  recolhivel?: boolean
   /** Sem o título (a página já tem) — no lugar, só a contagem. */
   semTitulo?: boolean
   semCard?: boolean
@@ -34,15 +40,24 @@ interface Props {
  * Figurinos (fotos). A equipe de figurino cadastra referências em qualquer cena (ou sem cena); o
  * elenco manda a foto do próprio figurino pela página do personagem, e o líder da cena aprova.
  */
-export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', semTitulo, semCard }: Props) {
+export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhivel, semTitulo, semCard }: Props) {
   const currentUser = useAuthStore(s => s.user)
   const pode = !!gerenciar
   const equipeId = gerenciar?.equipeId
   const [figurinos, setFigurinos] = useState<FigurinoImagem[] | null>(null)
-  const [cenas, setCenas] = useState<Cena[]>([])
+  const [todasCenas, setTodasCenas] = useState<Cena[]>([])
+  const cenas = useMemo(() => todasCenas.filter(c => c.ativo), [todasCenas])
+  const isAdmin = currentUser?.role === 'admin'
+  // Só admin filtra por cenas inativas (as outras pessoas continuam vendo tudo junto, como antes).
+  const inativas = useMemo(
+    () => new Set(isAdmin ? todasCenas.filter(c => !c.ativo).map(c => c.id) : []),
+    [todasCenas, isAdmin],
+  )
+  /** Cenas escolhíveis ao cadastrar/editar: admin também vê as inativas (escondidas até pedir). */
+  const cenasEscolha = isAdmin ? todasCenas : cenas
   const [viewer, setViewer] = useState<FigurinoItem | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
-  const [filtroCena, setFiltroCena] = useState<'todas' | 'sem' | string>('todas')
+  const [filtroCena, setFiltroCena] = useState<'todas' | 'sem' | 'inativas' | string>('todas')
   const [filtroPersonagem, setFiltroPersonagem] = useState<'todos' | 'geral' | string>('todos')
   const [filtroAprovacao, setFiltroAprovacao] = useState<'todas' | 'valendo' | 'pendente' | 'reprovado'>('todas')
   const [filtrosOpen, setFiltrosOpen] = useState(false)
@@ -50,10 +65,30 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', semTitulo
   useEffect(() => subscribeToFigurinos(cena?.id, setFigurinos), [cena?.id])
   useEffect(() => {
     if (cena || !currentUser || !pode) return
-    return subscribeToCenas(currentUser.role, currentUser.uid, lista => setCenas(lista.filter(c => c.ativo)))
+    return subscribeToCenas(currentUser.role, currentUser.uid, setTodasCenas)
   }, [cena, currentUser, pode])
 
   const podeSubir = pode
+
+  // Aberto/fechado (com `recolhivel`) fica salvo no aparelho — vale pra todas as cenas.
+  const [aberto, setAbertoState] = useState(() => {
+    try {
+      return localStorage.getItem(ABERTO_KEY) === 'sim'
+    } catch {
+      return false
+    }
+  })
+  function alternarAberto() {
+    setAbertoState(v => {
+      try {
+        localStorage.setItem(ABERTO_KEY, v ? 'nao' : 'sim')
+      } catch {
+        // storage indisponível — segue só em memória
+      }
+      return !v
+    })
+  }
+  const fechado = !!recolhivel && !aberto
 
   function podeEditar(f: FigurinoItem) {
     return pode && !f.legado
@@ -77,9 +112,15 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', semTitulo
   const filtradosPorCena = useMemo(
     () =>
       itens.filter(f =>
-        filtroCena === 'todas' ? true : filtroCena === 'sem' ? !f.cenaId : f.cenaId === filtroCena,
+        filtroCena === 'todas'
+          ? true
+          : filtroCena === 'sem'
+            ? !f.cenaId
+            : filtroCena === 'inativas'
+              ? !!f.cenaId && inativas.has(f.cenaId)
+              : f.cenaId === filtroCena,
       ),
-    [itens, filtroCena],
+    [itens, filtroCena, inativas],
   )
 
   const personagensDosItens = useMemo(() => {
@@ -108,7 +149,7 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', semTitulo
   }
   const APROVACAO_LABEL = { valendo: 'Valendo', pendente: 'Aguardando', reprovado: 'Reprovadas' } as const
   const resumoFiltros = [
-    filtroCena === 'sem' ? 'Sem cena' : filtroCena !== 'todas' ? (cenasDosItens.find(([id]) => id === filtroCena)?.[1] ?? 'Cena') : null,
+    filtroCena === 'sem' ? 'Sem cena' : filtroCena === 'inativas' ? 'Cenas inativas' : filtroCena !== 'todas' ? (cenasDosItens.find(([id]) => id === filtroCena)?.[1] ?? 'Cena') : null,
     filtroPersonagem === 'geral'
       ? 'Geral'
       : filtroPersonagem !== 'todos'
@@ -136,16 +177,25 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', semTitulo
     const porCena = new Map<string, { chave: string; titulo: string; itens: FigurinoItem[] }>()
     for (const f of filtrados) {
       const chave = f.cenaId ?? ''
-      if (!porCena.has(chave)) porCena.set(chave, { chave, titulo: f.cenaNome ?? (f.cenaId ? 'Cena' : 'Sem cena'), itens: [] })
+      const titulo = f.cenaNome ?? (f.cenaId ? 'Cena' : 'Sem cena')
+      if (!porCena.has(chave)) porCena.set(chave, { chave, titulo: inativas.has(chave) ? `${titulo} (inativa)` : titulo, itens: [] })
       porCena.get(chave)!.itens.push(f)
     }
     return [...porCena.values()].sort((a, b) => (a.chave ? 0 : 1) - (b.chave ? 0 : 1) || a.titulo.localeCompare(b.titulo, 'pt-BR'))
-  }, [filtrados, cena])
+  }, [filtrados, cena, inativas])
 
   const conteudo = (
     <div className="space-y-2.5">
       <div className="flex items-center justify-between gap-2">
-        {semTitulo ? (
+        {recolhivel && !semTitulo ? (
+          <button type="button" onClick={alternarAberto} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" aria-expanded={aberto}>
+            <ChevronDown className={cn('h-4 w-4 shrink-0 text-gray-400 transition-transform', !aberto && '-rotate-90')} />
+            <span className="text-base font-semibold">{titulo}</span>
+            <span className="ml-auto truncate pl-2 text-xs text-muted-foreground">
+              {figurinos ? `${itens.length} ${itens.length === 1 ? 'foto' : 'fotos'}` : ''}
+            </span>
+          </button>
+        ) : semTitulo ? (
           <p className="text-sm text-muted-foreground">
             {filtrosAtivos ? `${filtrados.length} de ${itens.length}` : itens.length} {itens.length === 1 ? 'foto' : 'fotos'}
           </p>
@@ -161,7 +211,7 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', semTitulo
           </p>
         )}
         <div className="flex shrink-0 items-center gap-0.5">
-          {!!itens.length && mostrarFiltros && (
+          {!fechado && !!itens.length && mostrarFiltros && (
             <Button
               variant="ghost"
               size="icon"
@@ -174,7 +224,7 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', semTitulo
               {filtrosAtivos && <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-primary" />}
             </Button>
           )}
-          {podeSubir && (
+          {!fechado && podeSubir && (
             <Button variant="ghost" size="icon" onClick={() => setUploadOpen(true)} title="Adicionar foto">
               <Plus className="h-4 w-4" />
             </Button>
@@ -182,6 +232,8 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', semTitulo
         </div>
       </div>
 
+      {!fechado && (
+        <>
       {filtrosAtivos && (
         <div className="flex items-center justify-between gap-2 rounded-lg bg-primary/5 px-2.5 py-1.5 text-xs text-primary">
           <span className="min-w-0 truncate">Filtrando: {resumoFiltros.join(' · ')}</span>
@@ -230,6 +282,8 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', semTitulo
           ))}
         </div>
       )}
+        </>
+      )}
     </div>
   )
 
@@ -258,11 +312,25 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', semTitulo
               >
                 <option value="todas">Todas as cenas</option>
                 <option value="sem">Sem cena</option>
-                {cenasDosItens.map(([id, nome]) => (
-                  <option key={id} value={id}>
-                    {nome}
-                  </option>
-                ))}
+                {cenasDosItens.some(([id]) => inativas.has(id)) && <option value="inativas">Só cenas inativas</option>}
+                {cenasDosItens
+                  .filter(([id]) => !inativas.has(id))
+                  .map(([id, nome]) => (
+                    <option key={id} value={id}>
+                      {nome}
+                    </option>
+                  ))}
+                {cenasDosItens.some(([id]) => inativas.has(id)) && (
+                  <optgroup label="Cenas inativas">
+                    {cenasDosItens
+                      .filter(([id]) => inativas.has(id))
+                      .map(([id, nome]) => (
+                        <option key={id} value={id}>
+                          {nome}
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
               </Select>
             </div>
           )}
@@ -309,7 +377,7 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', semTitulo
       {uploadOpen && currentUser && (
         <FigurinoFormDialog
           cena={cena}
-          cenas={cenas}
+          cenas={cenasEscolha}
           equipeId={equipeId}
           podeSemCena={pode}
           byUid={currentUser.uid}
@@ -323,7 +391,7 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', semTitulo
           rotulo={rotulo(viewer)}
           podeEditar={podeEditar(viewer)}
           cena={cena}
-          cenas={cenas}
+          cenas={cenasEscolha}
           equipeId={equipeId}
           podeSemCena={pode}
           onClose={() => setViewer(null)}
@@ -416,22 +484,17 @@ function FigurinoFormDialog({ figurino, cena, cenas, personagemFixo, equipeId, p
         {!cena && (
           <div>
             <Label htmlFor="figurino-cena">Cena {podeSemCena ? '(opcional)' : ''}</Label>
-            <Select
+            <CenaSelect
               id="figurino-cena"
               value={cenaId}
-              onChange={e => {
-                setCenaId(e.target.value)
+              onChange={v => {
+                setCenaId(v)
                 setPersonagemId('')
               }}
-            >
-              <option value="">{podeSemCena ? 'Nenhuma — vale pra peça toda' : 'Escolha a cena'}</option>
-              {cenaForaDaLista && <option value={figurino!.cenaId}>{figurino!.cenaNome ?? 'Cena'}</option>}
-              {cenas.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </Select>
+              cenas={cenas}
+              vazio={podeSemCena ? 'Nenhuma — vale pra peça toda' : 'Escolha a cena'}
+              foraDaLista={cenaForaDaLista ? { value: figurino!.cenaId!, label: figurino!.cenaNome ?? 'Cena' } : undefined}
+            />
           </div>
         )}
 

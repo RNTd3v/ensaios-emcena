@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Bell, BellRing, CalendarClock, CheckCheck, ListChecks, Megaphone, Send, Shirt } from 'lucide-react'
+import { ArrowLeft, Bell, BellRing, CalendarClock, Check, CheckCheck, ListChecks, Megaphone, Search, Send, Shirt, UserCheck, UsersRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
@@ -8,6 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
+import { PessoaLinha } from '@/components/ui/PessoaLinha'
+import { inscritosConfirmados, pessoaOpcao } from '@/components/ui/PessoaSelect'
+import { useUsersMap } from '@/components/oracao/OrandoAgora'
 import { Textarea } from '@/components/ui/Textarea'
 import { subscribeToCenas } from '@/services/firebase/cenas'
 import { subscribeToEquipes } from '@/services/firebase/equipes'
@@ -25,7 +28,7 @@ import {
 } from '@/services/firebase/notificacoes'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
-import type { Cena, Equipe, Notificacao } from '@/types'
+import type { AppUser, Cena, Equipe, Notificacao } from '@/types'
 
 const ICONE: Record<Notificacao['tipo'], typeof Bell> = {
   ensaio: CalendarClock,
@@ -243,6 +246,9 @@ function PushCard({ uid }: { uid: string }) {
   )
 }
 
+type Modo = 'todos' | 'grupo' | 'pessoas'
+type FiltroPessoas = 'todas' | 'lideres' | 'assistentes'
+
 function AvisoDialog({
   uid,
   isAdmin,
@@ -256,30 +262,43 @@ function AvisoDialog({
   equipes: Equipe[]
   onClose: () => void
 }) {
-  // Destino codificado como "todos" | "cena:<id>" | "equipe:<id>".
-  const primeiro = isAdmin ? 'todos' : cenas[0] ? `cena:${cenas[0].id}` : equipes[0] ? `equipe:${equipes[0].id}` : ''
-  const [destino, setDestino] = useState(primeiro)
+  const users = useUsersMap()
+  const [modo, setModo] = useState<Modo>(isAdmin ? 'todos' : 'grupo')
+  // Grupo codificado como "cena:<id>" | "equipe:<id>".
+  const [grupo, setGrupo] = useState(cenas[0] ? `cena:${cenas[0].id}` : equipes[0] ? `equipe:${equipes[0].id}` : '')
+  const [escolhidos, setEscolhidos] = useState<string[]>([])
   const [titulo, setTitulo] = useState('')
   const [corpo, setCorpo] = useState('')
   const [enviando, setEnviando] = useState(false)
-  const [enviado, setEnviado] = useState(false)
+  const [enviadoPara, setEnviadoPara] = useState<string | null>(null)
   const [erro, setErro] = useState('')
+
+  const temGrupos = cenas.length > 0 || equipes.length > 0
 
   async function handleEnviar() {
     if (!titulo.trim()) return setErro('Escreva um título.')
     if (!corpo.trim()) return setErro('Escreva a mensagem.')
-    const [tipo, id] = destino.split(':')
-    const input: AvisoInput =
-      tipo === 'cena'
-        ? { titulo, corpo, escopo: 'cena', escopoId: id, escopoNome: cenas.find(c => c.id === id)?.nome }
-        : tipo === 'equipe'
-          ? { titulo, corpo, escopo: 'equipe', escopoId: id, escopoNome: equipes.find(e => e.id === id)?.nome }
-          : { titulo, corpo, escopo: 'todos' }
+    let input: AvisoInput
+    let resumo: string
+    if (modo === 'pessoas') {
+      if (!escolhidos.length) return setErro('Escolha pelo menos uma pessoa.')
+      resumo = `${escolhidos.length} ${escolhidos.length === 1 ? 'pessoa' : 'pessoas'}`
+      input = { titulo, corpo, escopo: 'pessoas', destinatarios: escolhidos, escopoNome: resumo }
+    } else if (modo === 'grupo') {
+      const [tipo, id] = grupo.split(':')
+      if (!id) return setErro('Escolha a cena ou equipe.')
+      const nome = tipo === 'cena' ? cenas.find(c => c.id === id)?.nome : equipes.find(e => e.id === id)?.nome
+      resumo = nome ?? (tipo === 'cena' ? 'a cena' : 'a equipe')
+      input = { titulo, corpo, escopo: tipo === 'cena' ? 'cena' : 'equipe', escopoId: id, escopoNome: nome }
+    } else {
+      resumo = 'todo mundo'
+      input = { titulo, corpo, escopo: 'todos' }
+    }
     setEnviando(true)
     setErro('')
     try {
       await enviarAviso(input, uid)
-      setEnviado(true)
+      setEnviadoPara(resumo)
     } catch {
       setErro('Não foi possível enviar. Tente de novo.')
     } finally {
@@ -287,11 +306,19 @@ function AvisoDialog({
     }
   }
 
+  const modos: { value: Modo; label: string; icon: typeof Bell }[] = [
+    ...(isAdmin ? [{ value: 'todos' as const, label: 'Todo mundo', icon: Megaphone }] : []),
+    ...(temGrupos ? [{ value: 'grupo' as const, label: 'Cena ou equipe', icon: UsersRound }] : []),
+    { value: 'pessoas', label: 'Pessoas', icon: UserCheck },
+  ]
+
   return (
     <Dialog open onClose={onClose} title="Enviar aviso">
-      {enviado ? (
+      {enviadoPara ? (
         <div className="space-y-4">
-          <p className="text-sm text-gray-700">Aviso enviado. As pessoas recebem no app e, quem ativou, no celular.</p>
+          <p className="text-sm text-gray-700">
+            Aviso enviado para {enviadoPara}. As pessoas recebem no app e, quem ativou, no celular.
+          </p>
           <Button className="w-full" onClick={onClose}>
             Fechar
           </Button>
@@ -299,32 +326,65 @@ function AvisoDialog({
       ) : (
         <div className="space-y-4">
           <div>
-            <Label htmlFor="aviso-destino">Para quem</Label>
-            <Select id="aviso-destino" value={destino} onChange={e => setDestino(e.target.value)}>
-              {isAdmin && <option value="todos">Todo mundo</option>}
-              {cenas.length > 0 && (
-                <optgroup label="Cenas">
-                  {cenas.map(c => (
-                    <option key={c.id} value={`cena:${c.id}`}>
-                      {c.nome}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {equipes.length > 0 && (
-                <optgroup label="Equipes">
-                  {equipes.map(e => (
-                    <option key={e.id} value={`equipe:${e.id}`}>
-                      {e.nome}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </Select>
+            <Label>Para quem</Label>
+            <div className={cn('mt-1.5 grid gap-1.5', modos.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
+              {modos.map(m => (
+                <button
+                  key={m.value}
+                  type="button"
+                  onClick={() => setModo(m.value)}
+                  className={cn(
+                    'flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-xs font-medium',
+                    modo === m.value ? 'border-primary bg-primary/10 text-primary' : 'border-gray-200 text-gray-600 hover:bg-gray-50',
+                  )}
+                >
+                  <m.icon className="h-4 w-4" />
+                  {m.label}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {modo === 'grupo' && (
+            <div>
+              <Label htmlFor="aviso-grupo">Cena ou equipe</Label>
+              <Select id="aviso-grupo" value={grupo} onChange={e => setGrupo(e.target.value)}>
+                {cenas.length > 0 && (
+                  <optgroup label="Cenas">
+                    {cenas.map(c => (
+                      <option key={c.id} value={`cena:${c.id}`}>
+                        {c.nome}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {equipes.length > 0 && (
+                  <optgroup label="Equipes">
+                    {equipes.map(e => (
+                      <option key={e.id} value={`equipe:${e.id}`}>
+                        {e.nome}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </Select>
+            </div>
+          )}
+
+          {modo === 'pessoas' && (
+            <EscolherPessoas
+              isAdmin={isAdmin}
+              users={users}
+              cenas={cenas}
+              equipes={equipes}
+              escolhidos={escolhidos}
+              onChange={setEscolhidos}
+            />
+          )}
+
           <div>
             <Label htmlFor="aviso-titulo">Título</Label>
-            <Input id="aviso-titulo" value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="Ex.: Ensaio geral no sábado" maxLength={80} autoFocus />
+            <Input id="aviso-titulo" value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="Ex.: Ensaio geral no sábado" maxLength={80} />
           </div>
           <div>
             <Label htmlFor="aviso-corpo">Mensagem</Label>
@@ -338,12 +398,190 @@ function AvisoDialog({
             />
           </div>
           {erro && <p className="text-sm text-red-600">{erro}</p>}
-          <Button className="w-full gap-1.5" onClick={handleEnviar} disabled={enviando || !destino}>
+          <Button className="w-full gap-1.5" onClick={handleEnviar} disabled={enviando || (modo === 'pessoas' && !escolhidos.length)}>
             {enviando ? <Spinner size="sm" className="border-white/40 border-t-white" /> : <Send className="h-4 w-4" />}
-            Enviar
+            {modo === 'pessoas' && escolhidos.length
+              ? `Enviar para ${escolhidos.length} ${escolhidos.length === 1 ? 'pessoa' : 'pessoas'}`
+              : 'Enviar'}
           </Button>
         </div>
       )}
     </Dialog>
+  )
+}
+
+const normalizar = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+/**
+ * Escolha de pessoas uma a uma, com busca e filtros (só líderes, só assistentes, de uma cena ou
+ * equipe). Admin escolhe entre todos os inscritos confirmados; líder, entre quem está nas cenas e
+ * equipes que lidera (a Cloud Function confere de novo no envio).
+ */
+function EscolherPessoas({
+  isAdmin,
+  users,
+  cenas,
+  equipes,
+  escolhidos,
+  onChange,
+}: {
+  isAdmin: boolean
+  users: Record<string, AppUser>
+  cenas: Cena[]
+  equipes: Equipe[]
+  escolhidos: string[]
+  onChange: (uids: string[]) => void
+}) {
+  const [filtro, setFiltro] = useState<FiltroPessoas>('todas')
+  const [grupo, setGrupo] = useState('')
+  const [busca, setBusca] = useState('')
+
+  const lideres = useMemo(
+    () => new Set([...cenas.map(c => c.liderUid), ...equipes.map(e => e.liderUid)].filter((u): u is string => !!u)),
+    [cenas, equipes],
+  )
+  const assistentes = useMemo(
+    () => new Set([...cenas.flatMap(c => c.assistentes ?? []), ...equipes.flatMap(e => e.assistentes)]),
+    [cenas, equipes],
+  )
+
+  const pool = useMemo(() => {
+    const doGrupos = new Set([...cenas.flatMap(c => [...c.participantes, c.liderUid ?? '']), ...equipes.flatMap(e => e.membros)])
+    const base = isAdmin
+      ? inscritosConfirmados(users, [...lideres, ...assistentes])
+      : Object.values(users).filter(u => u.active !== false && doGrupos.has(u.uid))
+    return base.filter(u => !u.dependente).map(u => pessoaOpcao(u.uid, u)).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+  }, [isAdmin, users, cenas, equipes, lideres, assistentes])
+
+  const visiveis = useMemo(() => {
+    const [tipo, id] = grupo.split(':')
+    const doGrupo =
+      tipo === 'cena'
+        ? new Set([...(cenas.find(c => c.id === id)?.participantes ?? []), cenas.find(c => c.id === id)?.liderUid ?? ''])
+        : tipo === 'equipe'
+          ? new Set(equipes.find(e => e.id === id)?.membros ?? [])
+          : null
+    const q = normalizar(busca.trim())
+    return pool.filter(
+      p =>
+        (filtro === 'todas' || (filtro === 'lideres' ? lideres.has(p.uid) : assistentes.has(p.uid))) &&
+        (!doGrupo || doGrupo.has(p.uid)) &&
+        (!q || normalizar(`${p.nome} ${p.apelido ?? ''}`).includes(q)),
+    )
+  }, [pool, filtro, grupo, busca, cenas, equipes, lideres, assistentes])
+
+  const selecionados = new Set(escolhidos)
+  const todosVisiveisMarcados = visiveis.length > 0 && visiveis.every(p => selecionados.has(p.uid))
+
+  function alternar(u: string) {
+    onChange(selecionados.has(u) ? escolhidos.filter(x => x !== u) : [...escolhidos, u])
+  }
+
+  function alternarVisiveis() {
+    const ids = visiveis.map(p => p.uid)
+    onChange(todosVisiveisMarcados ? escolhidos.filter(u => !ids.includes(u)) : [...new Set([...escolhidos, ...ids])])
+  }
+
+  const filtros: { value: FiltroPessoas; label: string }[] = [
+    { value: 'todas', label: 'Todas' },
+    { value: 'lideres', label: 'Só líderes' },
+    { value: 'assistentes', label: 'Só assistentes' },
+  ]
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label>Pessoas</Label>
+        <span className="text-xs font-medium text-primary">
+          {escolhidos.length} {escolhidos.length === 1 ? 'escolhida' : 'escolhidas'}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {filtros.map(f => (
+          <button
+            key={f.value}
+            type="button"
+            onClick={() => setFiltro(f.value)}
+            className={cn(
+              'rounded-full border px-3 py-1 text-xs font-medium',
+              filtro === f.value ? 'border-primary bg-primary text-white' : 'border-gray-200 text-gray-600 hover:bg-gray-50',
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {(cenas.length > 0 || equipes.length > 0) && (
+        <Select value={grupo} onChange={e => setGrupo(e.target.value)} aria-label="Filtrar por cena ou equipe">
+          <option value="">De qualquer cena ou equipe</option>
+          {cenas.length > 0 && (
+            <optgroup label="Cenas">
+              {cenas.map(c => (
+                <option key={c.id} value={`cena:${c.id}`}>
+                  {c.nome}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {equipes.length > 0 && (
+            <optgroup label="Equipes">
+              {equipes.map(e => (
+                <option key={e.id} value={`equipe:${e.id}`}>
+                  {e.nome}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </Select>
+      )}
+
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
+        <Input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome ou apelido" className="pl-9" />
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-gray-200">
+        <button
+          type="button"
+          onClick={alternarVisiveis}
+          disabled={!visiveis.length}
+          className="flex w-full items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 disabled:opacity-50"
+        >
+          {todosVisiveisMarcados ? 'Desmarcar' : 'Marcar'} {visiveis.length} da lista
+          <Checkbox marcado={todosVisiveisMarcados} />
+        </button>
+        <div className="max-h-64 overflow-y-auto px-2">
+          {visiveis.map(p => (
+            <PessoaLinha
+              key={p.uid}
+              pessoa={p}
+              funcao={lideres.has(p.uid) ? 'lider' : assistentes.has(p.uid) ? 'assistente' : undefined}
+              onClick={() => alternar(p.uid)}
+              className="border-b border-gray-100 py-1.5 last:border-b-0"
+            >
+              <button type="button" onClick={() => alternar(p.uid)} aria-label={selecionados.has(p.uid) ? 'Desmarcar' : 'Marcar'}>
+                <Checkbox marcado={selecionados.has(p.uid)} />
+              </button>
+            </PessoaLinha>
+          ))}
+          {visiveis.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Ninguém nesse filtro.</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Checkbox({ marcado }: { marcado: boolean }) {
+  return (
+    <span
+      className={cn(
+        'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2',
+        marcado ? 'border-primary bg-primary text-white' : 'border-gray-300',
+      )}
+    >
+      {marcado && <Check className="h-3.5 w-3.5" />}
+    </span>
   )
 }

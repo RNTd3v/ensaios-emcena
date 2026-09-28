@@ -175,6 +175,27 @@ export interface Musica {
   equipeId?: string
 }
 
+/**
+ * Anotação num momento de uma música (ex.: "1:55 — entra o personagem X"), coleção `anotacoesMusica`.
+ * Sempre de uma cena: quem está nela anota; líder/assistentes/admin editam e excluem. `global`
+ * (só eles marcam) = aparece também fora da cena (página de músicas, equipe de sonoplastia).
+ */
+export interface AnotacaoMusica {
+  id: string
+  musicaId: string
+  cenaId: string
+  cenaNome?: string
+  /** Feita durante um ensaio (tela do ensaio). */
+  ensaioId?: string
+  ensaioData?: string // YYYY-MM-DD
+  tempoSeg: number
+  texto: string
+  global: boolean
+  autorUid: string
+  createdAt: string
+  updatedByUid?: string
+}
+
 /** O que uma equipe pode cadastrar em nome da peça toda (fase 4 — permissões por equipe). */
 export type MidiaTipo = 'musicas' | 'figurinos'
 

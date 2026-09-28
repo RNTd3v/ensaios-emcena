@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { PublicHero } from '@/components/layout/PublicHero'
+import { PhoneMockup } from '@/components/layout/PhoneMockup'
 import { loginWithGoogle, loginWithMicrosoft } from '@/services/firebase/auth'
 import { useAuthStore, retryLoadProfile } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -65,62 +65,68 @@ export function Login() {
     }
   }
 
-  const fallback = (
-    <div className="hero-card-green h-full w-full flex flex-col items-center justify-center text-white text-center px-5" style={{ borderRadius: 0 }}>
-      <p className="text-4xl">🎭</p>
-      <h1 className="font-script text-3xl leading-none mt-1">{settings.eventName || 'Musical de Natal'}</h1>
-      <p className="text-sm text-white/75 mt-1">Inscrições de elenco e equipe</p>
-    </div>
-  )
-
   return (
-    <PublicHero
-      heroImageUrl={settings.posterImageUrl}
-      heroImageDesktopUrl={settings.posterImageDesktopUrl}
-      heroAlt={settings.eventName}
-      fallback={fallback}
-      cardClassName="mx-4 space-y-4"
-    >
-      <div className="space-y-4 text-center">
-        {(error || redirectError) && (
-          <div className="space-y-2">
-            <p className="text-sm text-white bg-black/40 rounded-lg px-3 py-2">{error || redirectError}</p>
-            {redirectError && (
-              <Button
-                variant="outline"
-                onClick={() => retryLoadProfile()}
-                disabled={retrying}
-                className="gap-2 rounded-full border-white/30 bg-white/10 text-white hover:bg-white/20"
-              >
-                {retrying && <Loader2 className="h-4 w-4 animate-spin" />}
-                Tentar novamente
-              </Button>
-            )}
-          </div>
+    <PhoneMockup>
+      <div className="absolute inset-0">
+        {settings.internalBgUrl ? (
+          <img src={settings.internalBgUrl} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <div className="h-full w-full hero-card-green" style={{ borderRadius: 0 }} />
         )}
+      </div>
 
-        <Button
-          size="lg"
-          onClick={handleGoogleLogin}
-          disabled={loading !== null}
-          className="gap-2 rounded-full border border-white/30 bg-white/15 px-8 text-white backdrop-blur-md hover:bg-white/25"
-        >
-          {loading === 'google' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
-          Entrar com Google
-        </Button>
+      <header className="header-page relative z-20 shrink-0 px-4 pb-2">
+        <div className="flex justify-center">
+          <img src="/logo-musical.png" alt={settings.eventName} className="w-[80%] h-auto mt-8" />
+        </div>
+      </header>
 
-        {MICROSOFT_LOGIN_ENABLED && (
+      <main className="flex-1 relative z-10 flex flex-col items-center justify-center px-4 pb-4">
+        <div className="space-y-4 text-center">
+          {(error || redirectError) && (
+            <div className="space-y-2">
+              <p className="text-sm text-white bg-black/40 rounded-lg px-3 py-2">{error || redirectError}</p>
+              {redirectError && (
+                <Button
+                  variant="outline"
+                  onClick={() => retryLoadProfile()}
+                  disabled={retrying}
+                  className="gap-2 rounded-full border-white/30 bg-white/10 text-white hover:bg-white/20"
+                >
+                  {retrying && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Tentar novamente
+                </Button>
+              )}
+            </div>
+          )}
+
           <Button
             size="lg"
-            onClick={handleMicrosoftLogin}
+            onClick={handleGoogleLogin}
             disabled={loading !== null}
             className="gap-2 rounded-full border border-white/30 bg-white/15 px-8 text-white backdrop-blur-md hover:bg-white/25"
           >
-            {loading === 'microsoft' ? <Loader2 className="h-4 w-4 animate-spin" /> : <MicrosoftIcon />}
-            Entrar com Microsoft
+            {loading === 'google' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
+            Entrar com Google
           </Button>
-        )}
-      </div>
-    </PublicHero>
+
+          {MICROSOFT_LOGIN_ENABLED && (
+            <Button
+              size="lg"
+              onClick={handleMicrosoftLogin}
+              disabled={loading !== null}
+              className="gap-2 rounded-full border border-white/30 bg-white/15 px-8 text-white backdrop-blur-md hover:bg-white/25"
+            >
+              {loading === 'microsoft' ? <Loader2 className="h-4 w-4 animate-spin" /> : <MicrosoftIcon />}
+              Entrar com Microsoft
+            </Button>
+          )}
+        </div>
+      </main>
+
+      <footer className="relative z-10 flex shrink-0 items-center justify-center py-4">
+        <img src="/logo-emcena.png" alt="#EMCENA575 575" className="w-full max-w-[120px] h-auto opacity-90" />
+      </footer>
+    </PhoneMockup>
   )
 }

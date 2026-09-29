@@ -48,6 +48,8 @@ interface Props {
   ensaio?: { id: string; data: string }
   /** Título vira botão de abrir/fechar; fechado mostra quantas músicas e anotações. */
   recolhivel?: boolean
+  /** Sem nenhuma música (ou ainda carregando), não mostra o card. */
+  ocultarSeVazio?: boolean
   /** Sem o título (a página já tem) — no lugar, só a contagem. */
   semTitulo?: boolean
   /** Sem o Card por fora (quando a página já tem o próprio layout). */
@@ -58,7 +60,7 @@ interface Props {
  * Músicas, com cena opcional. Só se gerencia na página da equipe responsável; no resto do app é só
  * pra ouvir. Itens ainda no formato antigo (array na cena, antes da migração) aparecem sem edição.
  */
-export function MusicasCard({ cena, gerenciar, ensaio, recolhivel, semTitulo, semCard }: Props) {
+export function MusicasCard({ cena, gerenciar, ensaio, recolhivel, ocultarSeVazio, semTitulo, semCard }: Props) {
   const currentUser = useAuthStore(s => s.user)
   const pode = !!gerenciar
   const equipeId = gerenciar?.equipeId
@@ -506,6 +508,8 @@ export function MusicasCard({ cena, gerenciar, ensaio, recolhivel, semTitulo, se
       )}
     </div>
   )
+
+  if (ocultarSeVazio && !itens.length) return null
 
   return (
     <>

@@ -221,7 +221,19 @@ export function CenaDetalhe() {
   const ensaiosByDate = useMemo(() => Object.fromEntries((ensaios ?? []).map(e => [e.data, e])), [ensaios])
   const todayKey = toDateKey(new Date())
   const todayHasEnsaio = !!ensaiosByDate[todayKey]
+  const temEnsaioHoje = todayHasEnsaio && !isCanceled(ensaiosByDate[todayKey])
   const todayDia = (Object.keys(DIA_TO_WEEKDAY) as DiaSemana[]).find(d => DIA_TO_WEEKDAY[d] === new Date().getDay())
+
+  // Participante sem ensaio confirmado nesta semana: a agenda começa fechada (não tem o que ver).
+  // Decide uma vez só, quando os ensaios chegam — depois quem manda é o toque no card.
+  const agendaDecidida = useRef(false)
+  useEffect(() => {
+    if (agendaDecidida.current || !ensaios || !cena) return
+    agendaDecidida.current = true
+    if (canManageAgenda) return
+    const semana = new Set(weekDates(new Date()).map(toDateKey))
+    if (!ensaios.some(e => semana.has(e.data) && !isCanceled(e))) setAgendaOpen(false)
+  }, [ensaios, cena, canManageAgenda])
 
   const proximosEnsaios = useMemo(() => {
     return (ensaios ?? [])
@@ -975,7 +987,7 @@ export function CenaDetalhe() {
             </CardContent>
           </Card>
 
-          <MusicasCard cena={cena} recolhivel />
+          <MusicasCard cena={cena} recolhivel ocultarSeVazio={!canManageCena} />
 
           {registros.length > 0 && (
             <Card>
@@ -1026,14 +1038,17 @@ export function CenaDetalhe() {
             </Card>
           )}
 
-          <Button className="w-full gap-1.5" onClick={() => navigate(`/cenas/${cena.id}/iniciar-ensaio`)}>
-            <Play className="h-4 w-4" />
-            Iniciar ensaio
-          </Button>
+          {/* Só com ensaio confirmado (e não cancelado) pra hoje — sem isso não tem o que iniciar. */}
+          {temEnsaioHoje && (
+            <Button className="w-full gap-1.5" onClick={() => navigate(`/cenas/${cena.id}/iniciar-ensaio`)}>
+              <Play className="h-4 w-4" />
+              Iniciar ensaio
+            </Button>
+          )}
 
           <AprovacoesFigurinoCard cena={cena} users={users} />
 
-          <FigurinosCard cena={cena} titulo="Figurinos" recolhivel />
+          <FigurinosCard cena={cena} titulo="Figurinos" recolhivel ocultarSeVazio={!canManageCena} />
 
           <Card>
             <CardContent>

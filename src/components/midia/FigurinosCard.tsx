@@ -31,6 +31,8 @@ interface Props {
   titulo?: string
   /** Título vira botão de abrir/fechar; fechado mostra quantas fotos. */
   recolhivel?: boolean
+  /** Sem nenhuma foto (ou ainda carregando), não mostra o card. */
+  ocultarSeVazio?: boolean
   /** Sem o título (a página já tem) — no lugar, só a contagem. */
   semTitulo?: boolean
   semCard?: boolean
@@ -40,7 +42,7 @@ interface Props {
  * Figurinos (fotos). A equipe de figurino cadastra referências em qualquer cena (ou sem cena); o
  * elenco manda a foto do próprio figurino pela página do personagem, e o líder da cena aprova.
  */
-export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhivel, semTitulo, semCard }: Props) {
+export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhivel, ocultarSeVazio, semTitulo, semCard }: Props) {
   const currentUser = useAuthStore(s => s.user)
   const pode = !!gerenciar
   const equipeId = gerenciar?.equipeId
@@ -286,6 +288,8 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhive
       )}
     </div>
   )
+
+  if (ocultarSeVazio && !itens.length) return null
 
   return (
     <>

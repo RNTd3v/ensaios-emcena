@@ -5,7 +5,15 @@ import { ensureUserDoc, getUserDoc } from '@/services/firebase/auth'
 import type { AppUser } from '@/types'
 
 interface AuthState {
+  /**
+   * Perfil efetivo usado pelo app inteiro. Admin na "visão de participante" aparece aqui com
+   * role 'participante' (menus, telas e consultas de participante) — no servidor continua admin.
+   */
   user: AppUser | null
+  /** Perfil como está no Firestore (role verdadeira). */
+  perfilReal: AppUser | null
+  /** Admin escolheu ver o app como participante (menu → foto). Salvo no aparelho. */
+  visaoParticipante: boolean
   loading: boolean
   initialized: boolean
   redirectError: string | null
@@ -13,8 +21,43 @@ interface AuthState {
   retrying: boolean
 }
 
+const VISAO_KEY = 'visao.participante'
+
+function lerVisao(): boolean {
+  try {
+    return localStorage.getItem(VISAO_KEY) === 'sim'
+  } catch {
+    return false
+  }
+}
+
+/** Aplica a visão escolhida ao perfil real. */
+function efetivo(perfil: AppUser | null, visaoParticipante: boolean): AppUser | null {
+  if (perfil?.role === 'admin' && visaoParticipante) return { ...perfil, role: 'participante' }
+  return perfil
+}
+
+/** Grava o perfil carregado (real + efetivo). */
+function definirPerfil(perfil: AppUser | null, extra: Partial<AuthState> = {}) {
+  const { visaoParticipante } = useAuthStore.getState()
+  useAuthStore.setState({ ...extra, perfilReal: perfil, user: efetivo(perfil, visaoParticipante) })
+}
+
+/** Admin alterna entre ver o app como admin e como participante. */
+export function trocarVisao(participante: boolean) {
+  try {
+    localStorage.setItem(VISAO_KEY, participante ? 'sim' : 'nao')
+  } catch {
+    // storage indisponível — vale só até fechar o app
+  }
+  const { perfilReal } = useAuthStore.getState()
+  useAuthStore.setState({ visaoParticipante: participante, user: efetivo(perfilReal, participante) })
+}
+
 export const useAuthStore = create<AuthState>(() => ({
   user: null,
+  perfilReal: null,
+  visaoParticipante: lerVisao(),
   loading: true,
   initialized: false,
   redirectError: null,
@@ -77,18 +120,17 @@ export function initAuth() {
     if (firebaseUser) {
       try {
         const userDoc = await loadProfile(firebaseUser)
-        useAuthStore.setState({ user: userDoc, loading: false, initialized: true, redirectError: null })
+        definirPerfil(userDoc, { loading: false, initialized: true, redirectError: null })
       } catch (err) {
         console.error('[auth] Falha ao carregar/criar o perfil do usuário após login:', err)
-        useAuthStore.setState({
-          user: null,
+        definirPerfil(null, {
           loading: false,
           initialized: true,
           redirectError: 'Login feito, mas houve um erro ao carregar seu perfil. Verifique sua conexão e tente de novo.',
         })
       }
     } else {
-      useAuthStore.setState({ user: null, loading: false, initialized: true })
+      definirPerfil(null, { loading: false, initialized: true })
     }
   })
 }
@@ -103,7 +145,7 @@ export async function retryLoadProfile() {
   useAuthStore.setState({ retrying: true, redirectError: null })
   try {
     const userDoc = await loadProfile(firebaseUser)
-    useAuthStore.setState({ user: userDoc, loading: false, initialized: true, retrying: false, redirectError: null })
+    definirPerfil(userDoc, { loading: false, initialized: true, retrying: false, redirectError: null })
   } catch (err) {
     console.error('[auth] retryLoadProfile falhou:', err)
     useAuthStore.setState({

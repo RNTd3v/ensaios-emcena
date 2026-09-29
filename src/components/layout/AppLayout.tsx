@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { Bug, CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
+import { Bug, User as UserIcon, CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -16,6 +16,8 @@ import { ativarPush } from '@/services/firebase/notificacoes'
 import { cn } from '@/lib/utils'
 import { SemConexaoBanner } from '@/components/layout/SemConexao'
 import { ReportarProblemaDialog } from '@/components/layout/ReportarProblemaDialog'
+import { VisaoDialog } from '@/components/layout/VisaoDialog'
+import { Avatar } from '@/components/ui/Avatar'
 
 export function AppLayout() {
   const user = useAuthStore(s => s.user)
@@ -29,6 +31,9 @@ export function AppLayout() {
   const equipesVisivel = useEquipesVisivel()
   const [menuOpen, setMenuOpen] = useState(false)
   const [reportarOpen, setReportarOpen] = useState(false)
+  const [visaoOpen, setVisaoOpen] = useState(false)
+  const adminReal = useAuthStore(s => s.perfilReal?.role === 'admin')
+  const visaoParticipante = useAuthStore(s => s.visaoParticipante)
 
   useEffect(() => {
     if (!loaded) refresh()
@@ -67,6 +72,17 @@ export function AppLayout() {
       </header>
 
       <div className="relative z-20 shrink-0">
+        {adminReal && visaoParticipante && (
+          <button
+            type="button"
+            onClick={() => setVisaoOpen(true)}
+            className="mx-4 mb-2 flex w-[calc(100%-2rem)] items-center gap-2 rounded-xl bg-primary/90 px-3 py-2 text-left text-xs font-medium text-white shadow-lg backdrop-blur-md"
+          >
+            <UserIcon className="h-4 w-4 shrink-0" />
+            <span className="flex-1">Você está vendo o app como participante.</span>
+            <span className="shrink-0 underline">Voltar para admin</span>
+          </button>
+        )}
         <SemConexaoBanner />
       </div>
 
@@ -85,21 +101,32 @@ export function AppLayout() {
             onClick={e => e.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between mb-8">
-              <div className="flex items-center gap-3 min-w-0">
-                {user?.photoURL ? (
-                  <img
-                    src={user.photoURL}
-                    alt={user.displayName}
-                    referrerPolicy="no-referrer"
-                    className="h-12 w-12 rounded-full border border-white/30 shrink-0"
-                  />
-                ) : (
-                  <div className="h-12 w-12 rounded-full bg-white/15 flex items-center justify-center text-base font-semibold shrink-0">
-                    {user?.displayName?.[0]?.toUpperCase()}
-                  </div>
-                )}
-                <p className="text-base font-medium truncate">{user?.displayName}</p>
-              </div>
+              {/* Admin toca na própria foto pra trocar a visão (admin ↔ participante). */}
+              <button
+                type="button"
+                disabled={!adminReal}
+                onClick={() => {
+                  setMenuOpen(false)
+                  setVisaoOpen(true)
+                }}
+                className="flex min-w-0 items-center gap-3 rounded-xl text-left disabled:cursor-default"
+                title={adminReal ? 'Trocar a visão do app' : undefined}
+              >
+                <span className="relative shrink-0">
+                  <Avatar photoURL={user?.photoURL} name={user?.displayName} className="h-12 w-12 border border-white/30 text-base" />
+                  {adminReal && (
+                    <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary ring-2 ring-black/60">
+                      {visaoParticipante ? <UserIcon className="h-3 w-3 text-white" /> : <ShieldCheck className="h-3 w-3 text-white" />}
+                    </span>
+                  )}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-base font-medium">{user?.displayName}</span>
+                  {adminReal && (
+                    <span className="block text-xs text-white/60">{visaoParticipante ? 'Vendo como participante' : 'Admin'} · trocar</span>
+                  )}
+                </span>
+              </button>
               <button onClick={() => setMenuOpen(false)} className="shrink-0 p-2">
                 <X className="h-6 w-6 text-white/70" />
               </button>
@@ -168,6 +195,7 @@ export function AppLayout() {
         </div>
       )}
       {reportarOpen && <ReportarProblemaDialog onClose={() => setReportarOpen(false)} />}
+      {visaoOpen && <VisaoDialog onClose={() => setVisaoOpen(false)} />}
     </PhoneMockup>
   )
 }

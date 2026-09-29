@@ -15,6 +15,7 @@ import {
   UserX,
   Star,
   XCircle,
+  Bug,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -276,6 +277,11 @@ export function Admin() {
           <Link to="/admin/locais">
             <Button variant="outline" size="icon" title="Locais de ensaio" className="border-white/40 bg-white/10 text-white hover:bg-white/20">
               <MapPin className="h-4 w-4" />
+            </Button>
+          </Link>
+          <Link to="/admin/reportes">
+            <Button variant="outline" size="icon" title="Problemas reportados" className="border-white/40 bg-white/10 text-white hover:bg-white/20">
+              <Bug className="h-4 w-4" />
             </Button>
           </Link>
           <Link to="/admin/config">

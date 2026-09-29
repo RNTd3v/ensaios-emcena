@@ -215,6 +215,19 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/cenas/$(cenaId)).data;
     }
 
+    // Problemas reportados pelo app: qualquer pessoa logada envia o seu (com o diagnóstico do
+    // aparelho); só admin lê e marca como resolvido. A Cloud Function `reporteCriado` avisa o suporte.
+    match /reportes/{id} {
+      allow create: if isAuthenticated()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'aberto'
+        && request.resource.data.texto is string
+        && request.resource.data.texto.size() > 0 && request.resource.data.texto.size() <= 2000
+        && request.resource.data.registros is list && request.resource.data.registros.size() <= 100;
+      allow read, delete: if isAdmin();
+      allow update: if isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'resolvidoEm']);
+    }
+
     // Anotações em momentos das músicas, sempre de uma cena. Quem está na cena (ou a lidera) anota;
     // só líder/assistentes da cena e admin editam, excluem ou marcam como global.
     match /anotacoesMusica/{id} {

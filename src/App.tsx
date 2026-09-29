@@ -30,6 +30,7 @@ import { AdminLocais } from '@/pages/AdminLocais'
 import { AdminVersiculos } from '@/pages/AdminVersiculos'
 import { Disponibilidade } from '@/pages/Disponibilidade'
 import { initAuth } from '@/stores/authStore'
+import { AdminReportes } from '@/pages/AdminReportes'
 
 function App() {
   useEffect(() => {
@@ -58,6 +59,14 @@ function App() {
             element={
               <AdminGuard>
                 <Admin />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="admin/reportes"
+            element={
+              <AdminGuard>
+                <AdminReportes />
               </AdminGuard>
             }
           />

@@ -10,6 +10,9 @@ import { Button } from '@/components/ui/button'
 import { saveSettings } from '@/services/firebase/settings'
 import { useSettingsStore } from '@/stores/settingsStore'
 import type { AppSettings } from '@/types'
+import { PessoaSelect, pessoaOpcao } from '@/components/ui/PessoaSelect'
+import { PhoneInput } from '@/components/ui/PhoneInput'
+import { useUsersMap } from '@/components/oracao/OrandoAgora'
 
 export function AdminConfig() {
   const { settings, loaded, refresh } = useSettingsStore()
@@ -20,7 +23,12 @@ export function AdminConfig() {
     if (!loaded) refresh()
   }, [loaded, refresh])
 
-  const { register, handleSubmit, reset } = useForm<Omit<AppSettings, 'updatedAt'>>({ values: settings })
+  const { register, handleSubmit, reset, watch, setValue } = useForm<Omit<AppSettings, 'updatedAt'>>({ values: settings })
+  const users = useUsersMap()
+  const admins = Object.values(users)
+    .filter(u => u.role === 'admin' && u.active !== false)
+    .map(u => pessoaOpcao(u.uid, u))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
 
   useEffect(() => {
     reset(settings)
@@ -177,6 +185,36 @@ export function AdminConfig() {
               <p className="text-xs text-muted-foreground mt-1">
                 O elenco só pode confirmar presença no dia do ensaio, até esse tanto de horas antes do horário.
               </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Suporte</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="suporteUid">Quem recebe os problemas reportados</Label>
+              <PessoaSelect
+                id="suporteUid"
+                value={watch('suporteUid') ?? ''}
+                onChange={v => setValue('suporteUid', v, { shouldDirty: true })}
+                pessoas={admins}
+                extras={[{ value: '', label: 'Ninguém (só aparece na lista)' }]}
+                titulo="Quem recebe"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Recebe notificação e push a cada relato. Só admins (são eles que veem a lista).</p>
+            </div>
+            <div>
+              <Label htmlFor="suporteWhatsapp">WhatsApp do suporte</Label>
+              <PhoneInput
+                id="suporteWhatsapp"
+                placeholder="(00) 00000-0000"
+                value={watch('suporteWhatsapp') ?? ''}
+                onChange={v => setValue('suporteWhatsapp', v, { shouldDirty: true })}
+              />
+              <p className="text-xs text-muted-foreground mt-1">Aparece como "Falar no WhatsApp" depois que a pessoa envia um problema. Vazio = não aparece.</p>
             </div>
           </CardContent>
         </Card>

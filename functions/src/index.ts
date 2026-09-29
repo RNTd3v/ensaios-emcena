@@ -21,7 +21,7 @@ const db = getFirestore()
 const APP_URL = 'https://ensaios-emcena.web.app'
 const FUSO = 'America/Sao_Paulo'
 
-type Tipo = 'ensaio' | 'figurino' | 'tarefa' | 'aviso'
+type Tipo = 'ensaio' | 'figurino' | 'tarefa' | 'aviso' | 'reporte'
 
 interface Notificacao {
   titulo: string
@@ -373,4 +373,25 @@ export const dependenteResponsaveis = onDocumentUpdated('users/{uid}', async eve
   if (JSON.stringify(antes?.responsaveisUids ?? []) === JSON.stringify(depois.responsaveisUids ?? [])) return
   const cenas = await db.collection('cenas').where('participantes', 'array-contains', event.params.uid).get()
   for (const c of cenas.docs) await sincronizarResponsaveisDaCena(c.ref, c.data())
+})
+
+// ---------- Problemas reportados ----------
+
+/** Relato novo (menu → Reportar problema): avisa só quem está em Configurações → Suporte. */
+export const reporteCriado = onDocumentCreated('reportes/{id}', async event => {
+  const r = event.data?.data()
+  if (!r) return
+  const suporteUid = (await db.collection('settings').doc('config').get()).data()?.suporteUid as string | undefined
+  if (!suporteUid) return
+  const texto = String(r.texto ?? '')
+  await notificar(
+    [suporteUid],
+    {
+      titulo: `Problema reportado por ${r.nome ?? 'alguém'}`,
+      corpo: texto.length > 140 ? `${texto.slice(0, 137)}...` : texto,
+      link: `/admin/reportes?id=${event.params.id}`,
+      tipo: 'reporte',
+    },
+    // Quem é o suporte e reporta (testando) também recebe — não passa excetoUid.
+  )
 })

@@ -196,6 +196,33 @@ export interface AnotacaoMusica {
   updatedByUid?: string
 }
 
+/**
+ * Problema reportado pelo app (menu → Reportar problema), coleção `reportes`. Vai com o
+ * diagnóstico do aparelho (últimas mensagens do console, versão, se está instalado...). Só quem
+ * está em Configurações → Suporte é avisado; admin vê e marca como resolvido.
+ */
+export interface Reporte {
+  id: string
+  uid: string
+  nome: string
+  texto: string
+  tela: string
+  aparelho: {
+    userAgent: string
+    instalado: boolean
+    online: boolean
+    tela: string
+    idioma: string
+    versao: string
+  }
+  registros: string[]
+  printUrl?: string
+  printPath?: string
+  status: 'aberto' | 'resolvido'
+  createdAt: string
+  resolvidoEm?: string
+}
+
 /** O que uma equipe pode cadastrar em nome da peça toda (fase 4 — permissões por equipe). */
 export type MidiaTipo = 'musicas' | 'figurinos'
 
@@ -480,7 +507,7 @@ export interface Notificacao {
   corpo: string
   /** Rota dentro do app pra onde a notificação leva. */
   link?: string | null
-  tipo: 'ensaio' | 'figurino' | 'tarefa' | 'aviso'
+  tipo: 'ensaio' | 'figurino' | 'tarefa' | 'aviso' | 'reporte'
   lida: boolean
   createdAt: string
 }
@@ -510,6 +537,9 @@ export interface AppSettings {
   loginDestaqueLocal?: string
   /** Até esse dia (YYYY-MM-DD), o login chama pra inscrição; depois, fala dos ensaios/cenas/avisos. */
   loginLancamentoData?: string
+  /** Quem recebe os problemas reportados (notificação/push) e o WhatsApp mostrado depois do envio. */
+  suporteUid?: string
+  suporteWhatsapp?: string
   /** Contagem regressiva das apresentações na tela de login (ligar depois do lançamento). */
   loginContagemApresentacao?: boolean
   updatedAt?: string

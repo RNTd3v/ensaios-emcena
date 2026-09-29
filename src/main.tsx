@@ -4,7 +4,9 @@ import './index.css'
 import './stores/themeStore'
 import App from './App.tsx'
 import { ouvirInstalacao } from './lib/instalacao'
+import { capturarDiagnostico } from './lib/diagnostico'
 
+capturarDiagnostico()
 ouvirInstalacao()
 
 // Cache de avatares de uma versão anterior do service worker guardou fotos quebradas — apaga.

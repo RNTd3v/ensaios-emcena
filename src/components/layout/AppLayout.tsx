@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
+import { Bug, CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -15,6 +15,7 @@ import { SinoNotificacoes } from '@/components/layout/SinoNotificacoes'
 import { ativarPush } from '@/services/firebase/notificacoes'
 import { cn } from '@/lib/utils'
 import { SemConexaoBanner } from '@/components/layout/SemConexao'
+import { ReportarProblemaDialog } from '@/components/layout/ReportarProblemaDialog'
 
 export function AppLayout() {
   const user = useAuthStore(s => s.user)
@@ -27,6 +28,7 @@ export function AppLayout() {
   const oracaoVisivel = useOracaoVisivel()
   const equipesVisivel = useEquipesVisivel()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [reportarOpen, setReportarOpen] = useState(false)
 
   useEffect(() => {
     if (!loaded) refresh()
@@ -133,6 +135,7 @@ export function AppLayout() {
                           <MenuItem to="/personagens" label="Personagens" icon={Drama} onClick={() => setMenuOpen(false)} />
                           <MenuItem to="/calendario" label="Calendário geral de ensaios" icon={CalendarClock} onClick={() => setMenuOpen(false)} />
                           <MenuItem to="/admin" label="Gerenciamento" icon={ShieldCheck} onClick={() => setMenuOpen(false)} />
+                          <MenuItem to="/admin/reportes" label="Problemas reportados" icon={Bug} onClick={() => setMenuOpen(false)} />
                         </>
                       )}
                     </>
@@ -142,6 +145,17 @@ export function AppLayout() {
 
               {!semInscricao && <MenuDivider />}
               <MenuItem to="/inscricao" label="Minha inscrição" icon={ClipboardList} end onClick={() => setMenuOpen(false)} />
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false)
+                  setReportarOpen(true)
+                }}
+                className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-base font-medium text-white/80 hover:bg-white/10"
+              >
+                <Bug className="h-5 w-5" />
+                Reportar problema
+              </button>
             </div>
             <SeletorTema />
             <button
@@ -153,6 +167,7 @@ export function AppLayout() {
           </div>
         </div>
       )}
+      {reportarOpen && <ReportarProblemaDialog onClose={() => setReportarOpen(false)} />}
     </PhoneMockup>
   )
 }

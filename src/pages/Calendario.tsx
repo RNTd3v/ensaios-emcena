@@ -10,6 +10,8 @@ import { getUsers } from '@/services/firebase/auth'
 import { subscribeToCenas } from '@/services/firebase/cenas'
 import { subscribeToAllEnsaios } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { DEFAULT_SETTINGS } from '@/services/firebase/settings'
 import { type AppUser, type Cena, type DiaSemana, type Ensaio, type Inscricao } from '@/types'
 import { DIA_TO_WEEKDAY, addDays, monthMatrix, toDateKey, weekDates } from '@/lib/agenda'
 import { formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
@@ -64,7 +66,8 @@ export function Calendario() {
 
   useEffect(() => {
     if (!currentUser) return
-    return subscribeToCenas(currentUser.role, currentUser.uid, setCenas)
+    // Cenas inativas saem do calendário inteiro — nem os ensaios já marcados delas aparecem.
+    return subscribeToCenas(currentUser.role, currentUser.uid, lista => setCenas(lista.filter(c => c.ativo)))
   }, [currentUser])
   useEffect(() => subscribeToAllEnsaios(setEnsaios), [])
   useEffect(() => subscribeToAllInscricoes(setInscricoes), [])
@@ -79,6 +82,11 @@ export function Calendario() {
   }
 
   const todayKey = toDateKey(new Date())
+
+  // Não tem ensaio aos domingos: somem do calendário, menos o dia da apresentação (Configurações).
+  const eventDate = useSettingsStore(s => s.settings.eventDate) || DEFAULT_SETTINGS.eventDate || ''
+  const ehApresentacao = (key: string) => key === eventDate
+  const mostrarDia = (d: Date) => d.getDay() !== 0 || ehApresentacao(toDateKey(d))
 
   const dates = useMemo(() => {
     if (visao === 'semana') return weekDates(base)
@@ -216,15 +224,16 @@ export function Calendario() {
         </div>
       ) : visao === 'semana' ? (
         <div className="space-y-2">
-          {dates.map(date => {
+          {dates.filter(mostrarDia).map(date => {
             const key = toDateKey(date)
             const itens = ocorrenciasPorData.get(key) ?? []
             return (
-              <Card key={key} className={cn('p-3', key === todayKey && 'ring-2 ring-primary')}>
+              <Card key={key} className={cn('p-3', key === todayKey && 'ring-2 ring-primary', ehApresentacao(key) && 'ring-2 ring-amber-400')}>
                 <p className={cn('mb-1 text-sm font-semibold', key < todayKey && 'text-gray-400')}>
                   {capitalize(date.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' }))}
                   {key === todayKey && <span className="ml-1.5 text-xs font-medium text-primary">Hoje</span>}
                 </p>
+                {ehApresentacao(key) && <ApresentacaoAviso />}
                 <ListaDoDia itens={itens} nameFor={nameFor} users={users} />
               </Card>
             )
@@ -233,18 +242,28 @@ export function Calendario() {
       ) : (
         <>
           <Card className="p-2">
-            <div className="grid grid-cols-7 text-center text-[11px] font-medium text-gray-400">
-              {MES_WEEKDAY_HEADERS.map((h, i) => (
+            {(() => {
+              // Coluna de domingo só no mês da apresentação (e só com o dia dela); nos outros, seg–sáb.
+              const comDomingo = eventDate.startsWith(toDateKey(base).slice(0, 7)) && new Date(`${eventDate}T00:00:00`).getDay() === 0
+              const colunas = comDomingo ? 'grid-cols-7' : 'grid-cols-6'
+              const semanas = monthMatrix(base.getFullYear(), base.getMonth())
+                .map(week => (comDomingo ? week : week.slice(1)))
+                .filter(week => week.some(Boolean))
+              return (
+                <>
+            <div className={cn('grid text-center text-[11px] font-medium text-gray-400', colunas)}>
+              {(comDomingo ? MES_WEEKDAY_HEADERS : MES_WEEKDAY_HEADERS.slice(1)).map((h, i) => (
                 <span key={i} className="py-1">
                   {h}
                 </span>
               ))}
             </div>
-            {monthMatrix(base.getFullYear(), base.getMonth()).map((week, wi) => (
-              <div key={wi} className="grid grid-cols-7">
+            {semanas.map((week, wi) => (
+              <div key={wi} className={cn('grid', colunas)}>
                 {week.map((day, di) => {
                   if (!day) return <span key={di} />
                   const key = toDateKey(new Date(base.getFullYear(), base.getMonth(), day))
+                  if (comDomingo && di === 0 && !ehApresentacao(key)) return <span key={di} />
                   const itens = ocorrenciasPorData.get(key) ?? []
                   const isSelected = key === selectedKey
                   return (
@@ -257,6 +276,7 @@ export function Calendario() {
                         isSelected ? 'bg-primary text-white' : 'hover:bg-gray-50',
                         !isSelected && key === todayKey && 'font-bold text-primary',
                         !isSelected && key < todayKey && 'text-gray-400',
+                        !isSelected && ehApresentacao(key) && 'bg-amber-100 font-bold text-amber-800',
                       )}
                     >
                       {day}
@@ -273,12 +293,16 @@ export function Calendario() {
                 })}
               </div>
             ))}
+                </>
+              )
+            })()}
           </Card>
 
           <Card className="p-3">
             <p className="mb-1 text-sm font-semibold">
               {capitalize(new Date(`${selectedKey}T00:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }))}
             </p>
+            {ehApresentacao(selectedKey) && <ApresentacaoAviso />}
             <ListaDoDia itens={ocorrenciasPorData.get(selectedKey) ?? []} nameFor={nameFor} users={users} />
           </Card>
         </>
@@ -361,5 +385,16 @@ function ListaDoDia({ itens, nameFor, users }: ListaDoDiaProps) {
         )
       })}
     </div>
+  )
+}
+
+/** Marca o dia da apresentação (Configurações → data do espetáculo). */
+function ApresentacaoAviso() {
+  const horarios = useSettingsStore(s => s.settings.apresentacaoHorarios) || DEFAULT_SETTINGS.apresentacaoHorarios
+  return (
+    <p className="mb-1.5 flex items-center gap-1.5 rounded-lg bg-amber-100 px-2 py-1.5 text-xs font-semibold text-amber-800">
+      <Star className="h-3.5 w-3.5 shrink-0 fill-current" />
+      Apresentação do musical{horarios ? ` · ${horarios}` : ''}
+    </p>
   )
 }

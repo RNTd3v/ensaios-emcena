@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { PhoneMockup } from '@/components/layout/PhoneMockup'
 import { LoginContagem } from '@/components/login/LoginContagem'
 import { LoginDestaque } from '@/components/login/LoginDestaque'
-import { loginWithGoogle, loginWithMicrosoft } from '@/services/firebase/auth'
+import { loginWithGoogle } from '@/services/firebase/auth'
 import { useAuthStore, retryLoadProfile } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { SemConexaoBanner } from '@/components/layout/SemConexao'
@@ -14,20 +14,6 @@ function GoogleIcon() {
   return (
     <svg viewBox="0 0 48 48" className="h-4 w-4" aria-hidden="true" fill="currentColor">
       <path d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c10 0 19.1-7.3 19.1-20 0-1.3-.1-2.7-.5-3.5z" />
-    </svg>
-  )
-}
-
-// Login com Microsoft já implementado, mas escondido até o app OAuth estar configurado no Azure/Firebase.
-const MICROSOFT_LOGIN_ENABLED = false
-
-function MicrosoftIcon() {
-  return (
-    <svg viewBox="0 0 23 23" className="h-4 w-4" aria-hidden="true">
-      <rect x="1" y="1" width="10" height="10" fill="#f25022" />
-      <rect x="12" y="1" width="10" height="10" fill="#7fba00" />
-      <rect x="1" y="12" width="10" height="10" fill="#00a4ef" />
-      <rect x="12" y="12" width="10" height="10" fill="#ffb900" />
     </svg>
   )
 }
@@ -54,18 +40,6 @@ export function Login() {
       await loginWithGoogle()
     } catch {
       setError('Não foi possível entrar com o Google. Tente novamente.')
-    } finally {
-      setLoading(null)
-    }
-  }
-
-  async function handleMicrosoftLogin() {
-    setError('')
-    setLoading('microsoft')
-    try {
-      await loginWithMicrosoft()
-    } catch {
-      setError('Não foi possível entrar com a Microsoft. Tente novamente.')
     } finally {
       setLoading(null)
     }
@@ -126,22 +100,10 @@ export function Login() {
             <p className="text-sm text-white/75">
               <span className="font-semibold text-white">Ainda não se inscreveu?</span>
               <br />
-              Entre com o Google e faça sua inscrição no elenco ou na equipe.
+              Entre com o Google e faça sua inscrição no elenco ou na equipe de apoio.
             </p>
           ) : (
             <p className="text-xs text-white/60">Entre para ver seus ensaios, cenas e avisos.</p>
-          )}
-
-          {MICROSOFT_LOGIN_ENABLED && (
-            <Button
-              size="lg"
-              onClick={handleMicrosoftLogin}
-              disabled={loading !== null}
-              className="h-12 w-full gap-2 rounded-full border border-white/30 bg-white/15 px-8 text-white backdrop-blur-md hover:bg-white/25"
-            >
-              {loading === 'microsoft' ? <Loader2 className="h-4 w-4 animate-spin" /> : <MicrosoftIcon />}
-              Entrar com Microsoft
-            </Button>
           )}
         </div>
       </main>

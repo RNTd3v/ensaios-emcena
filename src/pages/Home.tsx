@@ -15,6 +15,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { getVersiculos, type VersiculoInput } from '@/services/firebase/versiculos'
 import { VERSICULOS_SUGERIDOS } from '@/lib/versiculosSugeridos'
 import { InstalarAppCard } from '@/components/home/InstalarAppCard'
+import { TarefasEmAndamentoCard } from '@/components/home/TarefasEmAndamentoCard'
 
 function sortear<T>(lista: T[]): T | undefined {
   return lista[Math.floor(Math.random() * lista.length)]
@@ -73,6 +74,8 @@ export function Home() {
       {user && <ProximoEnsaioCard uid={user.uid} />}
       {user &&
         dependentes.map(d => <ProximoEnsaioCard key={d.uid} uid={d.uid} dependenteDe={user.uid} nome={d.apelido || d.nomeCompleto} />)}
+
+      {user && <TarefasEmAndamentoCard uid={user.uid} />}
 
       {oracaoVisivel && <OrandoAgoraCard linkParaPagina />}
 

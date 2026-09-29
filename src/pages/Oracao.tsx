@@ -426,7 +426,8 @@ function MeuHorarioCard({ uid, horario }: { uid: string; horario?: HorarioOracao
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        {/* Um embaixo do outro: lado a lado, no celular, o horário e os botões de duração ficavam espremidos. */}
+        <div className="space-y-3">
           <div>
             <Label htmlFor="oracao-inicio">Início</Label>
             <Input id="oracao-inicio" type="time" step={300} value={inicio} onChange={e => setInicio(e.target.value)} />
@@ -435,7 +436,7 @@ function MeuHorarioCard({ uid, horario }: { uid: string; horario?: HorarioOracao
             <Label>Duração</Label>
             <div className="mt-1.5 flex gap-1.5">
               {DURACOES_ORACAO.map(d => (
-                <button key={d} type="button" onClick={() => setDuracao(d)} className={cn(chipClass(duracao === d), 'flex-1 px-0')}>
+                <button key={d} type="button" onClick={() => setDuracao(d)} className={cn(chipClass(duracao === d), 'flex-1 px-2')}>
                   {d === 60 ? '1h' : `${d}min`}
                 </button>
               ))}

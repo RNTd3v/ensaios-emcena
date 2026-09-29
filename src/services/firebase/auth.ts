@@ -3,13 +3,25 @@ import { doc, getDoc, getDocs, collection, setDoc, updateDoc, deleteField, serve
 import { auth, db } from './config'
 import type { AppUser, UserRole } from '@/types'
 
+/** O login roda no mesmo domínio do app (authDomain = domínio do Hosting, com /__/auth/ servido por ele). */
+function authNoMesmoDominio(): boolean {
+  return auth.config.authDomain === window.location.host
+}
+
+function appInstalado(): boolean {
+  return window.matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
+}
+
 /**
- * Popup em vez de redirect: o redirect depende de o navegador preservar estado (IndexedDB)
- * entre a navegação de ida e volta, o que se mostrou não confiável em vários contextos
- * (app instalado, Chrome/Safari desktop). Popup evita isso por não depender de navegação de
- * página. Se o navegador bloquear o popup, cai para redirect como último recurso.
+ * Popup em vez de redirect: com o login num domínio diferente do app (firebaseapp.com x web.app),
+ * o redirect depende de armazenamento entre sites, que Safari/Chrome bloqueiam — ele "esquecia" o
+ * login na volta. Se o navegador bloquear o popup, cai para redirect como último recurso.
+ *
+ * Com o login no mesmo domínio do app, o redirect volta a ser confiável — e no app instalado ele é
+ * melhor que o popup (no iPhone o popup abre numa janela à parte que às vezes não volta pro app).
  */
 export async function loginWithGoogle() {
+  if (appInstalado() && authNoMesmoDominio()) return signInWithRedirect(auth, new GoogleAuthProvider())
   try {
     return await signInWithPopup(auth, new GoogleAuthProvider())
   } catch (err) {

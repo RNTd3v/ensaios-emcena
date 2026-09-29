@@ -14,6 +14,7 @@ import { PhoneMockup } from '@/components/layout/PhoneMockup'
 import { SinoNotificacoes } from '@/components/layout/SinoNotificacoes'
 import { ativarPush } from '@/services/firebase/notificacoes'
 import { cn } from '@/lib/utils'
+import { SemConexaoBanner } from '@/components/layout/SemConexao'
 
 export function AppLayout() {
   const user = useAuthStore(s => s.user)
@@ -62,6 +63,10 @@ export function AppLayout() {
           <img src="/logo-musical.png" alt={settings.eventName} className="w-[80%] h-auto mt-8" />
         </div>
       </header>
+
+      <div className="relative z-20 shrink-0">
+        <SemConexaoBanner />
+      </div>
 
       <main className="flex-1 relative z-10 px-4 pb-4 overflow-y-auto">
         <Outlet />

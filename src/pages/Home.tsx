@@ -14,6 +14,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { useAuthStore } from '@/stores/authStore'
 import { getVersiculos, type VersiculoInput } from '@/services/firebase/versiculos'
 import { VERSICULOS_SUGERIDOS } from '@/lib/versiculosSugeridos'
+import { InstalarAppCard } from '@/components/home/InstalarAppCard'
 
 function sortear<T>(lista: T[]): T | undefined {
   return lista[Math.floor(Math.random() * lista.length)]
@@ -66,6 +67,8 @@ export function Home() {
           </p>
         )}
       </div>
+
+      <InstalarAppCard />
 
       {user && <ProximoEnsaioCard uid={user.uid} />}
       {user &&

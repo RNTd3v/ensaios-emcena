@@ -8,6 +8,7 @@ import { LoginDestaque } from '@/components/login/LoginDestaque'
 import { loginWithGoogle, loginWithMicrosoft } from '@/services/firebase/auth'
 import { useAuthStore, retryLoadProfile } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { SemConexaoBanner } from '@/components/layout/SemConexao'
 
 function GoogleIcon() {
   return (
@@ -85,6 +86,10 @@ export function Login() {
           <img src="/logo-musical.png" alt={settings.eventName} className="w-[80%] h-auto mt-8" />
         </div>
       </header>
+
+      <div className="relative z-20 shrink-0">
+        <SemConexaoBanner mensagem="Sem conexão — conecte-se à internet para entrar." />
+      </div>
 
       <main className="flex-1 relative z-10 flex flex-col items-center justify-center gap-6 px-5 pb-4 overflow-y-auto">
         <LoginContagem />

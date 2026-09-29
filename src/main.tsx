@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import './stores/themeStore'
 import App from './App.tsx'
+import { ouvirInstalacao } from './lib/instalacao'
+
+ouvirInstalacao()
 
 // Cache de avatares de uma versão anterior do service worker guardou fotos quebradas — apaga.
 if ('caches' in window) caches.delete('avatares').catch(() => {})

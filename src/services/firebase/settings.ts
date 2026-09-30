@@ -1,6 +1,7 @@
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { deleteField, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from './config'
-import type { AppSettings } from '@/types'
+import { deleteCenaFile, uploadArquivo } from './storage'
+import type { AppSettings, RoteiroArquivo, RoteiroTipo } from '@/types'
 
 const SETTINGS_REF = doc(db, 'settings', 'config')
 
@@ -11,7 +12,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   internalBgUrl: '/bg-interno.jpg',
   eventDate: '2026-12-20',
   apresentacaoHorarios: '10:00, 19:00',
-  roteiroUrl: '',
   callToActionText: 'Quero participar',
   welcomeMessage: 'Sua participação na Vila é um presente. Que o Senhor use você pra levar esperança e transformar vidas através dessa história.',
   checkinLimiteHoras: 2,
@@ -36,4 +36,17 @@ export async function saveSettingsParcial(parcial: Partial<Omit<AppSettings, 'up
 
 export async function saveSettings(settings: Omit<AppSettings, 'updatedAt'>): Promise<void> {
   await setDoc(SETTINGS_REF, { ...settings, updatedAt: serverTimestamp() }, { merge: true })
+}
+
+/** Sobe (ou troca) um dos PDFs do roteiro — só admin grava em `settings` (firestore.rules). */
+export async function uploadRoteiro(tipo: RoteiroTipo, file: File, anterior?: RoteiroArquivo): Promise<void> {
+  const up = await uploadArquivo('roteiro', file)
+  const arquivo: RoteiroArquivo = { path: up.path, nome: file.name, atualizadoEm: new Date().toISOString() }
+  await setDoc(SETTINGS_REF, { roteiros: { [tipo]: arquivo }, updatedAt: serverTimestamp() }, { merge: true })
+  if (anterior) await deleteCenaFile(anterior.path)
+}
+
+export async function removerRoteiro(tipo: RoteiroTipo, atual: RoteiroArquivo): Promise<void> {
+  await setDoc(SETTINGS_REF, { roteiros: { [tipo]: deleteField() }, updatedAt: serverTimestamp() }, { merge: true })
+  await deleteCenaFile(atual.path)
 }

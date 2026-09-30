@@ -1,15 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Check, Loader2 } from 'lucide-react'
+import { ArrowLeft, Check, FileText, Loader2, Paperclip } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { saveSettings } from '@/services/firebase/settings'
+import { removerRoteiro, saveSettings, uploadRoteiro } from '@/services/firebase/settings'
+import { urlDoArquivo } from '@/services/firebase/storage'
+import { ROTEIRO_TIPOS } from '@/lib/roteiro'
 import { useSettingsStore } from '@/stores/settingsStore'
-import type { AppSettings } from '@/types'
+import type { AppSettings, RoteiroArquivo, RoteiroTipo } from '@/types'
 import { PessoaSelect, pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { PhoneInput } from '@/components/ui/PhoneInput'
 import { useUsersMap } from '@/components/oracao/OrandoAgora'
@@ -37,7 +39,9 @@ export function AdminConfig() {
   async function onSubmit(data: Omit<AppSettings, 'updatedAt'>) {
     setSaving(true)
     try {
-      await saveSettings(data)
+      // Os PDFs do roteiro são gravados na hora, pelo próprio card — não reescreve com o valor do form.
+      const { roteiros: _roteiros, ...resto } = data
+      await saveSettings(resto)
       await refresh()
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -59,6 +63,8 @@ export function AdminConfig() {
         <h1 className="text-xl font-semibold text-white">Configurações</h1>
       </div>
 
+      <RoteirosCard roteiros={settings.roteiros} onChange={refresh} />
+
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <Card>
           <CardHeader>
@@ -78,11 +84,6 @@ export function AdminConfig() {
               <Label htmlFor="apresentacaoHorarios">Horários das apresentações</Label>
               <Input id="apresentacaoHorarios" placeholder="10:00, 19:00" {...register('apresentacaoHorarios')} />
               <p className="text-xs text-muted-foreground mt-1">Separados por vírgula, no formato HH:MM.</p>
-            </div>
-            <div>
-              <Label htmlFor="roteiroUrl">Link do roteiro</Label>
-              <Input id="roteiroUrl" placeholder="https://docs.google.com/..." {...register('roteiroUrl')} />
-              <p className="text-xs text-muted-foreground mt-1">Sem link, a Home mostra o roteiro como "Em breve".</p>
             </div>
             <div>
               <Label htmlFor="callToActionText">Texto do botão de inscrição</Label>
@@ -229,3 +230,122 @@ export function AdminConfig() {
   )
 }
 
+
+/** Os 3 PDFs do roteiro: cada troca/remoção já grava (fora do "Salvar" do form). */
+function RoteirosCard({ roteiros, onChange }: { roteiros?: AppSettings['roteiros']; onChange: () => Promise<void> }) {
+  const [ocupado, setOcupado] = useState<RoteiroTipo>()
+  const [erro, setErro] = useState('')
+
+  async function run(tipo: RoteiroTipo, fn: () => Promise<void>) {
+    setOcupado(tipo)
+    setErro('')
+    try {
+      await fn()
+      await onChange()
+    } catch (err) {
+      console.error('[roteiro]', err)
+      setErro('Não deu pra salvar o PDF. Tente de novo.')
+    } finally {
+      setOcupado(undefined)
+    }
+  }
+
+  function escolher(tipo: RoteiroTipo, file: File | undefined) {
+    if (!file) return
+    if (file.type !== 'application/pdf') return setErro('O roteiro precisa ser um PDF.')
+    if (file.size >= 15 * 1024 * 1024) return setErro('O PDF precisa ter menos de 15 MB.')
+    run(tipo, () => uploadRoteiro(tipo, file, roteiros?.[tipo]))
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Roteiro</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {ROTEIRO_TIPOS.map(({ tipo, label }) => (
+          <RoteiroLinha
+            key={tipo}
+            label={label}
+            arquivo={roteiros?.[tipo]}
+            ocupado={ocupado === tipo}
+            bloqueado={!!ocupado}
+            onEscolher={file => escolher(tipo, file)}
+            onRemover={arquivo => run(tipo, () => removerRoteiro(tipo, arquivo))}
+          />
+        ))}
+        {erro && <p className="text-sm text-red-600">{erro}</p>}
+        <p className="text-xs text-muted-foreground">PDF, até 15 MB. Todo mundo logado vê na Home; sem nenhum, aparece "Em breve".</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function RoteiroLinha({
+  label,
+  arquivo,
+  ocupado,
+  bloqueado,
+  onEscolher,
+  onRemover,
+}: {
+  label: string
+  arquivo?: RoteiroArquivo
+  ocupado: boolean
+  bloqueado: boolean
+  onEscolher: (file: File | undefined) => void
+  onRemover: (arquivo: RoteiroArquivo) => void
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [url, setUrl] = useState<string>()
+
+  useEffect(() => {
+    setUrl(undefined)
+    if (!arquivo) return
+    let ativo = true
+    urlDoArquivo(arquivo.path).then(u => ativo && setUrl(u), () => {})
+    return () => {
+      ativo = false
+    }
+  }, [arquivo])
+
+  return (
+    <div className="rounded-lg border border-gray-200 px-3 py-2.5">
+      <input
+        ref={fileRef}
+        type="file"
+        accept="application/pdf"
+        className="hidden"
+        onChange={e => {
+          onEscolher(e.target.files?.[0])
+          e.target.value = ''
+        }}
+      />
+      <p className="text-sm font-medium text-gray-900">{label}</p>
+      {arquivo ? (
+        <p className="truncate text-xs text-muted-foreground">
+          {arquivo.nome} · {new Date(arquivo.atualizadoEm).toLocaleDateString('pt-BR')}
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">Nenhum PDF</p>
+      )}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {arquivo && url && (
+          <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+            <FileText className="h-4 w-4" />
+            Ver
+          </a>
+        )}
+        <Button variant="outline" size="sm" className="gap-1" onClick={() => fileRef.current?.click()} disabled={bloqueado}>
+          {ocupado ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
+          {arquivo ? 'Trocar' : 'Enviar PDF'}
+        </Button>
+        {arquivo && (
+          <Button variant="ghost" size="sm" className="text-red-600" onClick={() => onRemover(arquivo)} disabled={bloqueado}>
+            Remover
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}

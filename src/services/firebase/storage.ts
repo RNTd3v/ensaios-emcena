@@ -38,3 +38,8 @@ export async function uploadArquivo(pasta: string, file: File): Promise<{ id: st
   const url = await getDownloadURL(fileRef)
   return { id, url, path }
 }
+
+/** URL de download de um arquivo já no Storage (exige estar logado — storage.rules). */
+export function urlDoArquivo(path: string): Promise<string> {
+  return getDownloadURL(ref(storage, path))
+}

@@ -512,6 +512,18 @@ export interface Notificacao {
   createdAt: string
 }
 
+export type RoteiroTipo = 'normal' | 'grande' | 'contexto'
+
+/**
+ * Só o path no Storage, não a URL de download: `settings` tem leitura pública (tela de login) e a
+ * URL de download abre pra qualquer um. A URL é pedida na hora, com a pessoa logada.
+ */
+export interface RoteiroArquivo {
+  path: string
+  nome: string
+  atualizadoEm: string
+}
+
 export interface AppSettings {
   eventName: string
   posterImageUrl?: string
@@ -521,8 +533,8 @@ export interface AppSettings {
   eventDate?: string // YYYY-MM-DD
   /** Horários das apresentações nesse dia, separados por vírgula (ex.: "10:00, 19:00"). */
   apresentacaoHorarios?: string
-  /** Link do roteiro (Google Docs/Drive etc.) — sem link, a Home mostra "Em breve". */
-  roteiroUrl?: string
+  /** PDFs do roteiro (Configurações). Nenhum = a Home mostra "Em breve". */
+  roteiros?: Partial<Record<RoteiroTipo, RoteiroArquivo>>
   /** Relógio de oração visível pra todos (menu, página, card da Home). Desligado = só admin. */
   oracaoLiberada?: boolean
   callToActionText?: string

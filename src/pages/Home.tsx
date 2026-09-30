@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ChevronRight, ExternalLink, ScrollText } from 'lucide-react'
+import { urlDoArquivo } from '@/services/firebase/storage'
+import { ROTEIRO_TIPOS } from '@/lib/roteiro'
 import { Avatar } from '@/components/ui/Avatar'
 import { Card, CardContent } from '@/components/ui/card'
 import { ProximoEnsaioCard } from '@/components/home/ProximoEnsaioCard'
@@ -9,7 +11,7 @@ import { OrandoAgoraCard } from '@/components/oracao/OrandoAgora'
 import { AtalhosMidia } from '@/components/home/AtalhosMidia'
 import { useOracaoVisivel } from '@/hooks/useOracaoVisivel'
 import { subscribeToDependentes } from '@/services/firebase/dependentes'
-import type { Inscricao } from '@/types'
+import type { AppSettings, Inscricao, RoteiroTipo } from '@/types'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useAuthStore } from '@/stores/authStore'
 import { getVersiculos, type VersiculoInput } from '@/services/firebase/versiculos'
@@ -46,7 +48,7 @@ export function Home() {
   const user = useAuthStore(s => s.user)
   const firstName = user?.displayName?.trim().split(' ')[0]
   const versiculo = useVersiculoSorteado()
-  const roteiroUrl = useSettingsStore(s => s.settings.roteiroUrl)
+  const roteiros = useSettingsStore(s => s.settings.roteiros)
   const oracaoVisivel = useOracaoVisivel()
   // Filhos inscritos pela pessoa: um card de próximo ensaio pra cada, com a resposta por ele.
   const [dependentes, setDependentes] = useState<Inscricao[]>([])
@@ -85,30 +87,80 @@ export function Home() {
 
       <FinanceiroCards />
 
-      <RoteiroCard url={roteiroUrl} />
+      <RoteiroCard roteiros={roteiros} />
     </div>
   )
 }
 
-/** Roteiro: um link externo (Configurações → Link do roteiro). Sem link, "Em breve". */
-function RoteiroCard({ url }: { url?: string }) {
-  const conteudo = (
-    <CardContent className="flex items-center gap-3">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <ScrollText className="h-4 w-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-gray-900">Roteiro</p>
-        <p className="text-xs text-muted-foreground">{url ? 'Abrir o roteiro' : 'Em breve'}</p>
-      </div>
-      {url && <ExternalLink className="h-4 w-4 shrink-0 text-gray-400" />}
-      {!url && <ChevronRight className="h-4 w-4 shrink-0 text-gray-200" />}
-    </CardContent>
-  )
-  if (!url) return <Card>{conteudo}</Card>
+/**
+ * Roteiro: os PDFs de Configurações. As URLs são pedidas ao montar (já logado) e não no clique —
+ * abrir aba depois de um `await` é bloqueado no iOS. Nenhum PDF = "Em breve".
+ */
+function RoteiroCard({ roteiros }: { roteiros?: AppSettings['roteiros'] }) {
+  const [urls, setUrls] = useState<Partial<Record<RoteiroTipo, string>>>({})
+  const disponiveis = ROTEIRO_TIPOS.filter(t => roteiros?.[t.tipo])
+
+  useEffect(() => {
+    let ativo = true
+    Promise.all(
+      ROTEIRO_TIPOS.map(async ({ tipo }) => {
+        const arquivo = roteiros?.[tipo]
+        if (!arquivo) return [tipo, undefined] as const
+        return [tipo, await urlDoArquivo(arquivo.path).catch(() => undefined)] as const
+      }),
+    ).then(pares => {
+      if (ativo) setUrls(Object.fromEntries(pares.filter(([, url]) => url)))
+    })
+    return () => {
+      ativo = false
+    }
+  }, [roteiros])
+
+  if (!disponiveis.length) {
+    return (
+      <Card>
+        <CardContent className="flex items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <ScrollText className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-gray-900">Roteiro</p>
+            <p className="text-xs text-muted-foreground">Em breve</p>
+          </div>
+          <ChevronRight className="h-4 w-4 shrink-0 text-gray-200" />
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
-    <a href={url} target="_blank" rel="noreferrer" className="block">
-      <Card>{conteudo}</Card>
-    </a>
+    <Card>
+      <CardContent className="space-y-1">
+        {disponiveis.map(({ tipo, label }) => {
+          const url = urls[tipo]
+          const linha = (
+            <>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <ScrollText className="h-4 w-4" />
+              </span>
+              <p className="min-w-0 flex-1 text-sm font-semibold text-gray-900">{label}</p>
+              <ExternalLink className="h-4 w-4 shrink-0 text-gray-400" />
+            </>
+          )
+          if (!url) {
+            return (
+              <div key={tipo} className="flex items-center gap-3 py-1 opacity-50">
+                {linha}
+              </div>
+            )
+          }
+          return (
+            <a key={tipo} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-3 py-1">
+              {linha}
+            </a>
+          )
+        })}
+      </CardContent>
+    </Card>
   )
 }

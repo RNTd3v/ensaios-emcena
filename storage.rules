@@ -49,6 +49,16 @@ service firebase.storage {
       allow delete: if false;
     }
 
+    // PDFs do roteiro (letra normal, letra grande, contexto). Quem troca é decidido no Firestore
+    // (`settings`, só admin) — mesmo raciocínio das pastas de cena.
+    match /roteiro/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.resource.size < 15 * 1024 * 1024
+        && request.resource.contentType == 'application/pdf';
+      allow delete: if isSignedIn();
+    }
+
     match /cenas/{cenaId}/musicas/{fileName} {
       allow read: if isSignedIn();
       allow write: if isSignedIn()

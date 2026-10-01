@@ -1,4 +1,4 @@
-import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore'
+import { addDoc, arrayUnion, collection, deleteDoc, deleteField, doc, onSnapshot, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore'
 import { db } from './config'
 import type { Equipe } from '@/types'
 
@@ -97,6 +97,11 @@ export async function updateEquipeDescricao(id: string, descricao: string): Prom
 /** Membros e assistentes (assistentes sempre ⊆ membros) — admin ou líder da equipe. */
 export async function updateEquipePessoas(id: string, membros: string[], assistentes: string[]): Promise<void> {
   await updateDoc(doc(db, 'equipes', id), { membros, assistentes: assistentes.filter(a => membros.includes(a)) })
+}
+
+/** Põe uma pessoa como membro (sem mexer em quem já está) — admin ou líder da equipe. */
+export async function adicionarMembroEquipe(id: string, uid: string): Promise<void> {
+  await updateDoc(doc(db, 'equipes', id), { membros: arrayUnion(uid) })
 }
 
 export async function deleteEquipe(id: string): Promise<void> {

@@ -1,20 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Check, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, CheckCircle2, Users, UsersRound } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
 import { SelectAllRow } from '@/components/cena/SelectAllRow'
 import { SelectionFloatingBar } from '@/components/cena/SelectionFloatingBar'
 import { CreateCenaModal } from '@/components/cena/CreateCenaModal'
+import { InscricaoInfo } from '@/components/inscricao/InscricaoInfo'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers } from '@/services/firebase/auth'
 import { subscribeToCenas } from '@/services/firebase/cenas'
+import { adicionarMembroEquipe, subscribeToEquipes } from '@/services/firebase/equipes'
 import { useAuthStore } from '@/stores/authStore'
-import { AREA_LABELS, DIA_SEMANA_LABELS, type Area, type AppUser, type Cena, type DiaSemana, type Inscricao } from '@/types'
+import { AREA_LABELS, DIA_SEMANA_LABELS, type Area, type AppUser, type Cena, type DiaSemana, type Equipe, type Inscricao } from '@/types'
 import { AREA_ICONS } from '@/lib/areaIcons'
 import { DIAS_ORDER, diasDisponiveis } from '@/lib/dias'
 import { cn } from '@/lib/utils'
@@ -36,6 +40,9 @@ export function Disponibilidade() {
 
   const [selectedUids, setSelectedUids] = useState<Set<string>>(new Set())
   const [cenaModalOpen, setCenaModalOpen] = useState(false)
+  /** Pessoa cuja inscrição está aberta (toque na foto). */
+  const [detalhe, setDetalhe] = useState<Inscricao | null>(null)
+  const [equipes, setEquipes] = useState<Equipe[]>([])
 
   useSelectionVisibility(selectedUids.size > 0)
 
@@ -49,6 +56,11 @@ export function Disponibilidade() {
     if (!currentUser) return
     return subscribeToCenas(currentUser.role, currentUser.uid, setCenas)
   }, [currentUser])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    return subscribeToEquipes(setEquipes)
+  }, [isAdmin])
 
   const filtered = useMemo(() => {
     return (inscricoes ?? []).filter(i => {
@@ -90,6 +102,21 @@ export function Disponibilidade() {
     }
     return map
   }, [cenas])
+
+  const cenasByUid = useMemo(() => {
+    const map: Record<string, Cena[]> = {}
+    for (const cena of cenas ?? []) {
+      if (!cena.ativo) continue
+      for (const uid of cena.participantes) (map[uid] ??= []).push(cena)
+    }
+    return map
+  }, [cenas])
+
+  /** Com gente já selecionada, o toque continua selecionando; senão abre a inscrição. */
+  function tocarPessoa(i: Inscricao) {
+    if (isAdmin && selectedUids.size > 0) toggleSelectUid(i.uid)
+    else setDetalhe(i)
+  }
 
   function toggleSelectUid(uid: string) {
     setSelectedUids(prev => {
@@ -210,9 +237,8 @@ export function Disponibilidade() {
                     <button
                       key={i.uid}
                       type="button"
-                      disabled={!isAdmin}
-                      onClick={() => toggleSelectUid(i.uid)}
-                      className="flex flex-col items-center gap-1 text-center disabled:cursor-default"
+                      onClick={() => tocarPessoa(i)}
+                      className="flex flex-col items-center gap-1 text-center"
                     >
                       <div className="relative">
                         <Avatar
@@ -244,6 +270,41 @@ export function Disponibilidade() {
         </Card>
       )}
 
+      <Dialog
+        open={!!detalhe}
+        onClose={() => setDetalhe(null)}
+        title={
+          detalhe && (
+            <span className="flex items-center gap-2.5">
+              <Avatar photoURL={users[detalhe.uid]?.photoURL} name={detalhe.apelido || detalhe.nomeCompleto} className="h-9 w-9 text-sm" />
+              {detalhe.apelido || detalhe.nomeCompleto}
+            </span>
+          )
+        }
+      >
+        {detalhe && (
+          <div className="space-y-4">
+            <InscricaoInfo inscricao={detalhe} users={users} inscricoes={inscricoes ?? []} cenas={cenasByUid[detalhe.uid] ?? []} />
+            {isAdmin && (
+              <AcoesPessoa
+                key={detalhe.uid}
+                inscricao={detalhe}
+                equipes={equipes}
+                onAdicionarCena={() => {
+                  setSelectedUids(prev => new Set(prev).add(detalhe.uid))
+                  setDetalhe(null)
+                  setCenaModalOpen(true)
+                }}
+                onSelecionar={() => {
+                  setSelectedUids(prev => new Set(prev).add(detalhe.uid))
+                  setDetalhe(null)
+                }}
+              />
+            )}
+          </div>
+        )}
+      </Dialog>
+
       {isAdmin && (
         <>
           <SelectionFloatingBar
@@ -264,6 +325,97 @@ export function Disponibilidade() {
             onCreated={() => setSelectedUids(new Set())}
           />
         </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Elenco vai pra cena (o mesmo fluxo da seleção); as outras áreas vão pra uma equipe.
+ * Quem marcou elenco e outra área vê as duas opções.
+ */
+function AcoesPessoa({
+  inscricao,
+  equipes,
+  onAdicionarCena,
+  onSelecionar,
+}: {
+  inscricao: Inscricao
+  equipes: Equipe[]
+  onAdicionarCena: () => void
+  onSelecionar: () => void
+}) {
+  const elenco = inscricao.areas.includes('elenco')
+  const outraArea = inscricao.areas.some(a => a !== 'elenco')
+  const disponiveis = equipes.filter(e => !e.membros.includes(inscricao.uid)).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+  const jaEsta = equipes.filter(e => e.membros.includes(inscricao.uid))
+  const [equipeId, setEquipeId] = useState('')
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState('')
+  const [adicionadaEm, setAdicionadaEm] = useState('')
+
+  async function adicionarEquipe() {
+    const equipe = equipes.find(e => e.id === equipeId)
+    if (!equipe) return
+    setSalvando(true)
+    setErro('')
+    try {
+      await adicionarMembroEquipe(equipe.id, inscricao.uid)
+      setAdicionadaEm(equipe.nome)
+      setEquipeId('')
+    } catch (err) {
+      console.error('[disponibilidade] Falha ao adicionar na equipe:', err)
+      setErro('Não foi possível adicionar. Tente de novo.')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3 border-t border-gray-100 pt-4">
+      {elenco && (
+        <div className="flex flex-col gap-1">
+          <Button className="w-full gap-1.5" onClick={onAdicionarCena}>
+            <Users className="h-4 w-4" />
+            Adicionar à cena
+          </Button>
+          <Button variant="ghost" size="sm" className="text-gray-500" onClick={onSelecionar}>
+            Selecionar e escolher mais pessoas
+          </Button>
+        </div>
+      )}
+      {outraArea && (
+        <div className="space-y-2">
+          {jaEsta.length > 0 && (
+            <p className="text-sm text-muted-foreground">
+              Já está em: <span className="text-foreground">{jaEsta.map(e => e.nome).join(', ')}</span>
+            </p>
+          )}
+          {disponiveis.length > 0 ? (
+            <div className="flex gap-2">
+              <Select value={equipeId} onChange={e => setEquipeId(e.target.value)} className="flex-1">
+                <option value="">Escolha a equipe</option>
+                {disponiveis.map(e => (
+                  <option key={e.id} value={e.id}>
+                    {e.nome}
+                  </option>
+                ))}
+              </Select>
+              <Button variant={elenco ? 'outline' : 'default'} className="shrink-0 gap-1.5" disabled={!equipeId || salvando} onClick={adicionarEquipe}>
+                <UsersRound className="h-4 w-4" />
+                {salvando ? 'Adicionando...' : 'Adicionar à equipe'}
+              </Button>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Já está em todas as equipes.</p>
+          )}
+          {adicionadaEm && (
+            <p className="flex items-center gap-1.5 text-sm text-emerald-600">
+              <CheckCircle2 className="h-4 w-4" /> Agora faz parte da equipe {adicionadaEm}.
+            </p>
+          )}
+          {erro && <p className="text-sm text-destructive">{erro}</p>}
+        </div>
       )}
     </div>
   )

@@ -28,6 +28,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { SelectAllRow } from '@/components/cena/SelectAllRow'
 import { SelectionFloatingBar } from '@/components/cena/SelectionFloatingBar'
 import { CreateCenaModal } from '@/components/cena/CreateCenaModal'
+import { InscricaoInfo } from '@/components/inscricao/InscricaoInfo'
 import { sincronizarPerfilPeloAdmin, subscribeToAllInscricoes, updateInscricaoStatus } from '@/services/firebase/inscricoes'
 import { getUsers, setUserActive, updateUserRole } from '@/services/firebase/auth'
 import { subscribeToCenas } from '@/services/firebase/cenas'
@@ -651,128 +652,7 @@ export function Admin() {
       >
         {selected && (
           <div className="space-y-4">
-            <div className="divide-y divide-gray-100">
-              <div className="pb-3">
-                <p className="text-sm text-muted-foreground">Como quer ser chamado</p>
-                <p className="text-base">{selected.apelido}</p>
-              </div>
-              <div className="py-3">
-                <p className="text-sm text-muted-foreground">Telefone (WhatsApp)</p>
-                <a
-                  href={whatsappLink(selected.telefone)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-base text-primary hover:underline"
-                >
-                  <MessageCircle className="h-3.5 w-3.5" />
-                  {selected.telefone}
-                </a>
-              </div>
-              <div className="py-3">
-                <p className="text-sm text-muted-foreground">Email</p>
-                <p className="text-base">{selected.email}</p>
-              </div>
-              {selected.dependente ? (
-                // Dependente: `responsavel` guarda só quem salvou por último — os responsáveis de
-                // verdade são `responsaveisUids`, com nome/telefone vindos da inscrição de cada um.
-                <div className="py-3">
-                  <p className="text-sm text-muted-foreground">Responsáveis</p>
-                  <div className="mt-1 space-y-1">
-                    {(selected.responsaveisUids ?? []).map(r => {
-                      const insc = inscricoes?.find(x => x.uid === r)
-                      return (
-                        <p key={r} className="text-base">
-                          {insc?.nomeCompleto ?? users[r]?.displayName ?? 'Sem nome'}
-                          {insc?.telefone && (
-                            <>
-                              {' · '}
-                              <a
-                                href={whatsappLink(insc.telefone)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-primary hover:underline"
-                              >
-                                <MessageCircle className="h-3.5 w-3.5" />
-                                {insc.telefone}
-                              </a>
-                            </>
-                          )}
-                        </p>
-                      )
-                    })}
-                  </div>
-                </div>
-              ) : selected.menorDeIdade && selected.responsavel && (
-                <div className="py-3">
-                  <p className="text-sm text-muted-foreground">Responsável (menor de idade)</p>
-                  <p className="text-base">
-                    {selected.responsavel.nome} ·{' '}
-                    <a
-                      href={whatsappLink(selected.responsavel.telefone)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-primary hover:underline"
-                    >
-                      <MessageCircle className="h-3.5 w-3.5" />
-                      {selected.responsavel.telefone}
-                    </a>
-                  </p>
-                </div>
-              )}
-              <div className="py-3">
-                <p className="text-sm text-muted-foreground">Áreas de interesse</p>
-                <div className="flex flex-wrap gap-1.5 mt-1">
-                  {selected.areas.map(a => (
-                    <Badge key={a} variant="outline">
-                      {AREA_LABELS[a]}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-              {!!cenasByUid[selected.uid]?.length && (
-                <div className="py-3">
-                  <p className="text-sm text-muted-foreground">Cenas</p>
-                  <div className="flex flex-wrap gap-1.5 mt-1">
-                    {cenasByUid[selected.uid].map(cena => (
-                      <Badge key={cena.id} variant="outline">
-                        {cena.nome}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="py-3">
-                <p className="text-sm text-muted-foreground">Disponibilidade</p>
-                <div className="flex flex-wrap gap-1.5 mt-1">
-                  {diasDisponiveis(selected.disponibilidade.dias).map(d => (
-                    <Badge key={d} variant="outline">
-                      {DIA_SEMANA_LABELS[d]}
-                    </Badge>
-                  ))}
-                </div>
-                {selected.disponibilidade.observacao && (
-                  <p className="text-sm text-muted-foreground mt-1.5">{selected.disponibilidade.observacao}</p>
-                )}
-              </div>
-              {!!selected.indisponibilidade?.length && (
-                <div className="py-3">
-                  <p className="text-sm text-muted-foreground">Datas em que não pode</p>
-                  <div className="flex flex-wrap gap-1.5 mt-1">
-                    {selected.indisponibilidade.map(d => (
-                      <Badge key={d} variant="outline">
-                        {new Date(`${d}T00:00:00`).toLocaleDateString('pt-BR')}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {selected.observacoes && (
-                <div className="py-3">
-                  <p className="text-sm text-muted-foreground">Observações</p>
-                  <p className="text-base">{selected.observacoes}</p>
-                </div>
-              )}
-            </div>
+            <InscricaoInfo inscricao={selected} users={users} inscricoes={inscricoes ?? []} cenas={cenasByUid[selected.uid] ?? []} />
 
             <div>
               <p className="text-sm text-muted-foreground mb-1.5">Status</p>

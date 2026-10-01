@@ -137,6 +137,20 @@ export async function registrarAusencia(id: string, uid: string, motivo: string)
   await batch.commit()
 }
 
+/**
+ * `uid` desiste do "não vou" sem confirmar ainda (fora da janela de check-in): volta a ficar sem
+ * resposta — sai de `ausentes` e o motivo privado é apagado.
+ */
+export async function desfazerAusencia(id: string, uid: string): Promise<void> {
+  const batch = writeBatch(db)
+  batch.update(doc(db, 'ensaios', id), {
+    ausentes: arrayRemove(uid),
+    [`ausencias.${uid}`]: deleteField(),
+  })
+  batch.delete(ausenciaRef(id, uid))
+  await batch.commit()
+}
+
 /** Motivo usado quando a ausência vem da indisponibilidade informada na inscrição. */
 export const MOTIVO_INDISPONIBILIDADE = 'Indisponível nessa data (informado na inscrição).'
 

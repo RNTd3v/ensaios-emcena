@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import {
   MOTIVO_INDISPONIBILIDADE,
   confirmarPresenca,
+  desfazerAusencia,
   registrarAusencia,
   subscribeToMinhaAusencia,
   uidsAusentes,
@@ -29,7 +30,8 @@ interface Props {
 /**
  * A resposta da própria pessoa pra um ensaio: "Vou" (check-in, só na janela de `canCheckin`) ou
  * "Não vou" com o motivo (a qualquer momento antes do ensaio começar). Dá pra trocar de resposta
- * enquanto o ensaio não começou. Se o "não vou" veio da indisponibilidade da inscrição, a pessoa
+ * enquanto o ensaio não começou: quem avisou que não vai e mudou de ideia fora da janela do check-in
+ * volta a ficar sem resposta, e confirma quando a janela abrir. Se o "não vou" veio da indisponibilidade da inscrição, a pessoa
  * pode mudar de ideia e confirmar a qualquer momento antes do ensaio, sem esperar a janela do check-in.
  */
 export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem }: Props) {
@@ -152,17 +154,15 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem }: 
             <Button variant="outline" size="sm" className="flex-1" onClick={abrirMotivo} disabled={saving}>
               Editar motivo
             </Button>
-            {podeConfirmar && (
-              <Button
-                size="sm"
-                className="flex-1"
-                onClick={() => run(() => confirmarPresenca(ensaio.id, uid))}
-                disabled={saving}
-              >
-                {saving && <Spinner size="sm" className="border-white/40 border-t-white" />}
-                Vou sim
-              </Button>
-            )}
+            <Button
+              size="sm"
+              className="flex-1 gap-1.5"
+              onClick={() => run(() => (podeConfirmar ? confirmarPresenca(ensaio.id, uid) : desfazerAusencia(ensaio.id, uid)))}
+              disabled={saving}
+            >
+              {saving ? <Spinner size="sm" className="border-white/40 border-t-white" /> : <Check className="h-4 w-4" />}
+              {podeConfirmar ? (paraQuem ? `${paraQuem} vai sim` : 'Vou sim') : 'Mudei de ideia'}
+            </Button>
           </div>
         )}
         {error && <p className="text-xs text-red-600">{error}</p>}

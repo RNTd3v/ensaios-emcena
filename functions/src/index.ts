@@ -220,6 +220,109 @@ export const lembreteEnsaio = onSchedule({ schedule: 'every 15 minutes', timeZon
   }
 })
 
+/** Data (YYYY-MM-DD) e minutos desde a meia-noite, agora, no fuso de São Paulo. */
+function agoraEmSaoPaulo(): { hoje: string; minutos: number } {
+  const partes = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', { timeZone: FUSO, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .formatToParts(new Date())
+      .map(p => [p.type, p.value]),
+  )
+  return { hoje: `${partes.year}-${partes.month}-${partes.day}`, minutos: Number(partes.hour) * 60 + Number(partes.minute) }
+}
+
+/** 1020 -> "17h", 1050 -> "17h30". */
+function horaDeMinutos(total: number): string {
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`
+}
+
+const AVISO_DO_DIA_MIN = 8 * 60
+/** Antes disso não sai lembrete de confirmação (ensaio cedo fecha a confirmação de madrugada). */
+const SILENCIO_ATE_MIN = 7 * 60
+/** Minutos antes de a confirmação fechar em que quem não respondeu é lembrado. */
+const MARCOS_CONFIRMACAO = [120, 60, 30, 10]
+const TITULO_MARCO: Record<number, string> = {
+  120: 'Confirme sua presença no ensaio de hoje',
+  60: 'Falta 1h pra fechar a confirmação',
+  30: 'Faltam 30 min pra confirmar',
+  10: 'Últimos minutos pra confirmar',
+}
+
+/**
+ * Roda a cada 5 min (fuso de São Paulo), pros ensaios de hoje:
+ * - às 8h, "Hoje tem ensaio" pra cena toda (menos quem já avisou que não vai);
+ * - 2h, 1h, 30 e 10 min antes de a confirmação fechar (`checkinLimiteHoras` antes do ensaio), um
+ *   lembrete só pra quem ainda não respondeu (nem "vou" nem "não vou").
+ * O que já saiu fica marcado no ensaio (`avisoDoDiaEnviado`, `lembretesConfirmacao`) — atrelado a
+ * data+horário, então se o ensaio mudar de horário os lembretes recomeçam. Se a função atrasar ou o
+ * ensaio for criado em cima da hora, manda só o lembrete mais próximo, sem rajada.
+ */
+export const lembretesDoDia = onSchedule({ schedule: 'every 5 minutes', timeZone: FUSO }, async () => {
+  const { hoje, minutos } = agoraEmSaoPaulo()
+  const snap = await db.collection('ensaios').where('data', '==', hoje).get()
+  if (snap.empty) return
+  const config = (await db.collection('settings').doc('config').get()).data()
+  const limiteHoras = Number(config?.checkinLimiteHoras ?? 2)
+
+  for (const doc of snap.docs) {
+    const e = doc.data()
+    if (e.canceledByUid || e.finalizadoAt) continue
+    const [h, m] = String(e.horario ?? '').split(':').map(Number)
+    if (Number.isNaN(h)) continue
+    const inicio = h * 60 + (m || 0)
+    if (minutos >= inicio) continue
+    const cena = await getCena(e.cenaId)
+    if (!cena || cena.ativo === false) continue
+
+    const participantes: string[] = cena.participantes ?? []
+    const ausentes = new Set<string>([...(e.ausentes ?? []), ...Object.keys(e.ausencias ?? {})])
+    const presentes = new Set<string>(e.presencas ?? [])
+    const link = `/cenas/${e.cenaId}/ensaios/${doc.id}`
+    const chave = `${e.data} ${e.horario}`
+    const atualizacao: Record<string, unknown> = {}
+    const envios: [string[], Notificacao][] = []
+
+    // Aviso do dia: só na janela das 8h (se o ensaio for criado depois, o "Ensaio confirmado" já avisa).
+    if (e.avisoDoDiaEnviado !== chave && minutos >= AVISO_DO_DIA_MIN && minutos < AVISO_DO_DIA_MIN + 60) {
+      atualizacao.avisoDoDiaEnviado = chave
+      envios.push([
+        participantes.filter(u => !ausentes.has(u)),
+        { titulo: 'Hoje tem ensaio! Se programe', corpo: descricaoEnsaio(cena.nome, e), link, tipo: 'ensaio' },
+      ])
+    }
+
+    // Lembretes de confirmação.
+    const fecha = inicio - limiteHoras * 60
+    const faltam = fecha - minutos
+    if (faltam > 0) {
+      const anteriores = e.lembretesConfirmacao?.chave === chave ? ((e.lembretesConfirmacao.enviados as number[]) ?? []) : []
+      const devidos = MARCOS_CONFIRMACAO.filter(mc => faltam <= mc && !anteriores.includes(mc))
+      if (devidos.length) {
+        atualizacao.lembretesConfirmacao = { chave, enviados: [...anteriores, ...devidos] }
+        const pendentes = participantes.filter(u => !presentes.has(u) && !ausentes.has(u))
+        if (minutos >= SILENCIO_ATE_MIN && pendentes.length) {
+          const marco = Math.min(...devidos)
+          envios.push([
+            pendentes,
+            {
+              titulo: TITULO_MARCO[marco],
+              corpo: `${cena.nome} hoje às ${horaDeMinutos(inicio)} — confirme até ${horaDeMinutos(fecha)}.`,
+              link,
+              tipo: 'ensaio',
+            },
+          ])
+        }
+      }
+    }
+
+    if (!Object.keys(atualizacao).length) continue
+    // Marca antes de enviar (como o lembreteEnsaio): se o envio falhar no meio, não repete.
+    await doc.ref.update(atualizacao)
+    for (const [uids, n] of envios) await notificar(uids, n)
+  }
+})
+
 // ---------- Figurino ----------
 
 export const figurinoEnviado = onDocumentCreated('figurinos/{id}', async event => {

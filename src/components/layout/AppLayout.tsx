@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Bug, User as UserIcon, CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
@@ -11,6 +11,8 @@ import { useOracaoVisivel } from '@/hooks/useOracaoVisivel'
 import { useEquipesVisivel } from '@/hooks/useEquipesVisivel'
 import { APP_DOCES_URL, APP_RIFAS_URL } from '@/services/externo/vendas'
 import { PhoneMockup } from '@/components/layout/PhoneMockup'
+import { useApresentacaoLaterais } from '@/components/layout/ApresentacaoLaterais'
+import { lerModoApresentacao } from '@/lib/apresentacao'
 import { SinoNotificacoes } from '@/components/layout/SinoNotificacoes'
 import { ativarPush } from '@/services/firebase/notificacoes'
 import { cn } from '@/lib/utils'
@@ -34,6 +36,9 @@ export function AppLayout() {
   const [visaoOpen, setVisaoOpen] = useState(false)
   const adminReal = useAuthStore(s => s.perfilReal?.role === 'admin')
   const visaoParticipante = useAuthStore(s => s.visaoParticipante)
+  const { search } = useLocation()
+  const [apresentacao, setApresentacao] = useState(() => lerModoApresentacao(search))
+  const laterais = useApresentacaoLaterais(apresentacao, () => setApresentacao(false), () => setReportarOpen(true))
 
   useEffect(() => {
     if (!loaded) refresh()
@@ -48,7 +53,7 @@ export function AppLayout() {
   }, [uid])
 
   return (
-    <PhoneMockup>
+    <PhoneMockup laterais={laterais}>
       <div className="absolute inset-0">
         {settings.internalBgUrl ? (
           <img src={settings.internalBgUrl} alt="" className="h-full w-full object-cover" />

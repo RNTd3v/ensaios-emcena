@@ -7,9 +7,19 @@ import { cn } from '@/lib/utils'
  * importante pra páginas com listeners/efeitos, tipo listas em tempo real) fica contido numa
  * moldura de smartphone centralizada, com notch e cantos arredondados.
  */
-export function PhoneMockup({ children, className }: { children: ReactNode; className?: string }) {
+export function PhoneMockup({
+  children,
+  className,
+  laterais,
+}: {
+  children: ReactNode
+  className?: string
+  /** Modo apresentação: conteúdo das colunas ao lado da moldura (só em telas `lg` pra cima). */
+  laterais?: { esquerda: ReactNode; direita: ReactNode; sobreposicao?: ReactNode }
+}) {
   return (
-    <div className="sm:flex sm:min-h-screen sm:items-center sm:justify-center sm:overflow-hidden sm:bg-gradient-to-br sm:from-primary/15 sm:via-[hsl(297_44%_85%)] sm:to-[#52467f] sm:dark:via-[#7b467f] sm:dark:to-[hsl(270_14%_22%)] sm:px-8">
+    <div className="sm:flex sm:gap-10 sm:min-h-screen sm:items-center sm:justify-center sm:overflow-hidden sm:bg-gradient-to-br sm:from-primary/15 sm:via-[hsl(297_44%_85%)] sm:to-[#52467f] sm:dark:via-[#7b467f] sm:dark:to-[hsl(270_14%_22%)] sm:px-8">
+      {laterais && <Lateral>{laterais.esquerda}</Lateral>}
       <div
         className={cn(
           'relative flex h-screen flex-col overflow-hidden bg-background',
@@ -20,6 +30,12 @@ export function PhoneMockup({ children, className }: { children: ReactNode; clas
         <div className="hidden sm:block sm:absolute sm:left-1/2 sm:top-0 sm:z-30 sm:h-6 sm:w-28 sm:-translate-x-1/2 sm:translate-y-1.5 sm:rounded-full sm:bg-neutral-900" />
         {children}
       </div>
+      {laterais && <Lateral>{laterais.direita}</Lateral>}
+      {laterais?.sobreposicao}
     </div>
   )
+}
+
+function Lateral({ children }: { children: ReactNode }) {
+  return <aside className="hidden max-h-[calc(100svh-2rem)] w-72 shrink overflow-y-auto p-1 lg:block">{children}</aside>
 }

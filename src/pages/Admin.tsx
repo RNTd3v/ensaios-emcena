@@ -247,20 +247,20 @@ export function Admin() {
         <div>
           <h1 className="text-xl font-semibold text-white">Gerenciamento</h1>
           <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-            <Badge variant="outline" className="bg-white/10 text-white border-white/30 text-xs px-2 py-0.5">
+            <Badge variant="outline" className="whitespace-nowrap bg-white/10 text-white border-white/30 text-xs px-2 py-0.5">
               {hasActiveFilters || search.trim()
                 ? `Mostrando ${filtered.length} de ${inscricoes?.length ?? 0}`
                 : `Total de participantes: ${inscricoes?.length ?? 0}`}
             </Badge>
             {pendentesCount > 0 && (
-              <Badge variant="warning" className="gap-1 text-xs px-2 py-0.5">
+              <Badge variant="warning" className="gap-1 whitespace-nowrap text-xs px-2 py-0.5">
                 <Clock className="h-3 w-3" />
                 {pendentesCount} pendente{pendentesCount === 1 ? '' : 's'}
               </Badge>
             )}
             {semInscricao.length > 0 && (
               <button type="button" onClick={() => setSemInscricaoOpen(true)} title="Ver quem entrou e não se inscreveu">
-                <Badge variant="outline" className="gap-1 border-white/30 bg-white/10 px-2 py-0.5 text-xs text-white hover:bg-white/20">
+                <Badge variant="outline" className="gap-1 whitespace-nowrap border-white/30 bg-white/10 px-2 py-0.5 text-xs text-white hover:bg-white/20">
                   <UserX className="h-3 w-3" />
                   {semInscricao.length} sem inscrição
                 </Badge>

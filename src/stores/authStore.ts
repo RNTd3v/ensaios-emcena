@@ -54,6 +54,12 @@ export function trocarVisao(participante: boolean) {
   useAuthStore.setState({ visaoParticipante: participante, user: efetivo(perfilReal, participante) })
 }
 
+/** Reflete na hora uma troca de foto feita pela própria pessoa (o perfil não é escutado em tempo real). */
+export function atualizarFotoLocal(photoURL: string | null, fotoPath: string | undefined) {
+  const { perfilReal } = useAuthStore.getState()
+  if (perfilReal) definirPerfil({ ...perfilReal, photoURL, fotoPath })
+}
+
 export const useAuthStore = create<AuthState>(() => ({
   user: null,
   perfilReal: null,

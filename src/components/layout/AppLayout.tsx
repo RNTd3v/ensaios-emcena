@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Bug, User as UserIcon, CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
+import { Bug, Camera, User as UserIcon, CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils'
 import { SemConexaoBanner } from '@/components/layout/SemConexao'
 import { ReportarProblemaDialog } from '@/components/layout/ReportarProblemaDialog'
 import { VisaoDialog } from '@/components/layout/VisaoDialog'
+import { MinhaFotoDialog } from '@/components/layout/MinhaFotoDialog'
 import { Avatar } from '@/components/ui/Avatar'
 
 export function AppLayout() {
@@ -34,6 +35,7 @@ export function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [reportarOpen, setReportarOpen] = useState(false)
   const [visaoOpen, setVisaoOpen] = useState(false)
+  const [fotoOpen, setFotoOpen] = useState(false)
   const adminReal = useAuthStore(s => s.perfilReal?.role === 'admin')
   const visaoParticipante = useAuthStore(s => s.visaoParticipante)
   const { search } = useLocation()
@@ -106,30 +108,31 @@ export function AppLayout() {
             onClick={e => e.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between mb-8">
-              {/* Admin toca na própria foto pra trocar a visão (admin ↔ participante). */}
+              {/* Toca na própria foto pra trocá-la; admin também troca a visão (admin ↔ participante) por ali. */}
               <button
                 type="button"
-                disabled={!adminReal}
                 onClick={() => {
                   setMenuOpen(false)
-                  setVisaoOpen(true)
+                  setFotoOpen(true)
                 }}
-                className="flex min-w-0 items-center gap-3 rounded-xl text-left disabled:cursor-default"
-                title={adminReal ? 'Trocar a visão do app' : undefined}
+                className="flex min-w-0 items-center gap-3 rounded-xl text-left"
+                title="Trocar minha foto"
               >
                 <span className="relative shrink-0">
                   <Avatar photoURL={user?.photoURL} name={user?.displayName} className="h-12 w-12 border border-white/30 text-base" />
-                  {adminReal && (
-                    <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary ring-2 ring-black/60">
-                      {visaoParticipante ? <UserIcon className="h-3 w-3 text-white" /> : <ShieldCheck className="h-3 w-3 text-white" />}
-                    </span>
-                  )}
+                  <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary ring-2 ring-black/60">
+                    {adminReal ? (
+                      visaoParticipante ? <UserIcon className="h-3 w-3 text-white" /> : <ShieldCheck className="h-3 w-3 text-white" />
+                    ) : (
+                      <Camera className="h-3 w-3 text-white" />
+                    )}
+                  </span>
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-base font-medium">{user?.displayName}</span>
-                  {adminReal && (
-                    <span className="block text-xs text-white/60">{visaoParticipante ? 'Vendo como participante' : 'Admin'} · trocar</span>
-                  )}
+                  <span className="block text-xs text-white/60">
+                    {adminReal ? `${visaoParticipante ? 'Vendo como participante' : 'Admin'} · foto e visão` : 'Trocar foto'}
+                  </span>
                 </span>
               </button>
               <button onClick={() => setMenuOpen(false)} className="shrink-0 p-2">
@@ -201,6 +204,19 @@ export function AppLayout() {
       )}
       {reportarOpen && <ReportarProblemaDialog onClose={() => setReportarOpen(false)} />}
       {visaoOpen && <VisaoDialog onClose={() => setVisaoOpen(false)} />}
+      {fotoOpen && (
+        <MinhaFotoDialog
+          onClose={() => setFotoOpen(false)}
+          onTrocarVisao={
+            adminReal
+              ? () => {
+                  setFotoOpen(false)
+                  setVisaoOpen(true)
+                }
+              : undefined
+          }
+        />
+      )}
     </PhoneMockup>
   )
 }

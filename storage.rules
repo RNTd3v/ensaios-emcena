@@ -40,6 +40,15 @@ service firebase.storage {
       allow delete: if isSignedIn();
     }
 
+    // Foto de perfil escolhida no app (no lugar da do Google): cada um só na própria pasta.
+    match /usuarios/{uid}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == uid
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedIn() && request.auth.uid == uid;
+    }
+
     // Print anexado a um problema reportado (Firestore `reportes`): cada um só na própria pasta.
     match /reportes/{uid}/{fileName} {
       allow read: if isSignedIn();

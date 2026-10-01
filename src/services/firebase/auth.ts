@@ -1,6 +1,8 @@
 import { GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth'
 import { doc, getDoc, getDocs, collection, setDoc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore'
-import { auth, db } from './config'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { auth, db, storage } from './config'
+import { deleteCenaFile } from './storage'
 import type { AppUser, UserRole } from '@/types'
 
 /** O login roda no mesmo domínio do app (authDomain = domínio do Hosting, com /__/auth/ servido por ele). */
@@ -65,6 +67,23 @@ export async function ensureUserDoc(uid: string, email: string, displayName: str
       createdAt: serverTimestamp(),
     })
   }
+}
+
+/** Troca a foto de perfil por uma escolhida no app (já reduzida) e apaga a anterior do Storage. */
+export async function salvarFotoPerfil(uid: string, foto: Blob, pathAnterior?: string): Promise<{ url: string; path: string }> {
+  const path = `usuarios/${uid}/${crypto.randomUUID()}.jpg`
+  const fileRef = ref(storage, path)
+  await uploadBytes(fileRef, foto, { contentType: 'image/jpeg' })
+  const url = await getDownloadURL(fileRef)
+  await updateDoc(doc(db, 'users', uid), { photoURL: url, fotoPath: path })
+  if (pathAnterior) await deleteCenaFile(pathAnterior)
+  return { url, path }
+}
+
+/** Volta pra foto da conta Google (ou nenhuma) e apaga a escolhida do Storage. */
+export async function usarFotoDaConta(uid: string, photoURL: string | null, pathAnterior?: string): Promise<void> {
+  await updateDoc(doc(db, 'users', uid), { photoURL, fotoPath: deleteField() })
+  if (pathAnterior) await deleteCenaFile(pathAnterior)
 }
 
 function fromUserSnap(data: Record<string, unknown>): AppUser {

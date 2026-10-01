@@ -41,11 +41,12 @@ service cloud.firestore {
                 && request.auth.uid in request.resource.data.responsaveisUids));
       // Promover a admin, revogar acesso (active=false) etc: só admin. Responsável de um dependente
       // só atualiza nome, foto e quem são os responsáveis (e continua sendo um deles). A própria
-      // pessoa só mexe na cópia pública de nome/apelido da inscrição (mostrada nos seletores).
+      // pessoa só mexe na cópia pública de nome/apelido da inscrição (mostrada nos seletores) e na
+      // própria foto (`fotoPath` = foto escolhida no app, em storage `usuarios/{uid}/`).
       allow update: if isAdmin()
         || (isAuthenticated()
             && request.auth.uid == userId
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['apelido', 'nomeCompleto']))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['apelido', 'nomeCompleto', 'photoURL', 'fotoPath']))
         || (isAuthenticated()
             && resource.data.get('dependente', false) == true
             && request.auth.uid in resource.data.responsaveisUids

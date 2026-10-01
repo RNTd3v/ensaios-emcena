@@ -24,6 +24,8 @@ export interface AppUser {
   email: string
   displayName: string
   photoURL: string | null
+  /** Foto escolhida pela própria pessoa no app (path no Storage). Sem isso, `photoURL` é a do Google. */
+  fotoPath?: string
   /** Cópia pública do nome completo/apelido da inscrição — as inscrições em si têm leitura restrita. */
   nomeCompleto?: string
   apelido?: string

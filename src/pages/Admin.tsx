@@ -112,7 +112,7 @@ export function Admin() {
     getUsers().then(list => setUsers(Object.fromEntries(list.map(u => [u.uid, u]))))
   }, [])
 
-  // Inscrições feitas antes da cópia pública de nome/apelido/status no perfil (seletores de
+  // Inscrições feitas antes da cópia pública de nome/apelido/status/áreas no perfil (seletores de
   // pessoa): o admin, que lê tudo, completa o que falta ao abrir a tela.
   const [perfisSincronizados, setPerfisSincronizados] = useState(false)
   useEffect(() => {
@@ -124,7 +124,8 @@ export function Admin() {
       if (
         (u.apelido ?? '') === (i.apelido ?? '').trim() &&
         (u.nomeCompleto ?? '') === (i.nomeCompleto ?? '').trim() &&
-        u.inscricaoStatus === i.status
+        u.inscricaoStatus === i.status &&
+        (u.areas ?? []).join() === (i.areas ?? []).join()
       )
         continue
       sincronizarPerfilPeloAdmin(i).catch(() => {})

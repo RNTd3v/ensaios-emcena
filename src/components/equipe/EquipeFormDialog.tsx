@@ -10,7 +10,7 @@ import { createEquipe, updateEquipeDescricao, updateEquipeInfo } from '@/service
 import { DEFAULT_EQUIPE_ICON, EQUIPE_ICONS } from '@/lib/equipeIcons'
 import { cn } from '@/lib/utils'
 import type { AppUser, Equipe, MidiaTipo } from '@/types'
-import { PessoaSelect, inscritosConfirmados, pessoaOpcao } from '@/components/ui/PessoaSelect'
+import { PessoaSelect, inscritosConfirmados, pessoaOpcao, podeEntrarEmEquipe } from '@/components/ui/PessoaSelect'
 
 interface Props {
   /** Ausente = criando uma equipe nova (só admin). */
@@ -37,6 +37,7 @@ export function EquipeFormDialog({ equipe, isAdmin, users = {}, onClose, onCreat
   const pessoas = useMemo(
     () =>
       inscritosConfirmados(users, [equipe?.liderUid])
+        .filter(u => u.uid === equipe?.liderUid || podeEntrarEmEquipe(u))
         .map(u => pessoaOpcao(u.uid, u))
         .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
     [users, equipe?.liderUid],

@@ -29,6 +29,8 @@ export interface AppUser {
   /** Cópia pública do nome completo/apelido da inscrição — as inscrições em si têm leitura restrita. */
   nomeCompleto?: string
   apelido?: string
+  /** Cópia pública das áreas da inscrição — decide quem pode entrar numa equipe (só elenco não entra). */
+  areas?: Area[]
   /** Cópia do status da inscrição (só admin grava) — os seletores de pessoa mostram só confirmados. */
   inscricaoStatus?: InscricaoStatus
   role: UserRole

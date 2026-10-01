@@ -16,7 +16,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { equipeIcon } from '@/lib/equipeIcons'
 import { cn } from '@/lib/utils'
 import type { Equipe } from '@/types'
-import { PessoaSelect, inscritosConfirmados, pessoaOpcao } from '@/components/ui/PessoaSelect'
+import { PessoaSelect, inscritosConfirmados, pessoaOpcao, podeEntrarEmEquipe } from '@/components/ui/PessoaSelect'
 import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 /**
@@ -66,7 +66,7 @@ export function EquipeDetalhe() {
   const disponiveis = useMemo(
     () =>
       inscritosConfirmados(users)
-        .filter(u => !equipe?.membros.includes(u.uid))
+        .filter(u => !equipe?.membros.includes(u.uid) && podeEntrarEmEquipe(u))
         .map(u => pessoaOpcao(u.uid, u))
         .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
     [users, equipe?.membros],

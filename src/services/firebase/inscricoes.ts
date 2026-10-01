@@ -1,6 +1,6 @@
 import { collection, doc, getDoc, getDocs, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import { db } from './config'
-import type { Inscricao, InscricaoStatus } from '@/types'
+import type { Area, Inscricao, InscricaoStatus } from '@/types'
 
 /**
  * Firestore rejeita `undefined` em campos — remove essas chaves recursivamente antes de salvar.
@@ -48,20 +48,22 @@ export async function saveInscricao(input: InscricaoInput, isNew: boolean): Prom
     { merge: true },
   )
   // Separado (e sem travar a inscrição se falhar): cópia pública pros seletores de pessoa.
-  await sincronizarNomeNoPerfil(input.uid, input.nomeCompleto, input.apelido).catch(() => {})
+  await sincronizarNomeNoPerfil(input.uid, input.nomeCompleto, input.apelido, input.areas).catch(() => {})
 }
 
-/** Grava nome completo/apelido da inscrição no perfil (`users`), que todo mundo logado lê. */
-export async function sincronizarNomeNoPerfil(uid: string, nomeCompleto: string, apelido: string): Promise<void> {
-  await updateDoc(doc(db, 'users', uid), { nomeCompleto: nomeCompleto.trim(), apelido: apelido.trim() })
+/** Grava nome completo/apelido e áreas da inscrição no perfil (`users`), que todo mundo logado lê. */
+export async function sincronizarNomeNoPerfil(uid: string, nomeCompleto: string, apelido: string, areas?: Area[]): Promise<void> {
+  // Dependente fica sem `areas` (não entra em equipe, e o responsável não pode gravar esse campo).
+  await updateDoc(doc(db, 'users', uid), { nomeCompleto: nomeCompleto.trim(), apelido: apelido.trim(), ...(areas ? { areas } : {}) })
 }
 
 /** Cópia completa da inscrição no perfil, incluindo o status — só admin (firestore.rules). */
-export async function sincronizarPerfilPeloAdmin(i: Pick<Inscricao, 'uid' | 'nomeCompleto' | 'apelido' | 'status'>): Promise<void> {
+export async function sincronizarPerfilPeloAdmin(i: Pick<Inscricao, 'uid' | 'nomeCompleto' | 'apelido' | 'status' | 'areas'>): Promise<void> {
   await updateDoc(doc(db, 'users', i.uid), {
     nomeCompleto: (i.nomeCompleto ?? '').trim(),
     apelido: (i.apelido ?? '').trim(),
     inscricaoStatus: i.status,
+    areas: i.areas ?? [],
   })
 }
 

@@ -332,7 +332,7 @@ export function Disponibilidade() {
 
 /**
  * Elenco vai pra cena (o mesmo fluxo da seleção); as outras áreas vão pra uma equipe.
- * Quem marcou elenco e outra área vê as duas opções.
+ * Quem marcou elenco e outra área vê as duas opções; dependente só vê a de cena.
  */
 function AcoesPessoa({
   inscricao,
@@ -346,7 +346,8 @@ function AcoesPessoa({
   onSelecionar: () => void
 }) {
   const elenco = inscricao.areas.includes('elenco')
-  const outraArea = inscricao.areas.some(a => a !== 'elenco')
+  // Dependente (criança) não entra em equipe — só em cena.
+  const outraArea = !inscricao.dependente && inscricao.areas.some(a => a !== 'elenco')
   const disponiveis = equipes.filter(e => !e.membros.includes(inscricao.uid)).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
   const jaEsta = equipes.filter(e => e.membros.includes(inscricao.uid))
   const [equipeId, setEquipeId] = useState('')

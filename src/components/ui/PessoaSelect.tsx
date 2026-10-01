@@ -46,6 +46,17 @@ export function inscritosConfirmados(users: Record<string, AppUser> | AppUser[],
   )
 }
 
+/**
+ * Quem pode entrar numa equipe: não é dependente e marcou alguma área além de elenco na inscrição.
+ * Perfil sem a cópia das áreas ainda (inscrição antiga, antes do admin abrir o Gerenciamento) fica
+ * na lista, pra ninguém sumir sem motivo.
+ */
+export function podeEntrarEmEquipe(u: Pick<AppUser, 'dependente' | 'areas'>): boolean {
+  if (u.dependente) return false
+  if (!u.areas?.length) return true
+  return u.areas.some(a => a !== 'elenco')
+}
+
 const normalizar = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 interface Props {

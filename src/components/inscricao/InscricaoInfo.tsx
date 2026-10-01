@@ -2,7 +2,8 @@ import { MessageCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { whatsappLink } from '@/lib/formatters'
 import { diasDisponiveis } from '@/lib/dias'
-import { AREA_LABELS, DIA_SEMANA_LABELS, type AppUser, type Cena, type Inscricao } from '@/types'
+import { AREA_LABELS, DIA_SEMANA_LABELS, type AppUser, type Cena, type Equipe, type Inscricao } from '@/types'
+import { interesseRespondido, nomesInteresse } from '@/lib/interesse'
 
 /**
  * O que a pessoa preencheu na inscrição (contato, áreas, disponibilidade, observações) e as cenas
@@ -13,12 +14,15 @@ export function InscricaoInfo({
   users,
   inscricoes,
   cenas,
+  equipes = [],
 }: {
   inscricao: Inscricao
   users: Record<string, AppUser>
   /** Pra achar nome e telefone dos responsáveis de um dependente. */
   inscricoes: Inscricao[]
   cenas: Cena[]
+  /** Pra mostrar os nomes das equipes em que a pessoa quer ajudar. */
+  equipes?: Equipe[]
 }) {
   return (
     <div className="divide-y divide-gray-100">
@@ -99,6 +103,19 @@ export function InscricaoInfo({
           ))}
         </div>
       </div>
+      {interesseRespondido(inscricao.equipesInteresse, inscricao.ajudaOutro) && (
+        <div className="py-3">
+          <p className="text-sm text-muted-foreground">Quer ajudar em</p>
+          <div className="flex flex-wrap gap-1.5 mt-1">
+            {nomesInteresse(inscricao.equipesInteresse, equipes).map(n => (
+              <Badge key={n} variant="outline" className="border-primary/40 bg-primary/5 text-primary">
+                {n}
+              </Badge>
+            ))}
+          </div>
+          {inscricao.ajudaOutro && <p className="text-sm text-muted-foreground mt-1.5">{inscricao.ajudaOutro}</p>}
+        </div>
+      )}
       {!!cenas.length && (
         <div className="py-3">
           <p className="text-sm text-muted-foreground">Cenas</p>

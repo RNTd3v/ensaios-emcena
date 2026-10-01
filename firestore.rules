@@ -46,7 +46,7 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (isAuthenticated()
             && request.auth.uid == userId
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['apelido', 'nomeCompleto', 'photoURL', 'fotoPath', 'areas']))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['apelido', 'nomeCompleto', 'photoURL', 'fotoPath', 'areas', 'equipesInteresse']))
         || (isAuthenticated()
             && resource.data.get('dependente', false) == true
             && request.auth.uid in resource.data.responsaveisUids

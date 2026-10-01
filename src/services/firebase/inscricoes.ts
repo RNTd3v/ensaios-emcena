@@ -48,22 +48,42 @@ export async function saveInscricao(input: InscricaoInput, isNew: boolean): Prom
     { merge: true },
   )
   // Separado (e sem travar a inscrição se falhar): cópia pública pros seletores de pessoa.
-  await sincronizarNomeNoPerfil(input.uid, input.nomeCompleto, input.apelido, input.areas).catch(() => {})
+  await sincronizarNomeNoPerfil(input.uid, input.nomeCompleto, input.apelido, {
+    areas: input.areas,
+    equipesInteresse: input.equipesInteresse ?? [],
+  }).catch(() => {})
 }
 
-/** Grava nome completo/apelido e áreas da inscrição no perfil (`users`), que todo mundo logado lê. */
-export async function sincronizarNomeNoPerfil(uid: string, nomeCompleto: string, apelido: string, areas?: Area[]): Promise<void> {
-  // Dependente fica sem `areas` (não entra em equipe, e o responsável não pode gravar esse campo).
-  await updateDoc(doc(db, 'users', uid), { nomeCompleto: nomeCompleto.trim(), apelido: apelido.trim(), ...(areas ? { areas } : {}) })
+/**
+ * Grava nome completo/apelido (e áreas + equipes de interesse) da inscrição no perfil (`users`),
+ * que todo mundo logado lê.
+ */
+export async function sincronizarNomeNoPerfil(
+  uid: string,
+  nomeCompleto: string,
+  apelido: string,
+  // Dependente fica sem esses (não entra em equipe, e o responsável não pode gravar esses campos).
+  equipe?: { areas: Area[]; equipesInteresse: string[] },
+): Promise<void> {
+  await updateDoc(doc(db, 'users', uid), { nomeCompleto: nomeCompleto.trim(), apelido: apelido.trim(), ...equipe })
+}
+
+/** Só a resposta "em que quer ajudar" (card da Home, pra quem se inscreveu antes da pergunta existir). */
+export async function salvarInteresseEquipes(uid: string, equipesInteresse: string[], ajudaOutro: string): Promise<void> {
+  await updateDoc(doc(db, 'inscricoes', uid), { equipesInteresse, ajudaOutro: ajudaOutro.trim(), updatedAt: serverTimestamp() })
+  await updateDoc(doc(db, 'users', uid), { equipesInteresse }).catch(() => {})
 }
 
 /** Cópia completa da inscrição no perfil, incluindo o status — só admin (firestore.rules). */
-export async function sincronizarPerfilPeloAdmin(i: Pick<Inscricao, 'uid' | 'nomeCompleto' | 'apelido' | 'status' | 'areas'>): Promise<void> {
+export async function sincronizarPerfilPeloAdmin(
+  i: Pick<Inscricao, 'uid' | 'nomeCompleto' | 'apelido' | 'status' | 'areas' | 'equipesInteresse'>,
+): Promise<void> {
   await updateDoc(doc(db, 'users', i.uid), {
     nomeCompleto: (i.nomeCompleto ?? '').trim(),
     apelido: (i.apelido ?? '').trim(),
     inscricaoStatus: i.status,
     areas: i.areas ?? [],
+    equipesInteresse: i.equipesInteresse ?? [],
   })
 }
 

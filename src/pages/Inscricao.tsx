@@ -19,6 +19,9 @@ import { AREA_LABELS, DIA_SEMANA_LABELS, type Area, type DiaSemana, type Inscric
 import { AREA_ICONS } from '@/lib/areaIcons'
 import { DIAS_OBRIGATORIOS, diasDisponiveis } from '@/lib/dias'
 import { DependentesCard } from '@/components/inscricao/DependentesCard'
+import { InteresseEquipesCampo } from '@/components/inscricao/InteresseEquipes'
+import { interesseRespondido, nomesInteresse, perguntaInteresse } from '@/lib/interesse'
+import { useEquipesOrdenadas } from '@/hooks/useEquipesOrdenadas'
 
 const AREAS = Object.keys(AREA_LABELS) as Area[]
 const DIAS = Object.keys(DIA_SEMANA_LABELS) as DiaSemana[]
@@ -32,6 +35,8 @@ const schema = z
     responsavelNome: z.string().optional(),
     responsavelTelefone: z.string().optional(),
     areas: z.array(z.enum(['elenco', 'staff', 'figurino', 'tecnica'])).min(1, 'Selecione ao menos uma área'),
+    equipesInteresse: z.array(z.string()),
+    ajudaOutro: z.string().optional(),
     dias: z.array(z.enum(['seg', 'ter', 'qua', 'qui', 'sex', 'sab'])),
     disponibilidadeObs: z.string().optional(),
     indisponibilidade: z.array(z.string()).optional(),
@@ -48,6 +53,9 @@ const schema = z
     }
     // Disponibilidade mínima de 3 dias só é exigida de quem se candidata ao elenco — o sábado
     // (obrigatório pra todos) conta como um deles.
+    if (perguntaInteresse(data.areas) && !interesseRespondido(data.equipesInteresse, data.ajudaOutro)) {
+      ctx.addIssue({ code: 'custom', path: ['equipesInteresse'], message: 'Escolha ao menos uma equipe ou conte no campo' })
+    }
     if (data.areas.includes('elenco') && diasDisponiveis(data.dias).length < 3) {
       ctx.addIssue({ code: 'custom', path: ['dias'], message: 'Elenco precisa de pelo menos 3 dias de disponibilidade' })
     }
@@ -98,6 +106,8 @@ export function Inscricao() {
       responsavelNome: '',
       responsavelTelefone: '',
       areas: [],
+      equipesInteresse: [],
+      ajudaOutro: '',
       dias: [],
       disponibilidadeObs: '',
       indisponibilidade: [],
@@ -115,6 +125,8 @@ export function Inscricao() {
         responsavelNome: inscricao.responsavel?.nome ?? '',
         responsavelTelefone: inscricao.responsavel?.telefone ?? '',
         areas: inscricao.areas,
+        equipesInteresse: inscricao.equipesInteresse ?? [],
+        ajudaOutro: inscricao.ajudaOutro ?? '',
         dias: inscricao.disponibilidade.dias,
         disponibilidadeObs: inscricao.disponibilidade.observacao ?? '',
         indisponibilidade: inscricao.indisponibilidade ?? [],
@@ -124,6 +136,8 @@ export function Inscricao() {
   }, [inscricao, reset])
 
   const areas = watch('areas')
+  const equipesInteresse = watch('equipesInteresse')
+  const equipes = useEquipesOrdenadas()
   const dias = watch('dias')
   const requiresMinDias = areas.includes('elenco')
   // Depois de confirmada, só dá pra atualizar dados pessoais — área/disponibilidade ficam travadas.
@@ -132,8 +146,14 @@ export function Inscricao() {
   const menorDeIdade = watch('menorDeIdade')
 
   function toggleArea(area: Area) {
-    setValue('areas', areas.includes(area) ? areas.filter(a => a !== area) : [...areas, area], { shouldValidate: true })
-    trigger('dias')
+    const marcando = !areas.includes(area)
+    setValue('areas', marcando ? [...areas, area] : areas.filter(a => a !== area), { shouldValidate: true })
+    // Quem marca a área Figurino já vem com a equipe de Figurino escolhida.
+    const figurino = equipes.find(e => e.nome.trim().toLowerCase() === 'figurino')
+    if (marcando && area === 'figurino' && figurino && !equipesInteresse.includes(figurino.id)) {
+      setValue('equipesInteresse', [...equipesInteresse, figurino.id])
+    }
+    trigger(['dias', 'equipesInteresse'])
   }
 
   function toggleDia(dia: DiaSemana) {
@@ -156,6 +176,9 @@ export function Inscricao() {
             ? { nome: (data.responsavelNome ?? '').trim(), telefone: data.responsavelTelefone ?? '' }
             : undefined,
           areas: data.areas,
+          // Só quem tem área de equipe guarda a resposta (elenco puro não entra em equipe).
+          equipesInteresse: data.areas.some(a => a !== 'elenco') ? data.equipesInteresse : [],
+          ajudaOutro: data.areas.some(a => a !== 'elenco') ? data.ajudaOutro?.trim() || undefined : undefined,
           disponibilidade: { dias: data.dias, observacao: data.disponibilidadeObs || undefined },
           indisponibilidade: data.indisponibilidade,
           observacoes: data.observacoes || undefined,
@@ -232,6 +255,19 @@ export function Inscricao() {
                   ))}
                 </div>
               </div>
+              {interesseRespondido(inscricao.equipesInteresse, inscricao.ajudaOutro) && (
+                <div className="py-3">
+                  <p className="text-sm text-gray-500">Quer ajudar em</p>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {nomesInteresse(inscricao.equipesInteresse, equipes).map(n => (
+                      <Badge key={n} variant="outline">
+                        {n}
+                      </Badge>
+                    ))}
+                  </div>
+                  {inscricao.ajudaOutro && <p className="text-sm text-muted-foreground mt-1.5">{inscricao.ajudaOutro}</p>}
+                </div>
+              )}
               <div className="py-3">
                 <p className="text-sm text-gray-500">Disponibilidade</p>
                 <div className="flex flex-wrap gap-1.5 mt-1">
@@ -425,6 +461,25 @@ export function Inscricao() {
                   <Input id="observacoes" placeholder="Experiência anterior, restrições, etc." {...register('observacoes')} />
                 </div>
               </>
+            )}
+
+            {/* Fora do bloco travado: quem já foi confirmado ainda pode contar (ou mudar) em que quer ajudar. */}
+            {perguntaInteresse(areas) && (
+              <div>
+                <Label>Em que você quer ajudar?</Label>
+                <p className="mb-2 text-xs text-muted-foreground">Escolha uma ou mais equipes.</p>
+                <InteresseEquipesCampo
+                  equipes={equipes}
+                  value={equipesInteresse}
+                  onChange={ids => setValue('equipesInteresse', ids, { shouldValidate: true })}
+                  outro={watch('ajudaOutro') ?? ''}
+                  onOutroChange={t => {
+                    setValue('ajudaOutro', t)
+                    if (errors.equipesInteresse) trigger('equipesInteresse')
+                  }}
+                  erro={errors.equipesInteresse?.message}
+                />
+              </div>
             )}
 
             <div className="flex flex-col gap-2">

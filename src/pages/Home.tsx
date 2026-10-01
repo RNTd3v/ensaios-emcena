@@ -17,6 +17,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { getVersiculos, type VersiculoInput } from '@/services/firebase/versiculos'
 import { VERSICULOS_SUGERIDOS } from '@/lib/versiculosSugeridos'
 import { InstalarAppCard } from '@/components/home/InstalarAppCard'
+import { InteresseEquipesCard } from '@/components/inscricao/InteresseEquipes'
 import { TarefasEmAndamentoCard } from '@/components/home/TarefasEmAndamentoCard'
 
 function sortear<T>(lista: T[]): T | undefined {
@@ -72,6 +73,8 @@ export function Home() {
       </div>
 
       <InstalarAppCard />
+
+      {user && <InteresseEquipesCard uid={user.uid} />}
 
       {user && <ProximoEnsaioCard uid={user.uid} />}
       {user &&

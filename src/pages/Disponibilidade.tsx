@@ -57,10 +57,7 @@ export function Disponibilidade() {
     return subscribeToCenas(currentUser.role, currentUser.uid, setCenas)
   }, [currentUser])
 
-  useEffect(() => {
-    if (!isAdmin) return
-    return subscribeToEquipes(setEquipes)
-  }, [isAdmin])
+  useEffect(() => subscribeToEquipes(setEquipes), [])
 
   const filtered = useMemo(() => {
     return (inscricoes ?? []).filter(i => {
@@ -284,7 +281,13 @@ export function Disponibilidade() {
       >
         {detalhe && (
           <div className="space-y-4">
-            <InscricaoInfo inscricao={detalhe} users={users} inscricoes={inscricoes ?? []} cenas={cenasByUid[detalhe.uid] ?? []} />
+            <InscricaoInfo
+              inscricao={detalhe}
+              users={users}
+              inscricoes={inscricoes ?? []}
+              cenas={cenasByUid[detalhe.uid] ?? []}
+              equipes={equipes}
+            />
             {isAdmin && (
               <AcoesPessoa
                 key={detalhe.uid}
@@ -348,9 +351,13 @@ function AcoesPessoa({
   const elenco = inscricao.areas.includes('elenco')
   // Dependente (criança) não entra em equipe — só em cena.
   const outraArea = !inscricao.dependente && inscricao.areas.some(a => a !== 'elenco')
-  const disponiveis = equipes.filter(e => !e.membros.includes(inscricao.uid)).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+  const interesse = inscricao.equipesInteresse ?? []
+  // As equipes em que a pessoa quer ajudar vêm primeiro (e a primeira já vem escolhida).
+  const disponiveis = equipes
+    .filter(e => !e.membros.includes(inscricao.uid))
+    .sort((a, b) => Number(!interesse.includes(a.id)) - Number(!interesse.includes(b.id)) || a.nome.localeCompare(b.nome, 'pt-BR'))
   const jaEsta = equipes.filter(e => e.membros.includes(inscricao.uid))
-  const [equipeId, setEquipeId] = useState('')
+  const [equipeId, setEquipeId] = useState(() => disponiveis.find(e => interesse.includes(e.id))?.id ?? '')
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
   const [adicionadaEm, setAdicionadaEm] = useState('')
@@ -398,7 +405,7 @@ function AcoesPessoa({
                 <option value="">Escolha a equipe</option>
                 {disponiveis.map(e => (
                   <option key={e.id} value={e.id}>
-                    {e.nome}
+                    {interesse.includes(e.id) ? `★ ${e.nome} (quer ajudar)` : e.nome}
                   </option>
                 ))}
               </Select>

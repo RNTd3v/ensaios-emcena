@@ -31,6 +31,8 @@ export interface AppUser {
   apelido?: string
   /** Cópia pública das áreas da inscrição — decide quem pode entrar numa equipe (só elenco não entra). */
   areas?: Area[]
+  /** Cópia pública de `Inscricao.equipesInteresse` — o líder da equipe vê quem quer ajudar nela. */
+  equipesInteresse?: string[]
   /** Cópia do status da inscrição (só admin grava) — os seletores de pessoa mostram só confirmados. */
   inscricaoStatus?: InscricaoStatus
   role: UserRole
@@ -72,6 +74,10 @@ export interface Inscricao {
     telefone: string
   }
   areas: Area[]
+  /** Staff/técnica: ids das equipes em que a pessoa quer ajudar (ex.: Iluminação, Cenário). */
+  equipesInteresse?: string[]
+  /** Staff/técnica: no que mais quer ajudar, se não estiver nas equipes. */
+  ajudaOutro?: string
   disponibilidade: {
     dias: DiaSemana[]
     observacao?: string

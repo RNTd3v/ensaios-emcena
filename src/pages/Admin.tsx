@@ -29,6 +29,7 @@ import { SelectAllRow } from '@/components/cena/SelectAllRow'
 import { SelectionFloatingBar } from '@/components/cena/SelectionFloatingBar'
 import { CreateCenaModal } from '@/components/cena/CreateCenaModal'
 import { InscricaoInfo } from '@/components/inscricao/InscricaoInfo'
+import { useEquipesOrdenadas } from '@/hooks/useEquipesOrdenadas'
 import { sincronizarPerfilPeloAdmin, subscribeToAllInscricoes, updateInscricaoStatus } from '@/services/firebase/inscricoes'
 import { getUsers, setUserActive, updateUserRole } from '@/services/firebase/auth'
 import { subscribeToCenas } from '@/services/firebase/cenas'
@@ -76,13 +77,17 @@ export function Admin() {
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('todos')
   const [sortBy, setSortBy] = useState<SortOption>('recentes')
   const [acessoFilter, setAcessoFilter] = useState<AcessoFilter>('ativos')
+  /** Id da equipe em que a pessoa quer ajudar ('' = qualquer). */
+  const [interesseFilter, setInteresseFilter] = useState('')
+  const equipes = useEquipesOrdenadas()
   const [selected, setSelected] = useState<Inscricao | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
   /** Recusar a inscrição ou revogar o acesso tira a pessoa das cenas/equipes — pede confirmação antes. */
   const [desvinculo, setDesvinculo] = useState<{ uid: string; acao: 'recusar' | 'revogar' } | null>(null)
   const [desvinculando, setDesvinculando] = useState(false)
   const [desvinculoErro, setDesvinculoErro] = useState('')
-  const hasActiveFilters = areaFilter !== 'todas' || diaFilter.length > 0 || roleFilter !== 'todos' || acessoFilter !== 'ativos'
+  const hasActiveFilters =
+    areaFilter !== 'todas' || diaFilter.length > 0 || roleFilter !== 'todos' || acessoFilter !== 'ativos' || !!interesseFilter
 
   const [selectedUids, setSelectedUids] = useState<Set<string>>(new Set())
   const [cenaModalOpen, setCenaModalOpen] = useState(false)
@@ -112,7 +117,7 @@ export function Admin() {
     getUsers().then(list => setUsers(Object.fromEntries(list.map(u => [u.uid, u]))))
   }, [])
 
-  // Inscrições feitas antes da cópia pública de nome/apelido/status/áreas no perfil (seletores de
+  // Inscrições feitas antes da cópia pública de nome/apelido/status/áreas/interesses no perfil (seletores de
   // pessoa): o admin, que lê tudo, completa o que falta ao abrir a tela.
   const [perfisSincronizados, setPerfisSincronizados] = useState(false)
   useEffect(() => {
@@ -125,7 +130,8 @@ export function Admin() {
         (u.apelido ?? '') === (i.apelido ?? '').trim() &&
         (u.nomeCompleto ?? '') === (i.nomeCompleto ?? '').trim() &&
         u.inscricaoStatus === i.status &&
-        (u.areas ?? []).join() === (i.areas ?? []).join()
+        (u.areas ?? []).join() === (i.areas ?? []).join() &&
+        (u.equipesInteresse ?? []).join() === (i.equipesInteresse ?? []).join()
       )
         continue
       sincronizarPerfilPeloAdmin(i).catch(() => {})
@@ -142,6 +148,7 @@ export function Admin() {
       const revogado = users[i.uid]?.active === false
       if (acessoFilter === 'ativos' ? revogado : acessoFilter === 'revogados' ? !revogado : false) return false
       if (areaFilter !== 'todas' && !i.areas.includes(areaFilter)) return false
+      if (interesseFilter && !i.equipesInteresse?.includes(interesseFilter)) return false
       if (diaFilter.length > 0) {
         const disponivel =
           diaMatchMode === 'all'
@@ -162,7 +169,7 @@ export function Admin() {
       result.reverse()
     }
     return result
-  }, [inscricoes, acessoFilter, areaFilter, diaFilter, diaMatchMode, roleFilter, users, search, sortBy])
+  }, [inscricoes, acessoFilter, areaFilter, interesseFilter, diaFilter, diaMatchMode, roleFilter, users, search, sortBy])
 
   const pendentesCount = useMemo(() => (inscricoes ?? []).filter(i => i.status === 'pendente').length, [inscricoes])
 
@@ -565,6 +572,17 @@ export function Admin() {
             </div>
           </div>
           <div>
+            <p className="text-sm text-muted-foreground mb-1.5">Quer ajudar em</p>
+            <Select value={interesseFilter} onChange={e => setInteresseFilter(e.target.value)}>
+              <option value="">Qualquer equipe</option>
+              {equipes.map(e => (
+                <option key={e.id} value={e.id}>
+                  {e.nome}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
             <p className="text-sm text-muted-foreground mb-1.5">Disponibilidade</p>
             <div className="grid grid-cols-6 gap-1.5">
               {DIAS_ORDER.map(d => (
@@ -616,6 +634,7 @@ export function Admin() {
                 setDiaMatchMode('any')
                 setRoleFilter('todos')
                 setAcessoFilter('ativos')
+                setInteresseFilter('')
               }}
             >
               Limpar filtros
@@ -653,7 +672,13 @@ export function Admin() {
       >
         {selected && (
           <div className="space-y-4">
-            <InscricaoInfo inscricao={selected} users={users} inscricoes={inscricoes ?? []} cenas={cenasByUid[selected.uid] ?? []} />
+            <InscricaoInfo
+              inscricao={selected}
+              users={users}
+              inscricoes={inscricoes ?? []}
+              cenas={cenasByUid[selected.uid] ?? []}
+              equipes={equipes}
+            />
 
             <div>
               <p className="text-sm text-muted-foreground mb-1.5">Status</p>

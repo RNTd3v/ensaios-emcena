@@ -67,9 +67,13 @@ export function EquipeDetalhe() {
     () =>
       inscritosConfirmados(users)
         .filter(u => !equipe?.membros.includes(u.uid) && podeEntrarEmEquipe(u))
-        .map(u => pessoaOpcao(u.uid, u))
-        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
-    [users, equipe?.membros],
+        .map(u => {
+          const quer = !!equipe && !!u.equipesInteresse?.includes(equipe.id)
+          return { ...pessoaOpcao(u.uid, u, undefined, quer ? '★ Quer ajudar nessa equipe' : undefined), quer }
+        })
+        // Quem pediu essa equipe na inscrição aparece primeiro.
+        .sort((a, b) => Number(b.quer) - Number(a.quer) || a.nome.localeCompare(b.nome, 'pt-BR')),
+    [users, equipe],
   )
 
   function handleVoltar() {

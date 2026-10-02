@@ -1,17 +1,42 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { BellRing, Clapperboard, Crown, ListChecks, Megaphone, ShieldCheck, UsersRound, X } from 'lucide-react'
+import {
+  Bell,
+  List,
+  Maximize2,
+  BellRing,
+  Clapperboard,
+  Crown,
+  Download,
+  EllipsisVertical,
+  ListChecks,
+  Megaphone,
+  Share,
+  ShieldCheck,
+  Smartphone,
+  SquarePlus,
+  UsersRound,
+  X,
+} from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   APP_URL_APRESENTACAO,
   AUTOMATICAS_APRESENTACAO,
   AVISOS_APRESENTACAO,
   FUNCOES_APRESENTACAO,
+  INSTALACAO_APRESENTACAO,
+  NUMERO_PRIMEIRO_TOPICO_APP,
   PEDIDOS_CONCLUSAO,
+  TOPICO_LOGIN,
   TOPICOS_APRESENTACAO,
+  TOTAL_TOPICOS,
+  lerLayoutApresentacao,
   sairModoApresentacao,
+  salvarLayoutApresentacao,
+  type LayoutApresentacao,
   type AcaoApresentacao,
   type FuncaoApresentacao,
+  type PassoInstalacao,
   type TopicoApresentacao,
 } from '@/lib/apresentacao'
 import { cn } from '@/lib/utils'
@@ -25,6 +50,7 @@ export function useApresentacaoLaterais(ativo: boolean, onSair: () => void, onAc
   const { pathname } = useLocation()
   const [clicado, setClicado] = useState<number | null>(null)
   const [slideFechado, setSlideFechado] = useState(false)
+  const [layout, alternarLayout] = useLayoutApresentacao()
 
   // O tópico clicado continua o atual mesmo navegando por dentro dele (ex.: abrir uma cena);
   // antes do primeiro clique, vale o tópico da rota aberta.
@@ -51,7 +77,8 @@ export function useApresentacaoLaterais(ativo: boolean, onSair: () => void, onAc
         e.preventDefault()
         return
       }
-      if (e.key === 'ArrowRight' || e.key === 'PageDown') ir(Math.min(atual + 1, TOPICOS_APRESENTACAO.length - 1))
+      if (e.key === 'l' || e.key === 'L') alternarLayout()
+      else if (e.key === 'ArrowRight' || e.key === 'PageDown') ir(Math.min(atual + 1, TOPICOS_APRESENTACAO.length - 1))
       else if (e.key === 'ArrowLeft' || e.key === 'PageUp') ir(Math.max(atual - 1, 0))
       else return
       e.preventDefault()
@@ -62,28 +89,54 @@ export function useApresentacaoLaterais(ativo: boolean, onSair: () => void, onAc
 
   if (!ativo) return undefined
 
+  const sobreposicao =
+    slide === 'instalacao' ? (
+      <SlideInstalacao onFechar={() => setSlideFechado(true)} />
+    ) : slide === 'permissoes' ? (
+      <SlidePermissoes onFechar={() => setSlideFechado(true)} />
+    ) : slide === 'notificacoes' ? (
+      <SlideNotificacoes onFechar={() => setSlideFechado(true)} />
+    ) : slide === 'conclusao' ? (
+      <SlideConclusao onFechar={() => setSlideFechado(true)} />
+    ) : undefined
+
+  if (layout === 'enxuto') {
+    const topico = TOPICOS_APRESENTACAO[atual]
+    return {
+      sobreposicao,
+      esquerda: (
+        <TopicoAtual
+          numero={topico ? atual + NUMERO_PRIMEIRO_TOPICO_APP : undefined}
+          titulo={topico?.titulo}
+          onAlternar={alternarLayout}
+        />
+      ),
+      direita: null,
+    }
+  }
+
   const meio = Math.ceil(TOPICOS_APRESENTACAO.length / 2)
   const coluna = (inicio: number, fim: number) => (
     <ol className="space-y-2">
       {TOPICOS_APRESENTACAO.slice(inicio, fim).map((t, k) => (
-        <TopicoItem key={t.rota + t.titulo} topico={t} numero={inicio + k + 1} ativo={inicio + k === atual} onClick={() => ir(inicio + k)} />
+        <TopicoItem
+          key={t.rota + t.titulo}
+          topico={t}
+          numero={inicio + k + NUMERO_PRIMEIRO_TOPICO_APP}
+          ativo={inicio + k === atual}
+          onClick={() => ir(inicio + k)}
+        />
       ))}
     </ol>
   )
 
   return {
-    sobreposicao:
-      slide === 'permissoes' ? (
-        <SlidePermissoes onFechar={() => setSlideFechado(true)} />
-      ) : slide === 'notificacoes' ? (
-        <SlideNotificacoes onFechar={() => setSlideFechado(true)} />
-      ) : slide === 'conclusao' ? (
-        <SlideConclusao onFechar={() => setSlideFechado(true)} />
-      ) : undefined,
+    sobreposicao,
     esquerda: coluna(0, meio),
     direita: (
       <>
         {coluna(meio, TOPICOS_APRESENTACAO.length)}
+        <BotaoLayout layout="lista" onAlternar={alternarLayout} />
         <button
           type="button"
           onClick={() => {
@@ -99,6 +152,120 @@ export function useApresentacaoLaterais(ativo: boolean, onSair: () => void, onAc
   }
 }
 
+/**
+ * Na tela de login: só o tópico 1 (instalar o app), que abre o slide de instalação. → / PageDown
+ * também abrem; Esc fecha. Os demais tópicos aparecem depois de entrar.
+ */
+export function useApresentacaoLogin(ativo: boolean, onSair: () => void) {
+  const [slideAberto, setSlideAberto] = useState(false)
+  const [layout, alternarLayout] = useLayoutApresentacao()
+
+  useEffect(() => {
+    if (!ativo) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'l' || e.key === 'L') alternarLayout()
+      else if (e.key === 'Escape' && slideAberto) setSlideAberto(false)
+      else if (e.key === 'ArrowRight' || e.key === 'PageDown') setSlideAberto(true)
+      else return
+      e.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [ativo, slideAberto, alternarLayout])
+
+  if (!ativo) return undefined
+  const sobreposicao = slideAberto ? <SlideInstalacao onFechar={() => setSlideAberto(false)} /> : undefined
+  if (layout === 'enxuto') {
+    return { sobreposicao, esquerda: <TopicoAtual numero={1} titulo={TOPICO_LOGIN.titulo} onAlternar={alternarLayout} />, direita: null }
+  }
+  return {
+    sobreposicao,
+    esquerda: (
+      <ol className="space-y-2">
+        <TopicoItem topico={TOPICO_LOGIN} numero={1} ativo onClick={() => setSlideAberto(true)} />
+      </ol>
+    ),
+    direita: (
+      <div className="space-y-6">
+        <p className="rounded-2xl bg-neutral-900/60 px-4 py-3 text-sm text-white/80 shadow-lg backdrop-blur-md">
+          Os próximos tópicos aparecem depois de entrar com o Google.
+        </p>
+        <BotaoLayout layout="lista" onAlternar={alternarLayout} />
+        <button
+          type="button"
+          onClick={() => {
+            sairModoApresentacao()
+            onSair()
+          }}
+          className="flex items-center gap-1.5 rounded-lg bg-neutral-900/60 px-3 py-1.5 text-xs text-white/80 backdrop-blur-md hover:bg-neutral-900/80 hover:text-white"
+        >
+          <X className="h-3.5 w-3.5" /> Sair do modo apresentação
+        </button>
+      </div>
+    ),
+  }
+}
+
+/** Layout dos tópicos (enxuto/lista), guardado na aba; a tecla L alterna. */
+function useLayoutApresentacao(): [LayoutApresentacao, () => void] {
+  const [layout, setLayout] = useState<LayoutApresentacao>(lerLayoutApresentacao)
+  const alternar = useCallback(() => {
+    setLayout(l => {
+      const novo = l === 'enxuto' ? 'lista' : 'enxuto'
+      salvarLayoutApresentacao(novo)
+      return novo
+    })
+  }, [])
+  return [layout, alternar]
+}
+
+/**
+ * Layout enxuto (pro público): só o tópico atual, grande, com "5 de 15" e a barra de progresso.
+ * Sem descrição — as notas do apresentador ficam no layout de lista.
+ */
+function TopicoAtual({ numero, titulo, onAlternar }: { numero?: number; titulo?: string; onAlternar: () => void }) {
+  const total = TOTAL_TOPICOS()
+  return (
+    <div className="space-y-3 rounded-3xl bg-neutral-900/60 px-6 py-5 text-white shadow-xl backdrop-blur-md">
+      {numero ? (
+        <>
+          <p className="text-sm font-medium uppercase tracking-widest text-white/60">
+            {numero} de {total}
+          </p>
+          <p className="text-3xl font-bold leading-tight">{titulo}</p>
+          <div className="flex gap-1 pt-1" aria-hidden>
+            {Array.from({ length: total }, (_, i) => (
+              <span key={i} className={cn('h-1.5 flex-1 rounded-full', i < numero ? 'bg-[#fff]' : 'bg-white/20')} />
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="text-lg font-semibold">Pronto pra começar · →</p>
+      )}
+      <BotaoLayout layout="enxuto" onAlternar={onAlternar} />
+    </div>
+  )
+}
+
+/** Alterna entre o layout enxuto e a lista (mesma coisa que a tecla L). */
+function BotaoLayout({ layout, onAlternar }: { layout: LayoutApresentacao; onAlternar: () => void }) {
+  const Icone = layout === 'enxuto' ? List : Maximize2
+  return (
+    <button
+      type="button"
+      onClick={onAlternar}
+      title="Alternar layout (tecla L)"
+      className={cn(
+        'flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] text-white/50 hover:bg-white/10 hover:text-white',
+        layout === 'lista' && 'mt-6 bg-neutral-900/60 px-3 py-1.5 text-xs text-white/80 backdrop-blur-md',
+      )}
+    >
+      <Icone className="h-3.5 w-3.5" />
+      {layout === 'enxuto' ? 'Ver lista (L)' : 'Só o tópico atual (L)'}
+    </button>
+  )
+}
+
 function TopicoItem({ topico, numero, ativo, onClick }: { topico: TopicoApresentacao; numero: number; ativo: boolean; onClick: () => void }) {
   return (
     <li>
@@ -107,7 +274,7 @@ function TopicoItem({ topico, numero, ativo, onClick }: { topico: TopicoApresent
         onClick={onClick}
         className={cn(
           'flex w-full items-start gap-3 rounded-2xl px-4 py-3 text-left transition-colors',
-          ativo ? 'bg-white text-neutral-900 shadow-xl ring-2 ring-primary' : 'bg-neutral-900/60 text-white shadow-lg backdrop-blur-md hover:bg-neutral-900/80',
+          ativo ? 'bg-[#fff] text-neutral-900 shadow-xl ring-2 ring-primary' : 'bg-neutral-900/60 text-white shadow-lg backdrop-blur-md hover:bg-neutral-900/80',
         )}
       >
         <span
@@ -275,6 +442,60 @@ function SlideConclusao({ onFechar }: { onFechar: () => void }) {
             <QRCodeSVG value={APP_URL_APRESENTACAO} size={240} level="M" />
           </div>
           <p className="text-lg font-semibold">{APP_URL_APRESENTACAO.replace('https://', '')}</p>
+        </section>
+      </div>
+    </Slide>
+  )
+}
+
+const ICONE_PASSO: Record<NonNullable<PassoInstalacao['icone']>, React.ComponentType<{ className?: string }>> = {
+  compartilhar: Share,
+  adicionar: SquarePlus,
+  menu: EllipsisVertical,
+  baixar: Download,
+  sino: Bell,
+}
+
+/** Como instalar no iPhone e no Android (e ativar as notificações), com o QR do app. */
+function SlideInstalacao({ onFechar }: { onFechar: () => void }) {
+  return (
+    <Slide
+      titulo="Instale o app no celular"
+      subtitulo="Ele abre direto da tela de início, em tela cheia, e recebe as notificações dos ensaios."
+      rodape="Já instalou? Entre com a mesma conta Google de antes."
+      onFechar={onFechar}
+    >
+      <div className="mt-6 grid grid-cols-[1fr_1fr_auto] gap-6">
+        {INSTALACAO_APRESENTACAO.map(p => (
+          <section key={p.plataforma} className="space-y-3">
+            <TituloSecao icon={Smartphone}>
+              {p.plataforma} · {p.navegador}
+            </TituloSecao>
+            <ol className="space-y-2">
+              {p.passos.map((passo, i) => {
+                const Icone = passo.icone ? ICONE_PASSO[passo.icone] : undefined
+                return (
+                  <li key={i} className={cn(CARTAO, 'flex items-center gap-3 py-2.5')}>
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white">
+                      {i + 1}
+                    </span>
+                    <span className="flex flex-wrap items-center gap-x-1.5 text-[15px] leading-snug">
+                      {passo.texto}
+                      {Icone && <Icone className="h-4 w-4 shrink-0 text-primary" />}
+                      {passo.destaque && <strong>{passo.destaque}</strong>}
+                    </span>
+                  </li>
+                )
+              })}
+            </ol>
+            <p className="text-sm text-muted-foreground">{p.notificacoes}</p>
+          </section>
+        ))}
+        <section className="flex flex-col items-center justify-center gap-3">
+          <div className="rounded-3xl bg-white p-4 shadow-lg">
+            <QRCodeSVG value={APP_URL_APRESENTACAO} size={180} level="M" />
+          </div>
+          <p className="text-base font-semibold">{APP_URL_APRESENTACAO.replace('https://', '')}</p>
         </section>
       </div>
     </Slide>

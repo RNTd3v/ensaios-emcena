@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PhoneMockup } from '@/components/layout/PhoneMockup'
+import { useApresentacaoLogin } from '@/components/layout/ApresentacaoLaterais'
+import { lerModoApresentacao } from '@/lib/apresentacao'
 import { LoginContagem } from '@/components/login/LoginContagem'
 import { LoginDestaque } from '@/components/login/LoginDestaque'
 import { loginWithGoogle } from '@/services/firebase/auth'
@@ -28,6 +30,11 @@ export function Login() {
     if (!loaded) refresh()
   }, [loaded, refresh])
 
+  // Modo apresentação (`/login?apresentacao`): só o tópico 1 aqui; o resto vem depois de entrar.
+  const { search } = useLocation()
+  const [apresentacao, setApresentacao] = useState(() => lerModoApresentacao(search))
+  const laterais = useApresentacaoLogin(apresentacao, () => setApresentacao(false))
+
   if (initialized && user) return <Navigate to="/" replace />
 
   // Até o dia do lançamento, o texto abaixo do botão chama pra inscrição.
@@ -46,7 +53,7 @@ export function Login() {
   }
 
   return (
-    <PhoneMockup>
+    <PhoneMockup laterais={laterais}>
       <div className="absolute inset-0">
         {settings.internalBgUrl ? (
           <img src={settings.internalBgUrl} alt="" className="h-full w-full object-cover" />

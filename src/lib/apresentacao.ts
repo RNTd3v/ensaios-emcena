@@ -13,11 +13,25 @@ export interface TopicoApresentacao {
   /** Algo a abrir junto, além de navegar (ex.: o diálogo de reportar problema). */
   acao?: AcaoApresentacao
   /** Mostra um painel grande sobre a tela (ex.: a lista de funções e permissões). */
-  slide?: 'permissoes' | 'notificacoes' | 'conclusao'
+  slide?: 'instalacao' | 'permissoes' | 'notificacoes' | 'conclusao'
 }
+
+/**
+ * Tópico 1, só na tela de login (a apresentação começa antes de entrar). Os de dentro do app
+ * continuam a numeração a partir de `NUMERO_PRIMEIRO_TOPICO_APP`.
+ */
+export const TOPICO_LOGIN: TopicoApresentacao = {
+  titulo: 'Instalar o app',
+  descricao: 'iPhone e Android · passo a passo e QR code',
+  rota: '/login',
+  slide: 'instalacao',
+}
+export const NUMERO_PRIMEIRO_TOPICO_APP = 2
 
 /** Segue a demonstração do roteiro de apresentação (doc "Roteiro de apresentação — RNT Ensaios"). */
 export const TOPICOS_APRESENTACAO: TopicoApresentacao[] = [
+  { titulo: 'Notificações', descricao: 'O sino · ativar ao vivo', rota: '/notificacoes' },
+  { titulo: 'Quem notifica quem', descricao: 'Avisos, lembretes pra confirmar e automáticas', rota: '/notificacoes', slide: 'notificacoes' },
   { titulo: 'Minha inscrição', descricao: 'Dados, disponibilidade, dependentes · staff/técnica: em que quer ajudar', rota: '/inscricao' },
   { titulo: 'Home', descricao: 'Card “Instale o app” · próximo ensaio, metas e roteiro', rota: '/' },
   { titulo: 'Minha foto', descricao: 'Menu → toque na foto · trocar a do Google', rota: '/', acao: 'foto' },
@@ -25,8 +39,6 @@ export const TOPICOS_APRESENTACAO: TopicoApresentacao[] = [
   { titulo: 'Ensaio ao vivo', descricao: 'Volte pra visão de admin · abra uma cena e inicie', rota: '/cenas' },
   { titulo: 'Personagem', descricao: 'Na cena, toque num personagem · foto de figurino', rota: '/cenas' },
   { titulo: 'Músicas e figurinos', descricao: 'Tocar uma música · anotação no tempo', rota: '/musicas' },
-  { titulo: 'Notificações', descricao: 'O sino · ativar ao vivo', rota: '/notificacoes' },
-  { titulo: 'Quem notifica quem', descricao: 'Avisos, lembretes pra confirmar e automáticas', rota: '/notificacoes', slide: 'notificacoes' },
   { titulo: 'Relógio de oração', descricao: 'Quero orar nesse horário · pedidos', rota: '/oracao' },
   { titulo: 'Metas e gastos', descricao: 'Arrecadação × gastos · Rifas e Doces', rota: '/metas-gastos' },
   { titulo: 'Funções e permissões', descricao: 'Quem pode fazer o quê', rota: '/equipes', slide: 'permissoes' },
@@ -135,6 +147,43 @@ export const AUTOMATICAS_APRESENTACAO: { quando: string; recebe: string; dispara
   { quando: 'Problema reportado', recebe: 'O suporte', dispara: 'Qualquer pessoa' },
 ]
 
+/**
+ * Slide de instalação: o mesmo passo a passo do card "Instale o app" da Home (InstalarAppCard) e da
+ * ativação do push (Notificacoes.tsx). `icone` = qual ícone mostrar no passo.
+ */
+export interface PassoInstalacao {
+  texto: string
+  destaque?: string
+  icone?: 'compartilhar' | 'adicionar' | 'menu' | 'baixar' | 'sino'
+}
+
+export const INSTALACAO_APRESENTACAO: { plataforma: string; navegador: string; passos: PassoInstalacao[]; notificacoes: string }[] = [
+  {
+    plataforma: 'iPhone',
+    navegador: 'Safari',
+    passos: [
+      { texto: 'Abra o link no', destaque: 'Safari' },
+      { texto: 'Toque em', destaque: 'Compartilhar', icone: 'compartilhar' },
+      { texto: 'Escolha', destaque: 'Adicionar à Tela de Início', icone: 'adicionar' },
+      { texto: 'Abra pelo ícone', destaque: 'Vila Esperança' },
+      { texto: 'No app, toque no', destaque: '→ Ativar notificações → Permitir', icone: 'sino' },
+    ],
+    notificacoes: 'No iPhone, as notificações só chegam com o app instalado (iOS 16.4 ou mais novo).',
+  },
+  {
+    plataforma: 'Android',
+    navegador: 'Chrome',
+    passos: [
+      { texto: 'Abra o link no', destaque: 'Chrome' },
+      { texto: 'Na Home, toque em', destaque: 'Instalar app', icone: 'baixar' },
+      { texto: 'Ou no menu', destaque: '→ Instalar app', icone: 'menu' },
+      { texto: 'Abra pelo ícone', destaque: 'Vila Esperança' },
+      { texto: 'No app, toque no', destaque: '→ Ativar notificações → Permitir', icone: 'sino' },
+    ],
+    notificacoes: 'No Android funciona até pelo navegador, mas instalado é mais garantido.',
+  },
+]
+
 /** Slide de conclusão: o que cada um faz hoje, antes de ir embora. */
 export const PEDIDOS_CONCLUSAO = [
   'Instale o app na tela de início do celular',
@@ -147,10 +196,38 @@ export const APP_URL_APRESENTACAO = 'https://ensaios-emcena.web.app'
 
 /** Liga com `?apresentacao` na URL e desliga com `?apresentacao=0`; vale enquanto a aba estiver aberta. */
 const CHAVE = 'modo-apresentacao'
+const CHAVE_LAYOUT = 'modo-apresentacao-layout'
+
+/**
+ * Como os tópicos aparecem ao lado do iPhone: `enxuto` = só o tópico atual + progresso (pro
+ * público); `lista` = todos os tópicos (ferramenta do apresentador). Alterna com a tecla L.
+ */
+export type LayoutApresentacao = 'enxuto' | 'lista'
+
+export function lerLayoutApresentacao(): LayoutApresentacao {
+  try {
+    return sessionStorage.getItem(CHAVE_LAYOUT) === 'lista' ? 'lista' : 'enxuto'
+  } catch {
+    return 'enxuto'
+  }
+}
+
+export function salvarLayoutApresentacao(layout: LayoutApresentacao) {
+  try {
+    sessionStorage.setItem(CHAVE_LAYOUT, layout)
+  } catch {
+    // sem storage: vale só até recarregar
+  }
+}
+
+/** Total de tópicos, contando o da tela de login. */
+export const TOTAL_TOPICOS = () => TOPICOS_APRESENTACAO.length + NUMERO_PRIMEIRO_TOPICO_APP - 1
 
 export function lerModoApresentacao(search: string): boolean {
   const param = new URLSearchParams(search).get('apresentacao')
   try {
+    // `?apresentacao=lista` / `?apresentacao=enxuto` já escolhem o layout.
+    if (param === 'lista' || param === 'enxuto') salvarLayoutApresentacao(param)
     if (param !== null) sessionStorage.setItem(CHAVE, param === '0' ? '0' : '1')
     return sessionStorage.getItem(CHAVE) === '1'
   } catch {

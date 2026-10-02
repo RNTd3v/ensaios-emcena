@@ -83,17 +83,6 @@ export function AppLayout() {
       </header>
 
       <div className="relative z-20 shrink-0">
-        {adminReal && visaoParticipante && (
-          <button
-            type="button"
-            onClick={() => setVisaoOpen(true)}
-            className="mx-4 mb-2 flex w-[calc(100%-2rem)] items-center gap-2 rounded-xl bg-primary/90 px-3 py-2 text-left text-xs font-medium text-white shadow-lg backdrop-blur-md"
-          >
-            <UserIcon className="h-4 w-4 shrink-0" />
-            <span className="flex-1">Você está vendo o app como participante.</span>
-            <span className="shrink-0 underline">Voltar para admin</span>
-          </button>
-        )}
         <SemConexaoBanner />
       </div>
 
@@ -101,8 +90,19 @@ export function AppLayout() {
         <Outlet />
       </main>
 
-      <footer className={cn('relative z-10 flex shrink-0 items-center justify-center py-4', hasSelection && 'hidden')}>
+      <footer className={cn('relative z-10 flex shrink-0 flex-col items-center justify-center gap-2 py-4', hasSelection && 'hidden')}>
         <img src="/logo-emcena.png" alt="#EMCENA575 575" className="w-full max-w-[120px] h-auto opacity-90" />
+        {/* Admin na visão de participante: lembrete discreto, que também leva de volta. */}
+        {adminReal && visaoParticipante && (
+          <button
+            type="button"
+            onClick={() => setVisaoOpen(true)}
+            className="flex items-center gap-1.5 rounded-full bg-black/25 px-2.5 py-1 text-[11px] text-white/75 backdrop-blur-md hover:bg-black/35 hover:text-white"
+          >
+            <UserIcon className="h-3 w-3" />
+            Vendo como participante · <span className="underline underline-offset-2">voltar</span>
+          </button>
+        )}
       </footer>
 
       {menuOpen && (

@@ -555,7 +555,9 @@ export interface AppSettings {
   /** Bloco "Vem aí" na tela de login (ex.: reunião geral). Sem título, não aparece. */
   loginDestaqueTitulo?: string
   loginDestaqueData?: string // YYYY-MM-DD — o bloco some depois desse dia
-  loginDestaqueHora?: string // HH:MM
+  loginDestaqueHora?: string // HH:MM — início
+  /** HH:MM — término: durante mostra "Acontecendo agora"; depois disso o bloco some. */
+  loginDestaqueHoraFim?: string
   loginDestaqueLocal?: string
   /** Até esse dia (YYYY-MM-DD), o login chama pra inscrição; depois, fala dos ensaios/cenas/avisos. */
   loginLancamentoData?: string

@@ -9,14 +9,15 @@ import {
   ChevronUp,
   Clock,
   Crown,
+  HandHelping,
   Drama,
-  MessageCircle,
   Pencil,
   Plus,
   RotateCcw,
   SlidersHorizontal,
   Trash2,
 } from 'lucide-react'
+import { ContatoPessoaDialog, type FuncaoNaCena } from '@/components/cena/ContatoPessoaDialog'
 import { Avatar } from '@/components/ui/Avatar'
 import { AvatarStack } from '@/components/ui/AvatarStack'
 import { Badge } from '@/components/ui/badge'
@@ -45,10 +46,8 @@ import { DIA_SEMANA_LABELS, type AppUser, type Cena, type DiaSemana, type Ensaio
 import { DIAS_ORDER, diasDisponiveis, sortDias } from '@/lib/dias'
 import { formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { formatRelativeDia, toDateKey } from '@/lib/agenda'
-import { whatsappLink } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import { PessoaSelect, pessoaOpcao } from '@/components/ui/PessoaSelect'
-import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 /** Próximo ensaio confirmado dessa cena (qualquer data futura, sem paginação). */
 function useProximoEnsaio(cena: Cena) {
@@ -193,7 +192,8 @@ export function Cenas() {
   const [deactivateTarget, setDeactivateTarget] = useState<Cena | null>(null)
   const [deactivating, setDeactivating] = useState(false)
   const [hardDeleteTarget, setHardDeleteTarget] = useState<Cena | null>(null)
-  const [liderModalCena, setLiderModalCena] = useState<Cena | null>(null)
+  /** Líder ou assistente com o modal de contato aberto (toque na foto do card). */
+  const [pessoaModal, setPessoaModal] = useState<{ uid: string; funcao: FuncaoNaCena } | null>(null)
   const [hardDeleting, setHardDeleting] = useState(false)
 
   useEffect(() => {
@@ -619,14 +619,33 @@ export function Cenas() {
                   <div className="h-px bg-gray-100" />
 
                   {(() => {
-                    const outrosParticipantes = cena.participantes.filter(uid => uid !== cena.liderUid)
-                    if (outrosParticipantes.length === 0 && !cena.liderUid) return null
+                    // Líder e assistentes ficam à direita, com selo; o resto do grupo na fileira.
+                    const assistentes = cena.participantes.filter(uid => uid !== cena.liderUid && cena.assistentes?.includes(uid))
+                    const outrosParticipantes = cena.participantes.filter(uid => uid !== cena.liderUid && !assistentes.includes(uid))
+                    if (outrosParticipantes.length === 0 && assistentes.length === 0 && !cena.liderUid) return null
                     return (
                       <div className="flex items-center justify-between gap-2">
                         <AvatarStack
                           items={outrosParticipantes.map(uid => ({ key: uid, photoURL: users[uid]?.photoURL, name: nameFor(uid) }))}
                           className="flex-1"
                         />
+                        {assistentes.map(uid => (
+                          <button
+                            key={uid}
+                            type="button"
+                            className="relative shrink-0"
+                            title={`Assistente: ${nameFor(uid)}`}
+                            onClick={e => {
+                              e.stopPropagation()
+                              setPessoaModal({ uid, funcao: 'assistente' })
+                            }}
+                          >
+                            <Avatar photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-7 w-7 text-[10px] ring-2 ring-primary/70" />
+                            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary ring-2 ring-white">
+                              <HandHelping className="h-2.5 w-2.5 text-white" />
+                            </span>
+                          </button>
+                        ))}
                         {cena.liderUid && (
                           <button
                             type="button"
@@ -634,7 +653,7 @@ export function Cenas() {
                             title={`Líder: ${nameFor(cena.liderUid)}`}
                             onClick={e => {
                               e.stopPropagation()
-                              setLiderModalCena(cena)
+                              setPessoaModal({ uid: cena.liderUid!, funcao: 'lider' })
                             }}
                           >
                             <Avatar
@@ -990,50 +1009,14 @@ export function Cenas() {
         )}
       </Dialog>
 
-      {liderModalCena?.liderUid && (
-        <Dialog
-          open={!!liderModalCena}
-          onClose={() => setLiderModalCena(null)}
-          title={
-            <PessoaLinha
-              pessoa={pessoaOpcao(liderModalCena.liderUid, users[liderModalCena.liderUid], inscricoesByUid[liderModalCena.liderUid])}
-              funcao="lider"
-            />
-          }
-        >
-          {(() => {
-            const liderInscricao = inscricoesByUid[liderModalCena.liderUid]
-            return (
-              <div className="divide-y divide-gray-100">
-                <div className="py-3 first:pt-0">
-                  <p className="text-sm text-muted-foreground">Papel</p>
-                  <p className="text-base">Líder da cena</p>
-                </div>
-                {liderInscricao?.telefone && (
-                  <div className="py-3">
-                    <p className="text-sm text-muted-foreground">Telefone (WhatsApp)</p>
-                    <a
-                      href={whatsappLink(liderInscricao.telefone)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-base text-primary hover:underline"
-                    >
-                      <MessageCircle className="h-3.5 w-3.5" />
-                      {liderInscricao.telefone}
-                    </a>
-                  </div>
-                )}
-                {liderInscricao?.email && (
-                  <div className="py-3">
-                    <p className="text-sm text-muted-foreground">Email</p>
-                    <p className="text-base">{liderInscricao.email}</p>
-                  </div>
-                )}
-                {!liderInscricao && <p className="py-3 text-sm text-muted-foreground">Sem dados de contato cadastrados.</p>}
-              </div>
-            )
-          })()}
-        </Dialog>
+      {pessoaModal && (
+        <ContatoPessoaDialog
+          uid={pessoaModal.uid}
+          funcao={pessoaModal.funcao}
+          users={users}
+          inscricao={inscricoesByUid[pessoaModal.uid]}
+          onClose={() => setPessoaModal(null)}
+        />
       )}
     </div>
   )

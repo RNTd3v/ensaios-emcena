@@ -137,6 +137,7 @@ function EquipeCard({ equipe, users, uid, abertaInicial }: { equipe: Equipe; use
   const Icon = equipeIcon(equipe.icone)
   const funcao = funcaoNaEquipe(equipe, uid)
   const lider = equipe.liderUid ? pessoaOpcao(equipe.liderUid, users[equipe.liderUid]) : undefined
+  const assistentes = equipe.assistentes.filter(a => a !== equipe.liderUid).map(a => pessoaOpcao(a, users[a]))
   const todayKey = toDateKey(new Date())
 
   const emAndamento = (tarefas ?? [])
@@ -168,6 +169,19 @@ function EquipeCard({ equipe, users, uid, abertaInicial }: { equipe: Equipe; use
             </div>
           ) : (
             <p className="mt-0.5 text-xs text-muted-foreground">Sem líder</p>
+          )}
+          {assistentes.length > 0 && (
+            <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="flex shrink-0 -space-x-1.5">
+                {assistentes.slice(0, 3).map(a => (
+                  <Avatar key={a.uid} photoURL={a.photoURL} name={a.nome} className="h-5 w-5 text-[9px] ring-1 ring-white" />
+                ))}
+              </span>
+              <span className="truncate">
+                <span className="text-primary">{assistentes.length === 1 ? 'Assistente' : 'Assistentes'}</span> ·{' '}
+                {assistentes.map(a => a.apelido || a.nome.split(' ')[0]).join(', ')}
+              </span>
+            </div>
           )}
         </div>
       </Link>

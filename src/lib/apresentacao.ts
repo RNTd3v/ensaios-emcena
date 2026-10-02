@@ -12,6 +12,8 @@ export interface TopicoApresentacao {
   rota: string
   /** Algo a abrir junto, além de navegar (ex.: o diálogo de reportar problema). */
   acao?: AcaoApresentacao
+  /** Mostra algo que só o admin vê no app — o tópico ganha o escudo de admin. */
+  admin?: boolean
   /** Mostra um painel grande sobre a tela (ex.: a lista de funções e permissões). */
   slide?: 'instalacao' | 'permissoes' | 'notificacoes' | 'conclusao'
 }
@@ -36,12 +38,12 @@ export const TOPICOS_APRESENTACAO: TopicoApresentacao[] = [
   { titulo: 'Home', descricao: 'Card “Instale o app” · próximo ensaio, metas e roteiro', rota: '/' },
   { titulo: 'Minha foto', descricao: 'Menu → toque na foto · trocar a do Google', rota: '/', acao: 'foto' },
   { titulo: 'Minhas cenas', descricao: 'Confirmar presença ou avisar que não vai · dá pra mudar de ideia', rota: '/cenas' },
-  { titulo: 'Ensaio ao vivo', descricao: 'Volte pra visão de admin · abra uma cena e inicie', rota: '/cenas' },
   { titulo: 'Personagem', descricao: 'Na cena, toque num personagem · foto de figurino', rota: '/cenas' },
+  { titulo: 'Equipes', descricao: 'Tarefas com responsável e prazo · status · quem quer ajudar', rota: '/equipes' },
+  { titulo: 'Funções e permissões', descricao: 'Quem pode fazer o quê', rota: '/equipes', slide: 'permissoes' },
   { titulo: 'Músicas e figurinos', descricao: 'Tocar uma música · anotação no tempo', rota: '/musicas' },
   { titulo: 'Relógio de oração', descricao: 'Quero orar nesse horário · pedidos', rota: '/oracao' },
-  { titulo: 'Metas e gastos', descricao: 'Arrecadação × gastos · Rifas e Doces', rota: '/metas-gastos' },
-  { titulo: 'Funções e permissões', descricao: 'Quem pode fazer o quê', rota: '/equipes', slide: 'permissoes' },
+  { titulo: 'Metas e gastos', descricao: 'Arrecadação × gastos · Sorteio Cesta de Natal e Doces', rota: '/metas-gastos' },
   { titulo: 'Reportar problema', descricao: '“Reporte por aqui, não no grupo”', rota: '/', acao: 'reportar' },
   { titulo: 'Conclusão e perguntas', descricao: 'O que fazer hoje · QR code do app', rota: '/', slide: 'conclusao' },
 ]
@@ -53,12 +55,25 @@ export const TOPICOS_APRESENTACAO: TopicoApresentacao[] = [
 export interface FuncaoApresentacao {
   funcao: string
   grupo: 'geral' | 'cena' | 'equipe'
-  /** Líder mostra a coroa, como nas listas do app. */
+  /** Líder mostra a coroa e assistente a mãozinha, como nas listas do app. */
   lider?: boolean
+  assistente?: boolean
   pode: string[]
 }
 
 export const FUNCOES_APRESENTACAO: FuncaoApresentacao[] = [
+  {
+    funcao: 'Participante',
+    grupo: 'geral',
+    pode: [
+      'Fazer a inscrição, informar disponibilidade e em que quer ajudar',
+      'Confirmar presença, avisar que não vai e mudar de ideia',
+      'Trocar a própria foto',
+      'Enviar foto do figurino do seu personagem',
+      'Anotar nas músicas das suas cenas',
+      'Ver Home, músicas, figurinos e metas',
+    ],
+  },
   {
     funcao: 'Admin',
     grupo: 'geral',
@@ -73,16 +88,10 @@ export const FUNCOES_APRESENTACAO: FuncaoApresentacao[] = [
     ],
   },
   {
-    funcao: 'Participante',
-    grupo: 'geral',
-    pode: [
-      'Fazer a inscrição, informar disponibilidade e em que quer ajudar',
-      'Confirmar presença, avisar que não vai e mudar de ideia',
-      'Trocar a própria foto',
-      'Enviar foto do figurino do seu personagem',
-      'Anotar nas músicas das suas cenas',
-      'Ver Home, músicas, figurinos e metas',
-    ],
+    funcao: 'Assistente de cena',
+    grupo: 'cena',
+    assistente: true,
+    pode: ['Confirmar e cancelar ensaios', 'Iniciar e finalizar o ensaio', 'Marcar presença, local e anotações'],
   },
   {
     funcao: 'Líder de cena',
@@ -98,9 +107,15 @@ export const FUNCOES_APRESENTACAO: FuncaoApresentacao[] = [
     ],
   },
   {
-    funcao: 'Assistente de cena',
-    grupo: 'cena',
-    pode: ['Confirmar e cancelar ensaios', 'Iniciar e finalizar o ensaio', 'Marcar presença, local e anotações'],
+    funcao: 'Membro de equipe',
+    grupo: 'equipe',
+    pode: ['Atualizar o status das tarefas', 'Cadastrar músicas ou figurinos, se a equipe cuida disso'],
+  },
+  {
+    funcao: 'Assistente de equipe',
+    grupo: 'equipe',
+    assistente: true,
+    pode: ['Tudo do membro de equipe', 'Criar e editar tarefas: responsável, prazo e cena', 'Definir o prazo do figurino'],
   },
   {
     funcao: 'Líder de equipe',
@@ -111,16 +126,6 @@ export const FUNCOES_APRESENTACAO: FuncaoApresentacao[] = [
       'Editar a equipe, membros e assistentes (quem quer ajudar aparece primeiro)',
       'Mandar avisos pra equipe',
     ],
-  },
-  {
-    funcao: 'Assistente de equipe',
-    grupo: 'equipe',
-    pode: ['Criar e editar tarefas: responsável, prazo e cena', 'Definir o prazo do figurino'],
-  },
-  {
-    funcao: 'Membro de equipe',
-    grupo: 'equipe',
-    pode: ['Atualizar o status das tarefas', 'Cadastrar músicas ou figurinos, se a equipe cuida disso'],
   },
 ]
 

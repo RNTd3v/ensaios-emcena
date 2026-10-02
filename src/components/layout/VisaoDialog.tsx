@@ -1,5 +1,4 @@
 import { Check, ShieldCheck, User } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 import { Dialog } from '@/components/ui/dialog'
 import { trocarVisao, useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
@@ -22,14 +21,12 @@ const OPCOES = [
 /** Admin escolhe como vê o app (menu → foto). Só muda a tela — no servidor continua admin. */
 export function VisaoDialog({ onClose }: { onClose: () => void }) {
   const visaoParticipante = useAuthStore(s => s.visaoParticipante)
-  const navigate = useNavigate()
 
   function escolher(participante: boolean) {
     if (participante !== visaoParticipante) {
+      // Fica na mesma tela nos dois sentidos — ela se atualiza com a visão nova. Se a tela for só
+      // de admin (Gerenciamento, Calendário...), o próprio AdminGuard leva pro início.
       trocarVisao(participante)
-      // Voltando pra admin, fica na mesma tela (admin vê tudo). Indo pra participante, vai pro
-      // início: a tela atual pode ser só de admin ou mostrar coisas que o participante não vê.
-      if (participante) navigate('/')
     }
     onClose()
   }

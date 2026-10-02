@@ -108,16 +108,22 @@ export function AdminConfig() {
             <div>
               <Label htmlFor="loginDestaqueTitulo">"Vem aí" — título</Label>
               <Input id="loginDestaqueTitulo" placeholder="Reunião Geral" {...register('loginDestaqueTitulo')} />
-              <p className="text-xs text-muted-foreground mt-1">Sem título, o bloco não aparece. Some sozinho no dia seguinte à data.</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Sem título, o bloco não aparece. Some sozinho quando termina (ou no dia seguinte, sem horário de término).
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="loginDestaqueData">Data</Label>
+              <Input id="loginDestaqueData" type="date" {...register('loginDestaqueData')} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="loginDestaqueData">Data</Label>
-                <Input id="loginDestaqueData" type="date" {...register('loginDestaqueData')} />
+                <Label htmlFor="loginDestaqueHora">Início</Label>
+                <Input id="loginDestaqueHora" type="time" {...register('loginDestaqueHora')} />
               </div>
               <div>
-                <Label htmlFor="loginDestaqueHora">Horário</Label>
-                <Input id="loginDestaqueHora" type="time" {...register('loginDestaqueHora')} />
+                <Label htmlFor="loginDestaqueHoraFim">Término</Label>
+                <Input id="loginDestaqueHoraFim" type="time" {...register('loginDestaqueHoraFim')} />
               </div>
             </div>
             <div>

@@ -6,7 +6,6 @@ import {
   Crown,
   ExternalLink,
   FileText,
-  HandHelping,
   Paperclip,
   Pencil,
   Plus,
@@ -24,6 +23,8 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
 import { LiderAssistentesDialog } from '@/components/equipe/LiderAssistentesDialog'
+import { PessoaLinha } from '@/components/ui/PessoaLinha'
+import { pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { useUsersMap } from '@/components/oracao/OrandoAgora'
 import { useFinanceiro } from '@/hooks/useFinanceiro'
 import { subscribeToCenas } from '@/services/firebase/cenas'
@@ -245,7 +246,7 @@ function ResumoAba({ fin, podeEditar }: { fin: Fin; podeEditar: boolean }) {
             />
           ))}
           <p className="text-[11px] text-muted-foreground">
-            Rifas vêm do app de rifas
+            O Sorteio Cesta de Natal vem do app do sorteio
             {fin.rifas?.atualizadoEm && ` (atualizado em ${new Date(fin.rifas.atualizadoEm).toLocaleDateString('pt-BR')})`}
             {fin.rifas === null && ' — não foi possível ler agora'}.{' '}
             {fin.docesIntegrado
@@ -358,27 +359,27 @@ function EquipeLinha({
   onEditar: () => void
 }) {
   if (!liderUid && !assistentes.length && !isAdmin) return null
-  const nome = (u: string) => users[u]?.displayName ?? '...'
   return (
     <Card>
-      <CardContent className="flex items-center gap-2 text-xs text-muted-foreground">
-        <div className="min-w-0 flex-1 space-y-0.5">
-          <p className="flex items-center gap-1">
-            <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-            <span className="truncate">{liderUid ? nome(liderUid) : 'Sem líder'}</span>
-          </p>
-          {assistentes.length > 0 && (
-            <p className="flex items-center gap-1">
-              <HandHelping className="h-3.5 w-3.5 shrink-0 text-primary" />
-              <span className="truncate">{assistentes.map(nome).join(', ')}</span>
-            </p>
+      <CardContent className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold">Quem cuida de metas e gastos</p>
+          {isAdmin && (
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onEditar} title="Quem cuida de metas e gastos">
+              <Pencil className="h-4 w-4" />
+            </Button>
           )}
         </div>
-        {isAdmin && (
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onEditar} title="Quem cuida de metas e gastos">
-            <Pencil className="h-4 w-4" />
-          </Button>
+        {liderUid ? (
+          <PessoaLinha pessoa={pessoaOpcao(liderUid, users[liderUid])} funcao="lider" />
+        ) : (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Crown className="h-3.5 w-3.5 shrink-0 text-amber-500" /> Sem líder
+          </p>
         )}
+        {assistentes.map(u => (
+          <PessoaLinha key={u} pessoa={pessoaOpcao(u, users[u])} funcao="assistente" />
+        ))}
       </CardContent>
     </Card>
   )
@@ -395,8 +396,8 @@ function ImportarLegado({ legado, byUid }: { legado: Financeiro; byUid: string }
         <p className="text-xs text-muted-foreground">
           Existem números digitados na tela antiga (meta{legado.docesValor ? ', doces' : ''}
           {legado.ofertasValor ? ', ofertas' : ''}
-          {legado.gastosTotal ? ', total gasto' : ''}). Importar cria lançamentos com esses totais aqui. Rifas não entram — elas já vêm do
-          app de rifas.
+          {legado.gastosTotal ? ', total gasto' : ''}). Importar cria lançamentos com esses totais aqui. O Sorteio Cesta de Natal não entra — ele já vem do
+          app do sorteio.
         </p>
         <Button
           size="sm"
@@ -429,7 +430,7 @@ function ArrecadacaoAba({ fin, podeEditar, byUid }: { fin: Fin; podeEditar: bool
       <Card>
         <CardContent className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-semibold">Rifas</p>
+            <p className="text-sm font-semibold">Sorteio Cesta de Natal</p>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fin.atualizarVendas} title="Atualizar">
               <RefreshCw className={cn('h-4 w-4', fin.rifas === undefined && 'animate-spin')} />
             </Button>

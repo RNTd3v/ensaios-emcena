@@ -287,3 +287,21 @@ input:autofill {
   box-shadow: 0 0 0px 1000px var(--color-gray-50) inset !important;
   background-color: var(--color-gray-50) !important;
 }
+
+/* Animação de instalação do modo apresentação (AnimacaoInstalacao). */
+@keyframes aparecer {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes surgir {
+  from { opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes subir {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes entrar {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
+}

@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
+  ArrowLeft,
   Bell,
+  Expand,
+  Minimize,
   List,
   Maximize2,
   BellRing,
@@ -9,6 +12,7 @@ import {
   Crown,
   Download,
   EllipsisVertical,
+  HandHelping,
   ListChecks,
   Megaphone,
   Share,
@@ -40,6 +44,9 @@ import {
   type TopicoApresentacao,
 } from '@/lib/apresentacao'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { AnimacaoInstalacao, type PlataformaAnimacao } from '@/components/apresentacao/AnimacaoInstalacao'
+import { PASSO_POR_QUADRO } from '@/components/apresentacao/quadrosInstalacao'
 
 /**
  * Tópicos da apresentação nas duas laterais do iPhone. Clicar navega o app; as setas do teclado
@@ -78,6 +85,7 @@ export function useApresentacaoLaterais(ativo: boolean, onSair: () => void, onAc
         return
       }
       if (e.key === 'l' || e.key === 'L') alternarLayout()
+      else if (e.key === 'f' || e.key === 'F') alternarTelaCheia()
       else if (e.key === 'ArrowRight' || e.key === 'PageDown') ir(Math.min(atual + 1, TOPICOS_APRESENTACAO.length - 1))
       else if (e.key === 'ArrowLeft' || e.key === 'PageUp') ir(Math.max(atual - 1, 0))
       else return
@@ -108,6 +116,7 @@ export function useApresentacaoLaterais(ativo: boolean, onSair: () => void, onAc
         <TopicoAtual
           numero={topico ? atual + NUMERO_PRIMEIRO_TOPICO_APP : undefined}
           titulo={topico?.titulo}
+          admin={topico?.admin}
           onAlternar={alternarLayout}
         />
       ),
@@ -136,7 +145,7 @@ export function useApresentacaoLaterais(ativo: boolean, onSair: () => void, onAc
     direita: (
       <>
         {coluna(meio, TOPICOS_APRESENTACAO.length)}
-        <BotaoLayout layout="lista" onAlternar={alternarLayout} />
+        <Controles layout="lista" onAlternar={alternarLayout} />
         <button
           type="button"
           onClick={() => {
@@ -164,6 +173,7 @@ export function useApresentacaoLogin(ativo: boolean, onSair: () => void) {
     if (!ativo) return
     function onKey(e: KeyboardEvent) {
       if (e.key === 'l' || e.key === 'L') alternarLayout()
+      else if (e.key === 'f' || e.key === 'F') alternarTelaCheia()
       else if (e.key === 'Escape' && slideAberto) setSlideAberto(false)
       else if (e.key === 'ArrowRight' || e.key === 'PageDown') setSlideAberto(true)
       else return
@@ -190,7 +200,7 @@ export function useApresentacaoLogin(ativo: boolean, onSair: () => void) {
         <p className="rounded-2xl bg-neutral-900/60 px-4 py-3 text-sm text-white/80 shadow-lg backdrop-blur-md">
           Os próximos tópicos aparecem depois de entrar com o Google.
         </p>
-        <BotaoLayout layout="lista" onAlternar={alternarLayout} />
+        <Controles layout="lista" onAlternar={alternarLayout} />
         <button
           type="button"
           onClick={() => {
@@ -223,7 +233,7 @@ function useLayoutApresentacao(): [LayoutApresentacao, () => void] {
  * Layout enxuto (pro público): só o tópico atual, grande, com "5 de 15" e a barra de progresso.
  * Sem descrição — as notas do apresentador ficam no layout de lista.
  */
-function TopicoAtual({ numero, titulo, onAlternar }: { numero?: number; titulo?: string; onAlternar: () => void }) {
+function TopicoAtual({ numero, titulo, admin, onAlternar }: { numero?: number; titulo?: string; admin?: boolean; onAlternar: () => void }) {
   const total = TOTAL_TOPICOS()
   return (
     <div className="space-y-3 rounded-3xl bg-neutral-900/60 px-6 py-5 text-white shadow-xl backdrop-blur-md">
@@ -233,6 +243,7 @@ function TopicoAtual({ numero, titulo, onAlternar }: { numero?: number; titulo?:
             {numero} de {total}
           </p>
           <p className="text-3xl font-bold leading-tight">{titulo}</p>
+          {admin && <SeloAdmin claro grande />}
           <div className="flex gap-1 pt-1" aria-hidden>
             {Array.from({ length: total }, (_, i) => (
               <span key={i} className={cn('h-1.5 flex-1 rounded-full', i < numero ? 'bg-[#fff]' : 'bg-white/20')} />
@@ -242,7 +253,49 @@ function TopicoAtual({ numero, titulo, onAlternar }: { numero?: number; titulo?:
       ) : (
         <p className="text-lg font-semibold">Pronto pra começar · →</p>
       )}
-      <BotaoLayout layout="enxuto" onAlternar={onAlternar} />
+      <Controles layout="enxuto" onAlternar={onAlternar} />
+    </div>
+  )
+}
+
+/**
+ * Tela cheia do navegador (some barra de abas/endereço) — tecla F ou o botão. Precisa de um clique ou
+ * tecla do apresentador (o navegador não deixa entrar sozinho).
+ */
+function alternarTelaCheia() {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+  else document.documentElement.requestFullscreen().catch(() => {})
+}
+
+function useTelaCheia(): boolean {
+  const [cheia, setCheia] = useState(() => !!document.fullscreenElement)
+  useEffect(() => {
+    const atualizar = () => setCheia(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', atualizar)
+    return () => document.removeEventListener('fullscreenchange', atualizar)
+  }, [])
+  return cheia
+}
+
+/** Botões discretos do apresentador: alternar layout (L) e tela cheia (F). */
+function Controles({ layout, onAlternar }: { layout: LayoutApresentacao; onAlternar: () => void }) {
+  const cheia = useTelaCheia()
+  const IconeTela = cheia ? Minimize : Expand
+  return (
+    <div className={cn('flex flex-wrap gap-1', layout === 'lista' && 'mt-6')}>
+      <BotaoLayout layout={layout} onAlternar={onAlternar} />
+      <button
+        type="button"
+        onClick={alternarTelaCheia}
+        title="Tela cheia (tecla F)"
+        className={cn(
+          'flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] text-white/50 hover:bg-white/10 hover:text-white',
+          layout === 'lista' && 'bg-neutral-900/60 px-3 py-1.5 text-xs text-white/80 backdrop-blur-md',
+        )}
+      >
+        <IconeTela className="h-3.5 w-3.5" />
+        {cheia ? 'Sair da tela cheia (F)' : 'Tela cheia (F)'}
+      </button>
     </div>
   )
 }
@@ -257,12 +310,29 @@ function BotaoLayout({ layout, onAlternar }: { layout: LayoutApresentacao; onAlt
       title="Alternar layout (tecla L)"
       className={cn(
         'flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] text-white/50 hover:bg-white/10 hover:text-white',
-        layout === 'lista' && 'mt-6 bg-neutral-900/60 px-3 py-1.5 text-xs text-white/80 backdrop-blur-md',
+        layout === 'lista' && 'bg-neutral-900/60 px-3 py-1.5 text-xs text-white/80 backdrop-blur-md',
       )}
     >
       <Icone className="h-3.5 w-3.5" />
       {layout === 'enxuto' ? 'Ver lista (L)' : 'Só o tópico atual (L)'}
     </button>
+  )
+}
+
+/** Escudo "Admin": o tópico mostra algo que o público (não admin) não vê no próprio app. */
+function SeloAdmin({ claro = false, grande = false }: { claro?: boolean; grande?: boolean }) {
+  return (
+    <span
+      title="Só o admin vê isso no app"
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1 rounded-full font-semibold uppercase tracking-wide',
+        grande ? 'px-2.5 py-1 text-xs' : 'px-1.5 py-0.5 text-[10px]',
+        claro ? 'bg-white/15 text-white' : 'bg-primary/10 text-primary',
+      )}
+    >
+      <ShieldCheck className={grande ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+      Admin
+    </span>
   )
 }
 
@@ -286,7 +356,10 @@ function TopicoItem({ topico, numero, ativo, onClick }: { topico: TopicoApresent
           {numero}
         </span>
         <span className="min-w-0">
-          <span className="block font-semibold leading-7">{topico.titulo}</span>
+          <span className="flex items-center gap-1.5 font-semibold leading-7">
+            {topico.titulo}
+            {topico.admin && <SeloAdmin claro={!ativo} />}
+          </span>
           {topico.descricao && (
             <span className={cn('block text-sm leading-snug', ativo ? 'text-neutral-600' : 'text-white/70')}>{topico.descricao}</span>
           )}
@@ -348,6 +421,7 @@ function SlidePermissoes({ onFechar }: { onFechar: () => void }) {
               <div key={f.funcao} className={CARTAO}>
                 <p className="flex items-center gap-2 text-lg font-semibold">
                   {f.lider && <Crown className="h-4 w-4 text-amber-500" />}
+                  {f.assistente && <HandHelping className="h-4 w-4 text-primary" />}
                   {f.funcao}
                 </p>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-[15px] leading-snug">
@@ -458,46 +532,177 @@ const ICONE_PASSO: Record<NonNullable<PassoInstalacao['icone']>, React.Component
 
 /** Como instalar no iPhone e no Android (e ativar as notificações), com o QR do app. */
 function SlideInstalacao({ onFechar }: { onFechar: () => void }) {
+  // "Ver no iPhone" / "Ver no Android": a animação ampliada, quase da altura da tela.
+  const [ampliado, setAmpliado] = useState<number | null>(null)
+  const plataformaAmpliada = ampliado !== null ? INSTALACAO_APRESENTACAO[ampliado] : undefined
+
   return (
     <Slide
-      titulo="Instale o app no celular"
+      titulo={plataformaAmpliada ? `Instale no ${plataformaAmpliada.plataforma}` : 'Instale o app no celular'}
       subtitulo="Ele abre direto da tela de início, em tela cheia, e recebe as notificações dos ensaios."
       rodape="Já instalou? Entre com a mesma conta Google de antes."
       onFechar={onFechar}
     >
-      <div className="mt-6 grid grid-cols-[1fr_1fr_auto] gap-6">
-        {INSTALACAO_APRESENTACAO.map(p => (
-          <section key={p.plataforma} className="space-y-3">
-            <TituloSecao icon={Smartphone}>
-              {p.plataforma} · {p.navegador}
-            </TituloSecao>
-            <ol className="space-y-2">
-              {p.passos.map((passo, i) => {
-                const Icone = passo.icone ? ICONE_PASSO[passo.icone] : undefined
-                return (
-                  <li key={i} className={cn(CARTAO, 'flex items-center gap-3 py-2.5')}>
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white">
-                      {i + 1}
-                    </span>
-                    <span className="flex flex-wrap items-center gap-x-1.5 text-[15px] leading-snug">
-                      {passo.texto}
-                      {Icone && <Icone className="h-4 w-4 shrink-0 text-primary" />}
-                      {passo.destaque && <strong>{passo.destaque}</strong>}
-                    </span>
-                  </li>
-                )
-              })}
-            </ol>
-            <p className="text-sm text-muted-foreground">{p.notificacoes}</p>
+      {plataformaAmpliada && ampliado !== null ? (
+        <PlataformaAmpliada plataforma={plataformaAmpliada} animacao={ANIMACOES[ampliado]} onVoltar={() => setAmpliado(null)} />
+      ) : (
+        <div className="mt-5 grid grid-cols-[1fr_1fr_auto] gap-6">
+          {INSTALACAO_APRESENTACAO.map((p, idx) => (
+            <PlataformaInstalacao key={p.plataforma} plataforma={p} animacao={ANIMACOES[idx]} onAmpliar={() => setAmpliado(idx)} />
+          ))}
+          <section className="flex flex-col items-center justify-center gap-3">
+            <div className="rounded-3xl bg-[#fff] p-3 shadow-lg">
+              <QRCodeSVG value={APP_URL_APRESENTACAO} size={140} level="M" />
+            </div>
+            <p className="text-sm font-semibold">{APP_URL_APRESENTACAO.replace('https://', '')}</p>
           </section>
-        ))}
-        <section className="flex flex-col items-center justify-center gap-3">
-          <div className="rounded-3xl bg-white p-4 shadow-lg">
-            <QRCodeSVG value={APP_URL_APRESENTACAO} size={180} level="M" />
-          </div>
-          <p className="text-base font-semibold">{APP_URL_APRESENTACAO.replace('https://', '')}</p>
-        </section>
-      </div>
+        </div>
+      )}
     </Slide>
+  )
+}
+
+/** Na ordem de `INSTALACAO_APRESENTACAO`. */
+const ANIMACOES: PlataformaAnimacao[] = ['iphone', 'android']
+
+type PlataformaDados = (typeof INSTALACAO_APRESENTACAO)[number]
+
+/** Uma plataforma no slide: o celular animado + a lista de passos, com o passo atual destacado. */
+function PlataformaInstalacao({
+  plataforma: p,
+  animacao,
+  onAmpliar,
+}: {
+  plataforma: PlataformaDados
+  animacao: PlataformaAnimacao
+  onAmpliar: () => void
+}) {
+  const [passoAtual, setPassoAtual] = useState(0)
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <TituloSecao icon={Smartphone}>
+          {p.plataforma} · {p.navegador}
+        </TituloSecao>
+        <Button size="sm" className="gap-1.5" onClick={onAmpliar}>
+          <Maximize2 className="h-3.5 w-3.5" />
+          Ver no {p.plataforma}
+        </Button>
+      </div>
+      <div className="flex items-start gap-4">
+        <button type="button" onClick={onAmpliar} title={`Ver no ${p.plataforma}`} className="rounded-[26px]">
+          <AnimacaoInstalacao plataforma={animacao} onPasso={setPassoAtual} />
+        </button>
+        <ListaPassos passos={p.passos} atual={passoAtual} />
+      </div>
+      <p className="text-sm text-muted-foreground">{p.notificacoes}</p>
+    </section>
+  )
+}
+
+/**
+ * Uma plataforma em tamanho grande, no ritmo do apresentador: cada clique (ou → / PageDown do
+ * passador) mostra o próximo toque no celular, e os passos vão aparecendo na lista ao lado. No
+ * último quadro, o → segue pro próximo tópico normalmente.
+ */
+function PlataformaAmpliada({ plataforma: p, animacao, onVoltar }: { plataforma: PlataformaDados; animacao: PlataformaAnimacao; onVoltar: () => void }) {
+  const passos = PASSO_POR_QUADRO[animacao]
+  const [quadro, setQuadro] = useState(0)
+  const ultimo = passos.length - 1
+  const passoAtual = passos[quadro]
+
+  useEffect(() => {
+    // Captura antes dos atalhos da apresentação (que trocariam de tópico) — só enquanto há quadro
+    // pra avançar/voltar.
+    function onKey(e: KeyboardEvent) {
+      const avancar = e.key === 'ArrowRight' || e.key === 'PageDown'
+      const voltar = e.key === 'ArrowLeft' || e.key === 'PageUp'
+      if (avancar && quadro < ultimo) setQuadro(q => q + 1)
+      else if (voltar && quadro > 0) setQuadro(q => q - 1)
+      else return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [quadro, ultimo])
+
+  return (
+    <div className="mt-5 grid grid-cols-[auto_1fr] items-center gap-10">
+      <button
+        type="button"
+        onClick={() => setQuadro(q => (q < ultimo ? q + 1 : 0))}
+        title="Clique pra avançar"
+        className="rounded-[40px]"
+      >
+        <AnimacaoInstalacao plataforma={animacao} quadro={quadro} escala={1.8} />
+      </button>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <TituloSecao icon={Smartphone}>
+            {p.plataforma} · {p.navegador}
+          </TituloSecao>
+          <span className="text-sm text-muted-foreground">
+            {quadro < ultimo ? 'Clique no celular ou → pra avançar' : 'Pronto! Clique pra recomeçar'}
+          </span>
+        </div>
+        <ListaPassos passos={p.passos} atual={passoAtual} grande revelarAte={passoAtual} />
+        <p className="text-base text-muted-foreground">{p.notificacoes}</p>
+        <Button variant="outline" className="gap-1.5" onClick={onVoltar}>
+          <ArrowLeft className="h-4 w-4" />
+          Voltar pros dois
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function ListaPassos({
+  passos,
+  atual,
+  grande = false,
+  revelarAte,
+}: {
+  passos: PassoInstalacao[]
+  atual: number
+  grande?: boolean
+  /** Passos depois desse ficam escondidos (vão aparecendo conforme o apresentador avança). */
+  revelarAte?: number
+}) {
+  return (
+    <ol className={cn('min-w-0 flex-1', grande ? 'space-y-2.5' : 'space-y-1.5')}>
+      {passos.map((passo, i) => {
+        const Icone = passo.icone ? ICONE_PASSO[passo.icone] : undefined
+        const ativo = i === atual
+        return (
+          <li
+            key={i}
+            className={cn(
+              CARTAO,
+              'flex items-center transition-colors duration-300',
+              grande ? 'gap-4 px-5 py-3.5' : 'gap-2.5 px-3 py-2',
+              ativo && 'border-primary bg-primary/10 dark:border-primary',
+              revelarAte !== undefined && i > revelarAte && 'invisible',
+              revelarAte !== undefined && i === revelarAte && 'animate-[entrar_400ms_ease-out]',
+            )}
+          >
+            <span
+              className={cn(
+                'flex shrink-0 items-center justify-center rounded-full font-semibold',
+                grande ? 'h-9 w-9 text-base' : 'h-6 w-6 text-xs',
+                ativo ? 'bg-primary text-white' : 'bg-primary/15 text-primary',
+              )}
+            >
+              {i + 1}
+            </span>
+            <span className={cn('flex flex-wrap items-center leading-snug', grande ? 'gap-x-1.5 text-xl' : 'gap-x-1 text-sm')}>
+              {passo.texto}
+              {Icone && <Icone className={cn('shrink-0 text-primary', grande ? 'h-5 w-5' : 'h-3.5 w-3.5')} />}
+              {passo.destaque && <strong>{passo.destaque}</strong>}
+            </span>
+          </li>
+        )
+      })}
+    </ol>
   )
 }

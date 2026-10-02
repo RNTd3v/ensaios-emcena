@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight, ExternalLink, ScrollText } from 'lucide-react'
+import { Camera, ChevronRight, ExternalLink, ScrollText } from 'lucide-react'
 import { urlDoArquivo } from '@/services/firebase/storage'
 import { ROTEIRO_TIPOS } from '@/lib/roteiro'
 import { Avatar } from '@/components/ui/Avatar'
+import { MinhaFotoDialog } from '@/components/layout/MinhaFotoDialog'
 import { Card, CardContent } from '@/components/ui/card'
 import { ProximoEnsaioCard } from '@/components/home/ProximoEnsaioCard'
 import { ApresentacoesCard } from '@/components/home/ApresentacoesCard'
@@ -53,6 +54,7 @@ export function Home() {
   const oracaoVisivel = useOracaoVisivel()
   // Filhos inscritos pela pessoa: um card de próximo ensaio pra cada, com a resposta por ele.
   const [dependentes, setDependentes] = useState<Inscricao[]>([])
+  const [fotoOpen, setFotoOpen] = useState(false)
   useEffect(() => {
     if (!user) return
     return subscribeToDependentes(user.uid, setDependentes)
@@ -62,7 +64,13 @@ export function Home() {
     <div className="space-y-4">
       <div>
         <div className="flex items-center gap-3">
-          <Avatar photoURL={user?.photoURL} name={user?.displayName} className="h-12 w-12 text-base border-2 border-white/30" />
+          {/* Tocar na foto troca a foto (o mesmo "Minha foto" do menu). */}
+          <button type="button" onClick={() => setFotoOpen(true)} className="relative shrink-0" title="Trocar minha foto">
+            <Avatar photoURL={user?.photoURL} name={user?.displayName} className="h-12 w-12 text-base border-2 border-white/30" />
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary ring-2 ring-black/30">
+              <Camera className="h-3 w-3 text-white" />
+            </span>
+          </button>
           <h1 className="text-2xl font-semibold text-white">Olá{firstName ? `, ${firstName}` : ''}!</h1>
         </div>
         {versiculo && (
@@ -71,6 +79,8 @@ export function Home() {
           </p>
         )}
       </div>
+
+      {fotoOpen && <MinhaFotoDialog onClose={() => setFotoOpen(false)} />}
 
       <InstalarAppCard />
 

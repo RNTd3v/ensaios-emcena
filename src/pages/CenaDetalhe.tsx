@@ -12,7 +12,6 @@ import {
   ExternalLink,
   Info,
   HandHelping,
-  MessageCircle,
   NotebookPen,
   Pencil,
   Pin,
@@ -77,10 +76,10 @@ import {
 } from '@/types'
 import { DIAS_ORDER, diasDisponiveis, sortDias } from '@/lib/dias'
 import { formatDuracao, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
-import { whatsappLink } from '@/lib/formatters'
 import { addDays, canCheckin, DIA_TO_WEEKDAY, formatRelativeDia, toDateKey, weekDates } from '@/lib/agenda'
 import { cn } from '@/lib/utils'
 import { PessoaSelect, pessoaOpcao } from '@/components/ui/PessoaSelect'
+import { ContatoPessoaDialog } from '@/components/cena/ContatoPessoaDialog'
 import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 interface Occurrence {
@@ -136,7 +135,8 @@ export function CenaDetalhe() {
   const canManageAgenda = canManageCena || isAssistenteDaCena
 
   const [editModalOpen, setEditModalOpen] = useState(false)
-  const [liderModalOpen, setLiderModalOpen] = useState(false)
+  /** Pessoa do grupo com o modal de contato aberto (líder, assistente ou participante). */
+  const [pessoaModal, setPessoaModal] = useState<string | null>(null)
   const [nomeDraft, setNomeDraft] = useState('')
   const [liderUidDraft, setLiderUidDraft] = useState('')
   const [roteiroReferenciaDraft, setRoteiroReferenciaDraft] = useState('')
@@ -266,10 +266,14 @@ export function CenaDetalhe() {
   const weekOccurrences = useMemo(() => (cena ? occurrencesForWeek(cena, weekBase) : []), [cena, weekBase])
   const weekOccurrencesByDate = useMemo(() => Object.fromEntries(weekOccurrences.map(o => [o.dateKey, o])), [weekOccurrences])
 
-  const outrosParticipantes = useMemo(
-    () => (cena ? cena.participantes.filter(uid => uid !== cena.liderUid) : []),
-    [cena?.participantes, cena?.liderUid],
-  )
+  /** Grupo sem o líder (que vem à parte, no topo): assistentes primeiro, depois os demais. */
+  const outrosParticipantes = useMemo(() => {
+    if (!cena) return []
+    const assistentes = cena.assistentes ?? []
+    return cena.participantes
+      .filter(uid => uid !== cena.liderUid)
+      .sort((a, b) => Number(!assistentes.includes(a)) - Number(!assistentes.includes(b)))
+  }, [cena])
 
   /** Ensaios finalizados pela tela "Iniciar ensaio" — os registros exibidos no card Anotações. */
   const registros = useMemo(
@@ -956,16 +960,38 @@ export function CenaDetalhe() {
                 )}
               </div>
 
-              {!personagensOpen && cena.personagens.length > 0 && (
-                <AvatarStack
-                  items={personagensOrdenados.map(p => ({
-                    key: p.id,
-                    photoURL: p.participanteUid ? users[p.participanteUid]?.photoURL : undefined,
-                    name: p.nome,
-                  }))}
-                  className="mt-2"
-                />
-              )}
+              {!personagensOpen &&
+                cena.personagens.length > 0 &&
+                (() => {
+                  // O personagem de quem está vendo vai à direita, em destaque, e leva pra tela dele.
+                  // Com dois ou mais personagens na mesma cena, fica tudo na fileira, como antes.
+                  const meus = personagensOrdenados.filter(p => !!currentUser && p.participanteUid === currentUser.uid)
+                  const meu = meus.length === 1 ? meus[0] : undefined
+                  return (
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <AvatarStack
+                        items={personagensOrdenados
+                          .filter(p => p.id !== meu?.id)
+                          .map(p => ({
+                            key: p.id,
+                            photoURL: p.participanteUid ? users[p.participanteUid]?.photoURL : undefined,
+                            name: p.nome,
+                          }))}
+                        className="flex-1"
+                      />
+                      {meu && (
+                        <Link
+                          to={`/cenas/${cena.id}/personagens/${meu.id}`}
+                          title={`Seu personagem: ${meu.nome}`}
+                          className="flex shrink-0 items-center gap-2 rounded-full bg-primary/10 py-1 pl-1 pr-3 ring-1 ring-primary/30 hover:bg-primary/15"
+                        >
+                          <Avatar photoURL={currentUser?.photoURL} name={meu.nome} className="h-7 w-7 text-[10px] ring-2 ring-primary" />
+                          <span className="max-w-[9rem] truncate text-xs font-semibold text-primary">{meu.nome}</span>
+                        </Link>
+                      )}
+                    </div>
+                  )
+                })()}
 
               {personagensOpen &&
                 (cena.personagens?.length ? (
@@ -1098,16 +1124,35 @@ export function CenaDetalhe() {
 
               {!participantesOpen && (outrosParticipantes.length > 0 || cena.liderUid) && (
                 <div className="mt-2 flex items-center justify-between gap-2">
+                  {/* Fileira: só quem não é assistente; os assistentes ficam ao lado do líder, com selo. */}
                   <AvatarStack
-                    items={outrosParticipantes.map(uid => ({ key: uid, photoURL: users[uid]?.photoURL, name: nameFor(uid) }))}
+                    items={outrosParticipantes
+                      .filter(uid => !cena.assistentes?.includes(uid))
+                      .map(uid => ({ key: uid, photoURL: users[uid]?.photoURL, name: nameFor(uid) }))}
                     className="flex-1"
                   />
+                  {outrosParticipantes
+                    .filter(uid => cena.assistentes?.includes(uid))
+                    .map(uid => (
+                      <button
+                        key={uid}
+                        type="button"
+                        title={`Assistente: ${nameFor(uid)}`}
+                        className="relative shrink-0"
+                        onClick={() => setPessoaModal(uid)}
+                      >
+                        <Avatar photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-7 w-7 text-[10px] ring-2 ring-primary/70" />
+                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary ring-2 ring-white">
+                          <HandHelping className="h-2.5 w-2.5 text-white" />
+                        </span>
+                      </button>
+                    ))}
                   {cena.liderUid && (
                     <button
                       type="button"
                       title={`Líder: ${nameFor(cena.liderUid)}`}
                       className="relative shrink-0"
-                      onClick={() => setLiderModalOpen(true)}
+                      onClick={() => setPessoaModal(cena.liderUid!)}
                     >
                       <Avatar photoURL={users[cena.liderUid]?.photoURL} name={nameFor(cena.liderUid)} className="h-7 w-7 text-[10px] ring-2 ring-amber-400" />
                       <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 ring-2 ring-white">
@@ -1125,7 +1170,7 @@ export function CenaDetalhe() {
                       <PessoaLinha
                         pessoa={pessoaOpcao(cena.liderUid, users[cena.liderUid], inscricoesByUid[cena.liderUid])}
                         funcao="lider"
-                        onClick={() => setLiderModalOpen(true)}
+                        onClick={() => setPessoaModal(cena.liderUid!)}
                         className="rounded-lg px-1 py-1.5"
                       />
                     )}
@@ -1136,6 +1181,7 @@ export function CenaDetalhe() {
                           key={uid}
                           pessoa={pessoaOpcao(uid, users[uid], inscricoesByUid[uid])}
                           funcao={assistente ? 'assistente' : undefined}
+                          onClick={() => setPessoaModal(uid)}
                           className="rounded-lg px-1 py-1.5"
                         >
                           {canManageCena && (
@@ -1175,49 +1221,14 @@ export function CenaDetalhe() {
         </>
       )}
 
-      {cena?.liderUid && (
-        <Dialog
-          open={liderModalOpen}
-          onClose={() => setLiderModalOpen(false)}
-          title={
-            <PessoaLinha pessoa={pessoaOpcao(cena.liderUid, users[cena.liderUid], inscricoesByUid[cena.liderUid])} funcao="lider" />
-          }
-        >
-          {(() => {
-            const liderInscricao = inscricoesByUid[cena.liderUid]
-            return (
-              <div className="divide-y divide-gray-100">
-                <div className="py-3 first:pt-0">
-                  <p className="text-sm text-muted-foreground">Papel</p>
-                  <p className="text-base">Líder da cena</p>
-                </div>
-                {liderInscricao?.telefone && (
-                  <div className="py-3">
-                    <p className="text-sm text-muted-foreground">Telefone (WhatsApp)</p>
-                    <a
-                      href={whatsappLink(liderInscricao.telefone)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-base text-primary hover:underline"
-                    >
-                      <MessageCircle className="h-3.5 w-3.5" />
-                      {liderInscricao.telefone}
-                    </a>
-                  </div>
-                )}
-                {liderInscricao?.email && (
-                  <div className="py-3">
-                    <p className="text-sm text-muted-foreground">Email</p>
-                    <p className="text-base">{liderInscricao.email}</p>
-                  </div>
-                )}
-                {!liderInscricao && (
-                  <p className="py-3 text-sm text-muted-foreground">Sem dados de contato cadastrados.</p>
-                )}
-              </div>
-            )
-          })()}
-        </Dialog>
+      {cena && pessoaModal && (
+        <ContatoPessoaDialog
+          uid={pessoaModal}
+          funcao={pessoaModal === cena.liderUid ? 'lider' : cena.assistentes?.includes(pessoaModal) ? 'assistente' : 'participante'}
+          users={users}
+          inscricao={inscricoesByUid[pessoaModal]}
+          onClose={() => setPessoaModal(null)}
+        />
       )}
 
       {cena && (

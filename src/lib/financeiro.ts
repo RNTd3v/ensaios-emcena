@@ -1,7 +1,7 @@
 import type { Entrada, FrenteArrecadacao, Gasto, GastoReembolso, GastoStatus } from '@/types'
 
 export const FRENTES: { value: FrenteArrecadacao; label: string }[] = [
-  { value: 'rifas', label: 'Rifas' },
+  { value: 'rifas', label: 'Sorteio Cesta de Natal' },
   { value: 'doces', label: 'Doces' },
   { value: 'ofertas', label: 'Ofertas' },
   { value: 'outros', label: 'Outros' },

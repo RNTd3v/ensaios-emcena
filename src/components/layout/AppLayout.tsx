@@ -163,7 +163,7 @@ export function AppLayout() {
                   <MenuItem to="/personagens" label="Personagens" icon={Drama} onClick={() => setMenuOpen(false)} />
 
                   <MenuDivider label="Vendas" />
-                  <MenuLinkExterno href={APP_RIFAS_URL} label="Rifas" icon={Ticket} />
+                  <MenuLinkExterno href={APP_RIFAS_URL} label="Sorteio Cesta de Natal" icon={Ticket} />
                   <MenuLinkExterno href={APP_DOCES_URL} label="Doces" icon={Candy} />
 
                   {isAdminOrLider && (

@@ -27,7 +27,9 @@ export function VisaoDialog({ onClose }: { onClose: () => void }) {
   function escolher(participante: boolean) {
     if (participante !== visaoParticipante) {
       trocarVisao(participante)
-      navigate('/')
+      // Voltando pra admin, fica na mesma tela (admin vê tudo). Indo pra participante, vai pro
+      // início: a tela atual pode ser só de admin ou mostrar coisas que o participante não vê.
+      if (participante) navigate('/')
     }
     onClose()
   }

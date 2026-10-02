@@ -102,14 +102,7 @@ function App() {
               </AdminGuard>
             }
           />
-          <Route
-            path="personagens"
-            element={
-              <AdminGuard>
-                <Personagens />
-              </AdminGuard>
-            }
-          />
+          <Route path="personagens" element={<Personagens />} />
           <Route
             path="calendario"
             element={

@@ -1,12 +1,16 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { BellRing, Clapperboard, Crown, Megaphone, ShieldCheck, UsersRound, X } from 'lucide-react'
+import { BellRing, Clapperboard, Crown, ListChecks, Megaphone, ShieldCheck, UsersRound, X } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import {
+  APP_URL_APRESENTACAO,
   AUTOMATICAS_APRESENTACAO,
   AVISOS_APRESENTACAO,
   FUNCOES_APRESENTACAO,
+  PEDIDOS_CONCLUSAO,
   TOPICOS_APRESENTACAO,
   sairModoApresentacao,
+  type AcaoApresentacao,
   type FuncaoApresentacao,
   type TopicoApresentacao,
 } from '@/lib/apresentacao'
@@ -16,7 +20,7 @@ import { cn } from '@/lib/utils'
  * Tópicos da apresentação nas duas laterais do iPhone. Clicar navega o app; as setas do teclado
  * (e PageUp/PageDown, que é o que os passadores de slide mandam) vão pro tópico anterior/seguinte.
  */
-export function useApresentacaoLaterais(ativo: boolean, onSair: () => void, onReportar: () => void) {
+export function useApresentacaoLaterais(ativo: boolean, onSair: () => void, onAcao: (acao: AcaoApresentacao) => void) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [clicado, setClicado] = useState<number | null>(null)
@@ -32,7 +36,7 @@ export function useApresentacaoLaterais(ativo: boolean, onSair: () => void, onRe
     setClicado(i)
     setSlideFechado(false)
     navigate(topico.rota)
-    if (topico.acao === 'reportar') onReportar()
+    if (topico.acao) onAcao(topico.acao)
   }
 
   const slide = ativo && !slideFechado ? TOPICOS_APRESENTACAO[atual]?.slide : undefined
@@ -73,6 +77,8 @@ export function useApresentacaoLaterais(ativo: boolean, onSair: () => void, onRe
         <SlidePermissoes onFechar={() => setSlideFechado(true)} />
       ) : slide === 'notificacoes' ? (
         <SlideNotificacoes onFechar={() => setSlideFechado(true)} />
+      ) : slide === 'conclusao' ? (
+        <SlideConclusao onFechar={() => setSlideFechado(true)} />
       ) : undefined,
     esquerda: coluna(0, meio),
     direita: (
@@ -234,6 +240,41 @@ function SlideNotificacoes({ onFechar }: { onFechar: () => void }) {
               </tbody>
             </table>
           </div>
+        </section>
+      </div>
+    </Slide>
+  )
+}
+
+/** Fechamento: o que fazer hoje + QR do app, e espaço pras perguntas. */
+function SlideConclusao({ onFechar }: { onFechar: () => void }) {
+  return (
+    <Slide
+      titulo="Perguntas?"
+      subtitulo="Enquanto isso, já dá pra fazer tudo pelo celular."
+      rodape="Achou algo estranho depois? Menu → Reportar problema."
+      onFechar={onFechar}
+    >
+      <div className="mt-6 grid grid-cols-[3fr_2fr] items-center gap-10">
+        <section className="space-y-3">
+          <TituloSecao icon={ListChecks}>O que fazer hoje</TituloSecao>
+          <ol className="space-y-3">
+            {PEDIDOS_CONCLUSAO.map((p, i) => (
+              <li key={p} className={cn(CARTAO, 'flex items-center gap-4 py-3')}>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-base font-semibold text-white">
+                  {i + 1}
+                </span>
+                <span className="text-lg font-medium leading-snug">{p}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="pt-1 text-base font-semibold text-primary">A partir de agora, os ensaios são confirmados por aqui.</p>
+        </section>
+        <section className="flex flex-col items-center gap-3">
+          <div className="rounded-3xl bg-white p-5 shadow-lg">
+            <QRCodeSVG value={APP_URL_APRESENTACAO} size={240} level="M" />
+          </div>
+          <p className="text-lg font-semibold">{APP_URL_APRESENTACAO.replace('https://', '')}</p>
         </section>
       </div>
     </Slide>

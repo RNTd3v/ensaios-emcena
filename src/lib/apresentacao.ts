@@ -3,31 +3,35 @@
  * ao clicar, o app navega pra `rota`. A primeira metade vai pra coluna da esquerda, o resto pra direita.
  * Edite à vontade — a ordem aqui é a ordem da apresentação.
  */
+export type AcaoApresentacao = 'reportar' | 'foto'
+
 export interface TopicoApresentacao {
   titulo: string
   /** Frase curta embaixo do título, pra lembrar o que mostrar. */
   descricao?: string
   rota: string
   /** Algo a abrir junto, além de navegar (ex.: o diálogo de reportar problema). */
-  acao?: 'reportar'
+  acao?: AcaoApresentacao
   /** Mostra um painel grande sobre a tela (ex.: a lista de funções e permissões). */
-  slide?: 'permissoes' | 'notificacoes'
+  slide?: 'permissoes' | 'notificacoes' | 'conclusao'
 }
 
 /** Segue a demonstração do roteiro de apresentação (doc "Roteiro de apresentação — RNT Ensaios"). */
 export const TOPICOS_APRESENTACAO: TopicoApresentacao[] = [
-  { titulo: 'Minha inscrição', descricao: 'Dados, disponibilidade e dependentes', rota: '/inscricao' },
+  { titulo: 'Minha inscrição', descricao: 'Dados, disponibilidade, dependentes · staff/técnica: em que quer ajudar', rota: '/inscricao' },
   { titulo: 'Home', descricao: 'Card “Instale o app” · próximo ensaio, metas e roteiro', rota: '/' },
-  { titulo: 'Minhas cenas', descricao: 'Abra uma cena · confirmar presença', rota: '/cenas' },
+  { titulo: 'Minha foto', descricao: 'Menu → toque na foto · trocar a do Google', rota: '/', acao: 'foto' },
+  { titulo: 'Minhas cenas', descricao: 'Confirmar presença ou avisar que não vai · dá pra mudar de ideia', rota: '/cenas' },
+  { titulo: 'Ensaio ao vivo', descricao: 'Volte pra visão de admin · abra uma cena e inicie', rota: '/cenas' },
   { titulo: 'Personagem', descricao: 'Na cena, toque num personagem · foto de figurino', rota: '/cenas' },
   { titulo: 'Músicas e figurinos', descricao: 'Tocar uma música · anotação no tempo', rota: '/musicas' },
   { titulo: 'Notificações', descricao: 'O sino · ativar ao vivo', rota: '/notificacoes' },
-  { titulo: 'Quem notifica quem', descricao: 'Avisos manuais e automáticos', rota: '/notificacoes', slide: 'notificacoes' },
+  { titulo: 'Quem notifica quem', descricao: 'Avisos, lembretes pra confirmar e automáticas', rota: '/notificacoes', slide: 'notificacoes' },
   { titulo: 'Relógio de oração', descricao: 'Quero orar nesse horário · pedidos', rota: '/oracao' },
   { titulo: 'Metas e gastos', descricao: 'Arrecadação × gastos · Rifas e Doces', rota: '/metas-gastos' },
-  { titulo: 'Ensaio ao vivo', descricao: 'Volte pra visão de admin · abra uma cena e inicie', rota: '/cenas' },
   { titulo: 'Funções e permissões', descricao: 'Quem pode fazer o quê', rota: '/equipes', slide: 'permissoes' },
   { titulo: 'Reportar problema', descricao: '“Reporte por aqui, não no grupo”', rota: '/', acao: 'reportar' },
+  { titulo: 'Conclusão e perguntas', descricao: 'O que fazer hoje · QR code do app', rota: '/', slide: 'conclusao' },
 ]
 
 /**
@@ -51,7 +55,8 @@ export const FUNCOES_APRESENTACAO: FuncaoApresentacao[] = [
       'Mandar avisos pra todos',
       'Gerenciamento de inscrições',
       'Criar cenas e equipes, escolher líderes',
-      'Personagens, calendário geral e disponibilidade',
+      'Personagens e calendário geral',
+      'Disponibilidade: ver a inscrição e pôr na cena ou na equipe',
       'Configurações, liberar a oração e ver problemas reportados',
     ],
   },
@@ -59,8 +64,9 @@ export const FUNCOES_APRESENTACAO: FuncaoApresentacao[] = [
     funcao: 'Participante',
     grupo: 'geral',
     pode: [
-      'Fazer a inscrição e informar disponibilidade',
-      'Confirmar presença ou avisar que não vai',
+      'Fazer a inscrição, informar disponibilidade e em que quer ajudar',
+      'Confirmar presença, avisar que não vai e mudar de ideia',
+      'Trocar a própria foto',
       'Enviar foto do figurino do seu personagem',
       'Anotar nas músicas das suas cenas',
       'Ver Home, músicas, figurinos e metas',
@@ -88,7 +94,11 @@ export const FUNCOES_APRESENTACAO: FuncaoApresentacao[] = [
     funcao: 'Líder de equipe',
     grupo: 'equipe',
     lider: true,
-    pode: ['Tudo do assistente de equipe', 'Editar a equipe, membros e assistentes', 'Mandar avisos pra equipe'],
+    pode: [
+      'Tudo do assistente de equipe',
+      'Editar a equipe, membros e assistentes (quem quer ajudar aparece primeiro)',
+      'Mandar avisos pra equipe',
+    ],
   },
   {
     funcao: 'Assistente de equipe',
@@ -115,6 +125,8 @@ export const AVISOS_APRESENTACAO: { quem: string; lider?: boolean; paraQuem: str
 
 export const AUTOMATICAS_APRESENTACAO: { quando: string; recebe: string; dispara: string }[] = [
   { quando: 'Ensaio confirmado, cancelado ou alterado', recebe: 'Participantes da cena', dispara: 'Líder ou assistente da cena' },
+  { quando: 'Hoje tem ensaio (às 8h do dia)', recebe: 'Participantes, menos quem avisou que não vai', dispara: 'O próprio app' },
+  { quando: 'Confirme sua presença (2h, 1h, 30 e 10 min antes de fechar)', recebe: 'Só quem ainda não respondeu', dispara: 'O próprio app' },
   { quando: 'Ensaio daqui a pouco (até 2h antes)', recebe: 'Participantes, menos quem avisou que não vai', dispara: 'O próprio app' },
   { quando: 'Foto de figurino enviada', recebe: 'Líder da cena', dispara: 'Quem enviou a foto' },
   { quando: 'Figurino aprovado ou reprovado', recebe: 'Quem enviou a foto', dispara: 'Líder da cena' },
@@ -122,6 +134,16 @@ export const AUTOMATICAS_APRESENTACAO: { quando: string; recebe: string; dispara
   { quando: 'Tarefa bloqueada ou cancelada', recebe: 'Líder e assistentes da equipe', dispara: 'Quem mudou o status' },
   { quando: 'Problema reportado', recebe: 'O suporte', dispara: 'Qualquer pessoa' },
 ]
+
+/** Slide de conclusão: o que cada um faz hoje, antes de ir embora. */
+export const PEDIDOS_CONCLUSAO = [
+  'Instale o app na tela de início do celular',
+  'Complete sua inscrição com a sua disponibilidade',
+  'Staff e técnica: conte em que equipe quer ajudar',
+  'Ative as notificações no sino',
+]
+
+export const APP_URL_APRESENTACAO = 'https://ensaios-emcena.web.app'
 
 /** Liga com `?apresentacao` na URL e desliga com `?apresentacao=0`; vale enquanto a aba estiver aberta. */
 const CHAVE = 'modo-apresentacao'

@@ -40,7 +40,11 @@ export function AppLayout() {
   const visaoParticipante = useAuthStore(s => s.visaoParticipante)
   const { search } = useLocation()
   const [apresentacao, setApresentacao] = useState(() => lerModoApresentacao(search))
-  const laterais = useApresentacaoLaterais(apresentacao, () => setApresentacao(false), () => setReportarOpen(true))
+  const laterais = useApresentacaoLaterais(
+    apresentacao,
+    () => setApresentacao(false),
+    acao => (acao === 'reportar' ? setReportarOpen(true) : setFotoOpen(true)),
+  )
 
   useEffect(() => {
     if (!loaded) refresh()
@@ -156,6 +160,7 @@ export function AppLayout() {
                   <MenuDivider />
                   <MenuItem to="/musicas" label="Músicas" icon={Music} onClick={() => setMenuOpen(false)} />
                   <MenuItem to="/figurinos" label="Figurinos" icon={Shirt} onClick={() => setMenuOpen(false)} />
+                  <MenuItem to="/personagens" label="Personagens" icon={Drama} onClick={() => setMenuOpen(false)} />
 
                   <MenuDivider label="Vendas" />
                   <MenuLinkExterno href={APP_RIFAS_URL} label="Rifas" icon={Ticket} />
@@ -167,7 +172,6 @@ export function AppLayout() {
                       <MenuItem to="/disponibilidade" label="Disponibilidade" icon={CalendarDays} onClick={() => setMenuOpen(false)} />
                       {isAdmin && (
                         <>
-                          <MenuItem to="/personagens" label="Personagens" icon={Drama} onClick={() => setMenuOpen(false)} />
                           <MenuItem to="/calendario" label="Calendário geral de ensaios" icon={CalendarClock} onClick={() => setMenuOpen(false)} />
                           <MenuItem to="/admin" label="Gerenciamento" icon={ShieldCheck} onClick={() => setMenuOpen(false)} />
                           <MenuItem to="/admin/reportes" label="Problemas reportados" icon={Bug} onClick={() => setMenuOpen(false)} />

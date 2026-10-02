@@ -84,9 +84,10 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Cenas: todo mundo autenticado pode ver, mas cada um só as cenas que dizem respeito a ele —
-    // admin vê todas; líder só as que ele lidera (liderUid); participante só as que participa
-    // (array-contains). Só admin cria. "Excluir" é soft delete (ativo=false) via update; líder
+    // Cenas: qualquer autenticado lê todas (a tela de Personagens mostra o elenco do musical
+    // inteiro). As telas de cenas continuam listando só as que dizem respeito à pessoa (as queries
+    // filtram por liderUid / participantes). Motivos de ausência ficam à parte, em
+    // ensaios/{id}/ausencias, com leitura restrita. Só admin cria. "Excluir" é soft delete (ativo=false) via update; líder
     // pode desativar a própria cena mas não reativar (só admin) nem excluir de verdade (delete é
     // ação separada, só admin). `musicas` é campo admin-only mesmo pro líder — ele pode mexer em
     // qualquer outro campo (nome, figurinos, personagens etc.), mas não pode alterar `musicas`
@@ -98,10 +99,7 @@ service cloud.firestore {
     match /cenas/{id} {
       // Responsáveis de crianças (dependentes) da cena também veem — lista mantida pela Cloud
       // Function `cenaResponsaveisDependentes`.
-      allow read: if isAdmin()
-        || (isAuthenticated() && resource.data.liderUid == request.auth.uid)
-        || (isAuthenticated() && request.auth.uid in resource.data.participantes)
-        || (isAuthenticated() && request.auth.uid in resource.data.get('responsaveisDependentes', []));
+      allow read: if isAuthenticated();
       allow create: if isAdmin();
       allow update: if isAdmin()
         || (isAuthenticated() && resource.data.liderUid == request.auth.uid
@@ -112,10 +110,11 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Catálogo de personagens (tela de Personagens): só admin lê e escreve. Os personagens em si
-    // continuam dentro de cada cena — aqui ficam só os criados pela tela, inclusive os sem cena.
+    // Catálogo de personagens (tela de Personagens): todos leem, só admin escreve. Os personagens
+    // em si continuam dentro de cada cena — aqui ficam só os criados pela tela, inclusive os sem cena.
     match /personagens/{id} {
-      allow read, write: if isAdmin();
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
     // Locais de ensaio: qualquer autenticado lê (aparecem no ensaio e no seletor do líder),

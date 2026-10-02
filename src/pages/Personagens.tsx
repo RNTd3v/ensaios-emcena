@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/Spinner'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers } from '@/services/firebase/auth'
-import { subscribeToCenas } from '@/services/firebase/cenas'
+import { subscribeToTodasCenas } from '@/services/firebase/cenas'
 import {
   addPersonagemNaCena,
   createPersonagem,
@@ -28,13 +28,14 @@ import { cn } from '@/lib/utils'
 import { PessoaSelect, pessoaOpcao, type PessoaOpcao } from '@/components/ui/PessoaSelect'
 
 /**
- * Tela de personagens (só admin): junta os personagens de todas as cenas, sem duplicar por nome,
- * mais os criados aqui que ainda não estão em cena nenhuma. Daqui o admin vincula uma pessoa e
- * coloca o personagem em cenas — só as cenas cujos dias de ensaio cabem na disponibilidade da
- * pessoa vinculada.
+ * Tela de personagens: junta os personagens de todas as cenas, sem duplicar por nome, mais os
+ * criados aqui que ainda não estão em cena nenhuma. Todo mundo vê (o elenco do musical); só o admin
+ * gerencia — vincula uma pessoa e coloca o personagem em cenas (só as cenas cujos dias de ensaio
+ * cabem na disponibilidade da pessoa vinculada).
  */
 export function Personagens() {
   const currentUser = useAuthStore(s => s.user)
+  const isAdmin = currentUser?.role === 'admin'
   const [cenas, setCenas] = useState<Cena[] | null>(null)
   const [catalogo, setCatalogo] = useState<PersonagemCatalogo[] | null>(null)
   const [inscricoes, setInscricoes] = useState<Inscricao[]>([])
@@ -43,12 +44,14 @@ export function Personagens() {
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!currentUser) return
-    return subscribeToCenas(currentUser.role, currentUser.uid, setCenas)
-  }, [currentUser])
+  // Quem não é admin não vê cenas excluídas (inativas).
+  useEffect(() => subscribeToTodasCenas(l => setCenas(isAdmin ? l : l.filter(c => c.ativo))), [isAdmin])
   useEffect(() => subscribeToCatalogoPersonagens(setCatalogo), [])
-  useEffect(() => subscribeToAllInscricoes(setInscricoes), [])
+  // Inscrições (disponibilidade, pra vincular pessoa): só o admin lê — os demais usam o nome público do perfil.
+  useEffect(() => {
+    if (!isAdmin) return
+    return subscribeToAllInscricoes(setInscricoes)
+  }, [isAdmin])
   useEffect(() => {
     getUsers().then(list => setUsers(Object.fromEntries(list.map(u => [u.uid, u]))))
   }, [])
@@ -56,7 +59,14 @@ export function Personagens() {
   const inscricoesByUid = useMemo(() => Object.fromEntries(inscricoes.map(i => [i.uid, i])), [inscricoes])
 
   function nameFor(uid: string) {
-    return inscricoesByUid[uid]?.apelido || inscricoesByUid[uid]?.nomeCompleto || users[uid]?.displayName || 'Sem nome'
+    return (
+      inscricoesByUid[uid]?.apelido ||
+      inscricoesByUid[uid]?.nomeCompleto ||
+      users[uid]?.apelido ||
+      users[uid]?.nomeCompleto ||
+      users[uid]?.displayName ||
+      'Sem nome'
+    )
   }
 
   function diasDe(uid: string | undefined): DiaSemana[] | undefined {
@@ -118,9 +128,11 @@ export function Personagens() {
             )}
           </div>
         </div>
-        <Button size="icon" title="Novo personagem" onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4" />
-        </Button>
+        {isAdmin && (
+          <Button size="icon" title="Novo personagem" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       <Input placeholder="Buscar por personagem ou pessoa" value={search} onChange={e => setSearch(e.target.value)} />
@@ -172,18 +184,24 @@ export function Personagens() {
         </Card>
       )}
 
-      <CreatePersonagemDialog
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        personagens={personagens}
-        pessoas={pessoas}
-        onCreated={key => {
-          setCreateOpen(false)
-          setSelectedKey(key)
-        }}
-      />
+      {isAdmin && (
+        <CreatePersonagemDialog
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          personagens={personagens}
+          pessoas={pessoas}
+          onCreated={key => {
+            setCreateOpen(false)
+            setSelectedKey(key)
+          }}
+        />
+      )}
 
-      {selected && currentUser && (
+      {selected && !isAdmin && (
+        <PersonagemInfoDialog personagem={selected} users={users} nameFor={nameFor} onClose={() => setSelectedKey(null)} />
+      )}
+
+      {selected && currentUser && isAdmin && (
         <PersonagemDialog
           personagem={selected}
           onClose={() => setSelectedKey(null)}
@@ -198,6 +216,55 @@ export function Personagens() {
         />
       )}
     </div>
+  )
+}
+
+/** Detalhe só de leitura (quem não é admin): quem interpreta e em quais cenas o personagem aparece. */
+function PersonagemInfoDialog({
+  personagem,
+  users,
+  nameFor,
+  onClose,
+}: {
+  personagem: PersonagemAgregado
+  users: Record<string, AppUser>
+  nameFor: (uid: string) => string
+  onClose: () => void
+}) {
+  const cenasDoPersonagem = [...new Map(personagem.ocorrencias.map(o => [o.cena.id, o.cena])).values()]
+  return (
+    <Dialog open onClose={onClose} title={personagem.nome}>
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Avatar
+            photoURL={personagem.participanteUid ? users[personagem.participanteUid]?.photoURL : undefined}
+            name={personagem.nome}
+            className="h-12 w-12 text-base"
+          />
+          <div className="min-w-0">
+            <p className="text-sm text-muted-foreground">Interpretado por</p>
+            <p className="truncate text-base font-medium">
+              {personagem.participanteUid ? nameFor(personagem.participanteUid) : 'Ainda sem pessoa'}
+            </p>
+          </div>
+        </div>
+        <div>
+          <p className="mb-1.5 text-sm text-muted-foreground">Cenas</p>
+          {cenasDoPersonagem.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {cenasDoPersonagem.map(c => (
+                <Badge key={c.id} variant="outline" className="gap-1">
+                  <Clapperboard className="h-3 w-3" />
+                  {c.nome}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Ainda não está em nenhuma cena.</p>
+          )}
+        </div>
+      </div>
+    </Dialog>
   )
 }
 

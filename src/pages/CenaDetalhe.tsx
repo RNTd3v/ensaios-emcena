@@ -57,6 +57,7 @@ import {
   updateEnsaioFlags,
   updateEnsaioHorario,
   updateEnsaioObrigatorios,
+  uidsAusentes,
   uidsIndisponiveis,
 } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
@@ -169,6 +170,15 @@ export function CenaDetalhe() {
 
 
   const [weekBase, setWeekBase] = useState(() => new Date())
+  // Ensaios que ainda vão começar: a agenda abre na semana do início (não na atual, que fica vazia).
+  // Vale ao carregar a cena e quando o início muda; depois as setas navegam livremente.
+  const inicioFuturo = cena?.inicioEnsaios && cena.inicioEnsaios > toDateKey(new Date()) ? cena.inicioEnsaios : undefined
+  const chaveInicio = cena ? `${cena.id}|${inicioFuturo ?? ''}` : ''
+  const [chaveInicioAplicada, setChaveInicioAplicada] = useState('')
+  if (chaveInicio !== chaveInicioAplicada) {
+    setChaveInicioAplicada(chaveInicio)
+    if (inicioFuturo) setWeekBase(new Date(`${inicioFuturo}T00:00:00`))
+  }
 
   const [agendaModalOpen, setAgendaModalOpen] = useState(false)
   const [agendaDiasDraft, setAgendaDiasDraft] = useState<DiaSemana[]>([])
@@ -267,11 +277,12 @@ export function CenaDetalhe() {
     [ensaios],
   )
 
-  /** Personagens recorrentes primeiro, na exibição da lista. */
-  const personagensOrdenados = useMemo(
-    () => [...(cena?.personagens ?? [])].sort((a, b) => Number(!!b.recorrente) - Number(!!a.recorrente)),
-    [cena?.personagens],
-  )
+  /** Ordem da lista: o(s) personagem(ns) de quem está vendo, depois o do líder, depois os recorrentes. */
+  const personagensOrdenados = useMemo(() => {
+    const peso = (p: Personagem) =>
+      p.participanteUid && p.participanteUid === currentUser?.uid ? 0 : p.participanteUid && p.participanteUid === cena?.liderUid ? 1 : p.recorrente ? 2 : 3
+    return [...(cena?.personagens ?? [])].sort((a, b) => peso(a) - peso(b))
+  }, [cena?.personagens, cena?.liderUid, currentUser?.uid])
 
   const availableParaAdicionar = useMemo(
     () =>
@@ -754,7 +765,10 @@ export function CenaDetalhe() {
               {!agendaOpen && proximosEnsaios.length > 0 && (
                 <div className="space-y-1 pt-3">
                   {proximosEnsaios.map(e => {
+                    // Todos aqui já são ensaios confirmados pela cena; a cor e o rótulo mostram a
+                    // resposta da própria pessoa (vou / não vou / falta confirmar).
                     const jaConfirmou = !!currentUser && !!e.presencas?.includes(currentUser.uid)
+                    const naoVai = !!currentUser && uidsAusentes(e).includes(currentUser.uid)
                     const podeConfirmar = !!myPersonagem && !jaConfirmou && canCheckin(e.data, e.horario, checkinLimiteHoras)
                     return (
                       <div key={e.id} className="flex items-center gap-1">
@@ -765,11 +779,21 @@ export function CenaDetalhe() {
                           title={podeConfirmar ? 'Toque pra confirmar presença' : undefined}
                           className="flex flex-1 items-center gap-2.5 rounded-lg px-2 py-2.5 text-left text-base"
                         >
-                          <span className={cn('h-2 w-2 shrink-0 rounded-full', jaConfirmou ? 'bg-emerald-500' : 'bg-gray-300')} />
-                          <span className={cn('flex-1 truncate', !jaConfirmou && 'text-gray-400')}>
+                          <span
+                            className={cn('h-2 w-2 shrink-0 rounded-full', jaConfirmou ? 'bg-emerald-500' : naoVai ? 'bg-red-400' : 'bg-primary')}
+                          />
+                          <span className="flex-1 truncate">
                             {formatRelativeDia(e.data, todayKey)} · {formatHoraCompacta(e.horario)}
                           </span>
-                          {jaConfirmou && <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500" />}
+                          {jaConfirmou ? (
+                            <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-600">
+                              <Check className="h-3.5 w-3.5" /> Vou
+                            </span>
+                          ) : naoVai ? (
+                            <span className="shrink-0 text-xs font-medium text-red-500">Não vou</span>
+                          ) : podeConfirmar ? (
+                            <span className="shrink-0 text-xs font-medium text-primary">Confirmar</span>
+                          ) : null}
                         </button>
                         {e.data === todayKey && (
                           <Button
@@ -963,7 +987,11 @@ export function CenaDetalhe() {
                                 </span>
                               )}
                             </p>
-                            {p.participanteUid && <p className="text-xs text-gray-500 truncate">{nameFor(p.participanteUid)}</p>}
+                            {p.participanteUid && (
+                              <p className="text-xs text-gray-500 truncate">
+                                {p.participanteUid === currentUser?.uid ? 'Você' : nameFor(p.participanteUid)}
+                              </p>
+                            )}
                           </div>
                         </Link>
                         {isAdmin && (

@@ -213,6 +213,13 @@ export function subscribeToCenasDoParticipante(uid: string, callback: (cenas: Ce
   return onSnapshot(q, snap => callback(snap.docs.map(d => fromSnap(d.id, d.data()))))
 }
 
+/** Todas as cenas (tela de Personagens: o elenco do musical inteiro — firestore.rules libera a leitura). */
+export function subscribeToTodasCenas(callback: (cenas: Cena[]) => void) {
+  return onSnapshot(query(collection(db, 'cenas'), orderBy('createdAt', 'desc')), snap =>
+    callback(snap.docs.map(d => fromSnap(d.id, d.data()))),
+  )
+}
+
 /**
  * Cenas em que algum dependente (filho) de `responsavelUid` participa — pela lista
  * `responsaveisDependentes` que a Cloud Function mantém na cena (é o que a regra deixa ler).

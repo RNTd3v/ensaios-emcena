@@ -21,7 +21,7 @@ const db = getFirestore()
 const APP_URL = 'https://ensaios-emcena.web.app'
 const FUSO = 'America/Sao_Paulo'
 
-type Tipo = 'ensaio' | 'figurino' | 'tarefa' | 'aviso' | 'reporte'
+type Tipo = 'ensaio' | 'treinamento' | 'figurino' | 'tarefa' | 'aviso' | 'reporte'
 
 interface Notificacao {
   titulo: string
@@ -242,85 +242,208 @@ const AVISO_DO_DIA_MIN = 8 * 60
 const SILENCIO_ATE_MIN = 7 * 60
 /** Minutos antes de a confirmação fechar em que quem não respondeu é lembrado. */
 const MARCOS_CONFIRMACAO = [120, 60, 30, 10]
-const TITULO_MARCO: Record<number, string> = {
-  120: 'Confirme sua presença no ensaio de hoje',
-  60: 'Falta 1h pra fechar a confirmação',
-  30: 'Faltam 30 min pra confirmar',
-  10: 'Últimos minutos pra confirmar',
+function tituloMarco(marco: number, oQue: 'ensaio' | 'treinamento'): string {
+  if (marco === 120) return `Confirme sua presença no ${oQue} de hoje`
+  if (marco === 60) return 'Falta 1h pra fechar a confirmação'
+  if (marco === 30) return 'Faltam 30 min pra confirmar'
+  return 'Últimos minutos pra confirmar'
+}
+
+interface Ocorrencia {
+  /** Ensaio ou sessão de treinamento de hoje (mesmos campos de data/horário/respostas/marcas). */
+  e: DocumentData
+  oQue: 'ensaio' | 'treinamento'
+  participantes: string[]
+  /** Nome da cena ou título do treinamento. */
+  nome: string
+  descricao: string
+  link: string
 }
 
 /**
- * Roda a cada 5 min (fuso de São Paulo), pros ensaios de hoje:
- * - às 8h, "Hoje tem ensaio" pra cena toda (menos quem já avisou que não vai);
- * - 2h, 1h, 30 e 10 min antes de a confirmação fechar (`checkinLimiteHoras` antes do ensaio), um
+ * O que sai agora pra uma ocorrência de hoje (ver `lembretesDoDia`): o que marcar no doc e as
+ * notificações a enviar.
+ */
+function lembretesDaOcorrencia(
+  { e, oQue, participantes, nome, descricao, link }: Ocorrencia,
+  inicio: number,
+  minutos: number,
+  limiteHoras: number,
+): { atualizacao: Record<string, unknown>; envios: [string[], Notificacao][] } {
+  const tipo: Tipo = oQue
+  const ausentes = new Set<string>([...(e.ausentes ?? []), ...Object.keys(e.ausencias ?? {})])
+  const presentes = new Set<string>(e.presencas ?? [])
+  const chave = `${e.data} ${e.horario}`
+  const atualizacao: Record<string, unknown> = {}
+  const envios: [string[], Notificacao][] = []
+
+  // Aviso do dia: só na janela das 8h (se for criado depois, o aviso de criação já avisa).
+  if (e.avisoDoDiaEnviado !== chave && minutos >= AVISO_DO_DIA_MIN && minutos < AVISO_DO_DIA_MIN + 60) {
+    atualizacao.avisoDoDiaEnviado = chave
+    envios.push([
+      participantes.filter(u => !ausentes.has(u)),
+      { titulo: `Hoje tem ${oQue}! Se programe`, corpo: descricao, link, tipo },
+    ])
+  }
+
+  // Lembretes de confirmação.
+  const fecha = inicio - limiteHoras * 60
+  const faltam = fecha - minutos
+  if (faltam > 0) {
+    const anteriores = e.lembretesConfirmacao?.chave === chave ? ((e.lembretesConfirmacao.enviados as number[]) ?? []) : []
+    const devidos = MARCOS_CONFIRMACAO.filter(mc => faltam <= mc && !anteriores.includes(mc))
+    if (devidos.length) {
+      atualizacao.lembretesConfirmacao = { chave, enviados: [...anteriores, ...devidos] }
+      const pendentes = participantes.filter(u => !presentes.has(u) && !ausentes.has(u))
+      if (minutos >= SILENCIO_ATE_MIN && pendentes.length) {
+        envios.push([
+          pendentes,
+          {
+            titulo: tituloMarco(Math.min(...devidos), oQue),
+            corpo: `${nome} hoje às ${horaDeMinutos(inicio)} — confirme até ${horaDeMinutos(fecha)}.`,
+            link,
+            tipo,
+          },
+        ])
+      }
+    }
+  }
+  return { atualizacao, envios }
+}
+
+/**
+ * Roda a cada 5 min (fuso de São Paulo), pros ensaios e sessões de treinamento de hoje:
+ * - às 8h, "Hoje tem ensaio/treinamento" pro público (menos quem já avisou que não vai);
+ * - 2h, 1h, 30 e 10 min antes de a confirmação fechar (`checkinLimiteHoras` antes do início), um
  *   lembrete só pra quem ainda não respondeu (nem "vou" nem "não vou").
- * O que já saiu fica marcado no ensaio (`avisoDoDiaEnviado`, `lembretesConfirmacao`) — atrelado a
- * data+horário, então se o ensaio mudar de horário os lembretes recomeçam. Se a função atrasar ou o
+ * O que já saiu fica marcado no doc (`avisoDoDiaEnviado`, `lembretesConfirmacao`) — atrelado a
+ * data+horário, então se mudar de horário os lembretes recomeçam. Se a função atrasar ou o
  * ensaio for criado em cima da hora, manda só o lembrete mais próximo, sem rajada.
  */
 export const lembretesDoDia = onSchedule({ schedule: 'every 5 minutes', timeZone: FUSO }, async () => {
   const { hoje, minutos } = agoraEmSaoPaulo()
-  const snap = await db.collection('ensaios').where('data', '==', hoje).get()
-  if (snap.empty) return
+  const [ensaios, sessoes] = await Promise.all([
+    db.collection('ensaios').where('data', '==', hoje).get(),
+    db.collection('treinamentoSessoes').where('data', '==', hoje).get(),
+  ])
+  if (ensaios.empty && sessoes.empty) return
   const config = (await db.collection('settings').doc('config').get()).data()
   const limiteHoras = Number(config?.checkinLimiteHoras ?? 2)
 
-  for (const doc of snap.docs) {
+  const ocorrencias: { ref: FirebaseFirestore.DocumentReference; e: DocumentData; carregar: () => Promise<Ocorrencia | null> }[] = []
+  for (const doc of ensaios.docs) {
     const e = doc.data()
     if (e.canceledByUid || e.finalizadoAt) continue
+    ocorrencias.push({
+      ref: doc.ref,
+      e,
+      carregar: async () => {
+        const cena = await getCena(e.cenaId)
+        if (!cena || cena.ativo === false) return null
+        const link = `/cenas/${e.cenaId}/ensaios/${doc.id}`
+        return { e, oQue: 'ensaio', participantes: cena.participantes ?? [], nome: cena.nome, descricao: descricaoEnsaio(cena.nome, e), link }
+      },
+    })
+  }
+  for (const doc of sessoes.docs) {
+    const e = doc.data()
+    ocorrencias.push({
+      ref: doc.ref,
+      e,
+      carregar: async () => {
+        const t = (await db.collection('treinamentos').doc(e.treinamentoId).get()).data()
+        if (!t) return null
+        return {
+          e,
+          oQue: 'treinamento',
+          participantes: await publicoDoTreinamento(t),
+          nome: t.titulo,
+          descricao: descricaoTreinamento(t, e),
+          link: `/treinamentos/${e.treinamentoId}`,
+        }
+      },
+    })
+  }
+
+  for (const { ref, e, carregar } of ocorrencias) {
     const [h, m] = String(e.horario ?? '').split(':').map(Number)
     if (Number.isNaN(h)) continue
     const inicio = h * 60 + (m || 0)
     if (minutos >= inicio) continue
-    const cena = await getCena(e.cenaId)
-    if (!cena || cena.ativo === false) continue
-
-    const participantes: string[] = cena.participantes ?? []
-    const ausentes = new Set<string>([...(e.ausentes ?? []), ...Object.keys(e.ausencias ?? {})])
-    const presentes = new Set<string>(e.presencas ?? [])
-    const link = `/cenas/${e.cenaId}/ensaios/${doc.id}`
-    const chave = `${e.data} ${e.horario}`
-    const atualizacao: Record<string, unknown> = {}
-    const envios: [string[], Notificacao][] = []
-
-    // Aviso do dia: só na janela das 8h (se o ensaio for criado depois, o "Ensaio confirmado" já avisa).
-    if (e.avisoDoDiaEnviado !== chave && minutos >= AVISO_DO_DIA_MIN && minutos < AVISO_DO_DIA_MIN + 60) {
-      atualizacao.avisoDoDiaEnviado = chave
-      envios.push([
-        participantes.filter(u => !ausentes.has(u)),
-        { titulo: 'Hoje tem ensaio! Se programe', corpo: descricaoEnsaio(cena.nome, e), link, tipo: 'ensaio' },
-      ])
-    }
-
-    // Lembretes de confirmação.
-    const fecha = inicio - limiteHoras * 60
-    const faltam = fecha - minutos
-    if (faltam > 0) {
-      const anteriores = e.lembretesConfirmacao?.chave === chave ? ((e.lembretesConfirmacao.enviados as number[]) ?? []) : []
-      const devidos = MARCOS_CONFIRMACAO.filter(mc => faltam <= mc && !anteriores.includes(mc))
-      if (devidos.length) {
-        atualizacao.lembretesConfirmacao = { chave, enviados: [...anteriores, ...devidos] }
-        const pendentes = participantes.filter(u => !presentes.has(u) && !ausentes.has(u))
-        if (minutos >= SILENCIO_ATE_MIN && pendentes.length) {
-          const marco = Math.min(...devidos)
-          envios.push([
-            pendentes,
-            {
-              titulo: TITULO_MARCO[marco],
-              corpo: `${cena.nome} hoje às ${horaDeMinutos(inicio)} — confirme até ${horaDeMinutos(fecha)}.`,
-              link,
-              tipo: 'ensaio',
-            },
-          ])
-        }
-      }
-    }
-
+    const ocorrencia = await carregar()
+    if (!ocorrencia) continue
+    const { atualizacao, envios } = lembretesDaOcorrencia(ocorrencia, inicio, minutos, limiteHoras)
     if (!Object.keys(atualizacao).length) continue
     // Marca antes de enviar (como o lembreteEnsaio): se o envio falhar no meio, não repete.
-    await doc.ref.update(atualizacao)
+    await ref.update(atualizacao)
     for (const [uids, n] of envios) await notificar(uids, n)
   }
+})
+
+// ---------- Treinamentos ----------
+
+/**
+ * Quem um treinamento alcança: "elenco" = quem tem personagem em alguma cena ativa; "pessoas" = só
+ * as escolhidas; "todos" = todo mundo com acesso ativo (dependentes viram os responsáveis no `notificar`).
+ */
+async function publicoDoTreinamento(t: DocumentData): Promise<string[]> {
+  if (t.publico === 'pessoas') return (t.pessoas as string[] | undefined) ?? []
+  if (t.publico === 'elenco') {
+    const cenas = await db.collection('cenas').get()
+    const uids = new Set<string>()
+    for (const c of cenas.docs) {
+      const cena = c.data()
+      if (cena.ativo === false) continue
+      for (const p of (cena.personagens as { participanteUid?: string }[] | undefined) ?? []) if (p.participanteUid) uids.add(p.participanteUid)
+    }
+    return [...uids]
+  }
+  const users = await db.collection('users').where('active', '==', true).get()
+  return users.docs.map(d => d.id)
+}
+
+function descricaoTreinamento(t: DocumentData, s: DocumentData): string {
+  return `${t.titulo} · ${quando(s.data, s.horario)}${t.local ? ` · ${t.local}` : ''}`
+}
+
+/** "Novo treinamento: …" pra `uids` — com os dias tirados das sessões dele. */
+async function avisarTreinamento(id: string, t: DocumentData, uids: string[]): Promise<void> {
+  const sessoes = (await db.collection('treinamentoSessoes').where('treinamentoId', '==', id).get()).docs
+    .map(d => d.data())
+    .sort((a, b) => `${a.data} ${a.horario}`.localeCompare(`${b.data} ${b.horario}`))
+  if (!sessoes.length || !uids.length) return
+  const dias = sessoes.length === 1 ? quando(sessoes[0].data, sessoes[0].horario) : `${sessoes.length} dias, a partir de ${quando(sessoes[0].data, sessoes[0].horario)}`
+  await notificar(
+    uids,
+    {
+      titulo: `Novo treinamento: ${t.titulo}`,
+      corpo: `${dias}${t.local ? ` · ${t.local}` : ''}. Confirme sua presença no dia.`,
+      link: `/treinamentos/${id}`,
+      tipo: 'treinamento',
+    },
+    t.createdByUid,
+  )
+}
+
+/** Treinamento cadastrado: avisa o público pra confirmar presença (as sessões vêm no mesmo batch). */
+export const treinamentoCriado = onDocumentCreated('treinamentos/{id}', async event => {
+  const t = event.data?.data()
+  if (!t) return
+  await avisarTreinamento(event.params.id, t, await publicoDoTreinamento(t))
+})
+
+/**
+ * Treinamento editado: quem passou a fazer parte do público (pessoa incluída na lista, ou troca de
+ * "pessoas" pra elenco/todos) recebe o mesmo aviso de novo treinamento. Quem já estava não recebe nada.
+ */
+export const treinamentoAlterado = onDocumentUpdated('treinamentos/{id}', async event => {
+  const antes = event.data?.before.data()
+  const depois = event.data?.after.data()
+  if (!antes || !depois) return
+  if (antes.publico === depois.publico && antes.publico !== 'pessoas') return
+  const [eram, sao] = await Promise.all([publicoDoTreinamento(antes), publicoDoTreinamento(depois)])
+  const jaAvisados = new Set(eram)
+  await avisarTreinamento(event.params.id, depois, sao.filter(u => !jaAvisados.has(u)))
 })
 
 // ---------- Figurino ----------

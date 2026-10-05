@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useProximosTreinamentos } from '@/hooks/useTreinamentos'
 import { subscribeToCenasDoParticipante, subscribeToCenasDosMeusDependentes } from '@/services/firebase/cenas'
 import { aplicarIndisponibilidades, subscribeToEnsaiosDaCena, uidsIndisponiveis } from '@/services/firebase/ensaios'
 import { getInscricao } from '@/services/firebase/inscricoes'
@@ -19,7 +20,8 @@ import type { Cena, Ensaio, Inscricao, LocalEnsaio } from '@/types'
  * Card em destaque na Home pra quem é do elenco (tem personagem vinculado em alguma cena ativa):
  * o próximo ensaio dessa pessoa — o de hoje ainda não finalizado, senão o próximo futuro — com
  * a resposta dela ali mesmo ("Vou" / "Não vou" com motivo) e atalho pra página do ensaio.
- * Não renderiza nada pra quem não tem personagem.
+ * Não renderiza nada pra quem não tem personagem. Ensaio no mesmo dia de um treinamento da pessoa
+ * fica de fora — o treinamento tem prioridade e aparece no ProximoTreinamentoCard.
  */
 export function ProximoEnsaioCard({
   uid,
@@ -82,16 +84,20 @@ export function ProximoEnsaioCard({
     }
   }, [minhaInscricao, minhasCenas, ensaiosPorCena, todayKey, uid])
 
+  // Só renderiza pra quem é do elenco, então os treinamentos "só elenco" valem.
+  const treinamentos = useProximosTreinamentos(uid, true)
+  const diasDeTreinamento = useMemo(() => new Set(treinamentos.map(t => t.sessao.data)), [treinamentos])
+
   const proximo = useMemo(() => {
     const candidatos: { ensaio: Ensaio; cena: Cena }[] = []
     for (const cena of minhasCenas) {
       for (const e of ensaiosPorCena[cena.id] ?? []) {
-        if (e.canceledByUid || e.finalizadoAt || e.data < todayKey) continue
+        if (e.canceledByUid || e.finalizadoAt || e.data < todayKey || diasDeTreinamento.has(e.data)) continue
         candidatos.push({ ensaio: e, cena })
       }
     }
     return candidatos.sort((a, b) => a.ensaio.data.localeCompare(b.ensaio.data) || a.ensaio.horario.localeCompare(b.ensaio.horario))[0]
-  }, [minhasCenas, ensaiosPorCena, todayKey])
+  }, [minhasCenas, ensaiosPorCena, todayKey, diasDeTreinamento])
 
   if (!cenas || minhasCenas.length === 0) return null
 

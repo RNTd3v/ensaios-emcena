@@ -339,6 +339,46 @@ export interface Ensaio {
 }
 
 /**
+ * Treinamento cadastrado pelo admin (coleção `treinamentos`) — oficina, aula de canto, preparação
+ * corporal etc. Os dias/horários ficam em `treinamentoSessoes` (um doc por dia), cada um com a
+ * resposta de presença no mesmo esquema do ensaio.
+ */
+export interface Treinamento {
+  id: string
+  titulo: string
+  descricao: string
+  /** Tipo de roupa (texto livre, ex.: "Roupa confortável, tênis"). */
+  roupa?: string
+  /** O que precisa levar (texto livre, ex.: "Garrafa d'água, toalha"). */
+  levar?: string
+  local?: string
+  /**
+   * Pra quem vale (e quem é notificado): todos com acesso ativo, só o elenco (personagem em alguma
+   * cena ativa) ou só as `pessoas` escolhidas.
+   */
+  publico: TreinamentoPublico
+  /** uids escolhidos, com `publico: 'pessoas'`. */
+  pessoas?: string[]
+  createdByUid: string
+  createdAt: string
+}
+
+export type TreinamentoPublico = 'todos' | 'elenco' | 'pessoas'
+
+/** Um dia/horário de um treinamento (coleção `treinamentoSessoes`). */
+export interface TreinamentoSessao {
+  id: string
+  treinamentoId: string
+  /** YYYY-MM-DD */
+  data: string
+  /** HH:mm */
+  horario: string
+  /** Mesmo esquema do `Ensaio`: quem vai, quem não vai (motivo na subcoleção `ausencias/{uid}`). */
+  presencas?: string[]
+  ausentes?: string[]
+}
+
+/**
  * Local de ensaio cadastrado pelo admin (coleção `locais`). O ensaio guarda só o nome em
  * `Ensaio.local` (texto), então renomear um local aqui não muda ensaios já marcados com o nome antigo.
  */
@@ -517,7 +557,7 @@ export interface Notificacao {
   corpo: string
   /** Rota dentro do app pra onde a notificação leva. */
   link?: string | null
-  tipo: 'ensaio' | 'figurino' | 'tarefa' | 'aviso' | 'reporte'
+  tipo: 'ensaio' | 'treinamento' | 'figurino' | 'tarefa' | 'aviso' | 'reporte'
   lida: boolean
   createdAt: string
 }

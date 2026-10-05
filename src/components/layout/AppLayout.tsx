@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Bug, Camera, User as UserIcon, CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
+import { Bug, Camera, User as UserIcon, CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, GraduationCap, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -149,6 +149,7 @@ export function AppLayout() {
                 <>
                   <MenuItem to="/" label="Início" icon={Home} end onClick={() => setMenuOpen(false)} />
                   <MenuItem to="/cenas" label={isAdmin ? 'Cenas' : 'Minhas Cenas'} icon={Clapperboard} onClick={() => setMenuOpen(false)} />
+                  <MenuItem to="/treinamentos" label="Treinamentos" icon={GraduationCap} onClick={() => setMenuOpen(false)} />
                   {equipesVisivel && (
                     <MenuItem to="/equipes" label="Equipes" icon={UsersRound} onClick={() => setMenuOpen(false)} />
                   )}

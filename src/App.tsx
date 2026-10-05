@@ -29,6 +29,8 @@ import { Notificacoes } from '@/pages/Notificacoes'
 import { AdminLocais } from '@/pages/AdminLocais'
 import { AdminVersiculos } from '@/pages/AdminVersiculos'
 import { Disponibilidade } from '@/pages/Disponibilidade'
+import { Treinamentos } from '@/pages/Treinamentos'
+import { TreinamentoDetalhe } from '@/pages/TreinamentoDetalhe'
 import { initAuth } from '@/stores/authStore'
 import { AdminReportes } from '@/pages/AdminReportes'
 
@@ -138,6 +140,8 @@ function App() {
             }
           />
           <Route path="metas-gastos" element={<MetasGastos />} />
+          <Route path="treinamentos" element={<Treinamentos />} />
+          <Route path="treinamentos/:id" element={<TreinamentoDetalhe />} />
           <Route path="notificacoes" element={<Notificacoes />} />
           <Route path="musicas" element={<MusicasPage />} />
           <Route path="figurinos" element={<FigurinosPage />} />

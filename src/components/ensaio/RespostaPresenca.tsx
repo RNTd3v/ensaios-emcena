@@ -11,6 +11,12 @@ import {
   subscribeToMinhaAusencia,
   uidsAusentes,
 } from '@/services/firebase/ensaios'
+import {
+  confirmarPresencaTreinamento,
+  desfazerAusenciaTreinamento,
+  registrarAusenciaTreinamento,
+  subscribeToMinhaAusenciaTreinamento,
+} from '@/services/firebase/treinamentos'
 import { canCheckin } from '@/lib/agenda'
 import type { AusenciaMotivo, Ensaio } from '@/types'
 
@@ -19,12 +25,25 @@ export function ensaioJaComecou(ensaio: Pick<Ensaio, 'data' | 'horario'>): boole
   return new Date() >= new Date(`${ensaio.data}T${ensaio.horario}:00`)
 }
 
+/** Onde a resposta é gravada: no ensaio ou numa sessão de treinamento (mesmo esquema). */
+const ACOES = {
+  ensaio: { confirmar: confirmarPresenca, ausencia: registrarAusencia, desfazer: desfazerAusencia, minhaAusencia: subscribeToMinhaAusencia },
+  treinamento: {
+    confirmar: confirmarPresencaTreinamento,
+    ausencia: registrarAusenciaTreinamento,
+    desfazer: desfazerAusenciaTreinamento,
+    minhaAusencia: subscribeToMinhaAusenciaTreinamento,
+  },
+}
+
 interface Props {
-  ensaio: Ensaio
+  ensaio: Pick<Ensaio, 'id' | 'data' | 'horario' | 'presencas' | 'ausentes' | 'ausencias'>
   uid: string
   checkinLimiteHoras: number
   /** Respondendo por outra pessoa (filho/dependente): o nome dela, pros textos. */
   paraQuem?: string
+  /** Sessão de treinamento em vez de ensaio (default: ensaio). */
+  tipo?: keyof typeof ACOES
 }
 
 /**
@@ -34,7 +53,8 @@ interface Props {
  * volta a ficar sem resposta, e confirma quando a janela abrir. Se o "não vou" veio da indisponibilidade da inscrição, a pessoa
  * pode mudar de ideia e confirmar a qualquer momento antes do ensaio, sem esperar a janela do check-in.
  */
-export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem }: Props) {
+export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem, tipo = 'ensaio' }: Props) {
+  const { confirmar, ausencia: registrar, desfazer, minhaAusencia: subscribeMinhaAusencia } = ACOES[tipo]
   const [escrevendoMotivo, setEscrevendoMotivo] = useState(false)
   const [motivo, setMotivo] = useState('')
   const [saving, setSaving] = useState(false)
@@ -44,8 +64,8 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem }: 
   const ausente = uidsAusentes(ensaio).includes(uid)
   useEffect(() => {
     if (!ausente) return setMinhaAusencia(null)
-    return subscribeToMinhaAusencia(ensaio.id, uid, setMinhaAusencia)
-  }, [ensaio.id, uid, ausente])
+    return subscribeMinhaAusencia(ensaio.id, uid, setMinhaAusencia)
+  }, [ensaio.id, uid, ausente, subscribeMinhaAusencia])
 
   const confirmado = !!ensaio.presencas?.includes(uid)
   // Motivo privado (subcoleção), com fallback pro legado ainda não migrado.
@@ -90,7 +110,7 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem }: 
             variant="destructive"
             size="sm"
             className="flex-1"
-            onClick={() => run(() => registrarAusencia(ensaio.id, uid, motivo))}
+            onClick={() => run(() => registrar(ensaio.id, uid, motivo))}
             disabled={saving || !motivo.trim()}
           >
             {saving && <Spinner size="sm" className="border-white/40 border-t-white" />}
@@ -128,7 +148,7 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem }: 
           {!comecou && <p className="mt-0.5 text-xs text-amber-700">Mudou de ideia? Ainda dá tempo de confirmar.</p>}
         </div>
         {!comecou && (
-          <Button size="sm" className="w-full gap-1.5" onClick={() => run(() => confirmarPresenca(ensaio.id, uid))} disabled={saving}>
+          <Button size="sm" className="w-full gap-1.5" onClick={() => run(() => confirmar(ensaio.id, uid))} disabled={saving}>
             {saving ? <Spinner size="sm" className="border-white/40 border-t-white" /> : <Check className="h-4 w-4" />}
             {paraQuem ? `${paraQuem} vai sim` : 'Mudei de ideia, vou!'}
           </Button>
@@ -157,7 +177,7 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem }: 
             <Button
               size="sm"
               className="flex-1 gap-1.5"
-              onClick={() => run(() => (podeConfirmar ? confirmarPresenca(ensaio.id, uid) : desfazerAusencia(ensaio.id, uid)))}
+              onClick={() => run(() => (podeConfirmar ? confirmar(ensaio.id, uid) : desfazer(ensaio.id, uid)))}
               disabled={saving}
             >
               {saving ? <Spinner size="sm" className="border-white/40 border-t-white" /> : <Check className="h-4 w-4" />}
@@ -171,7 +191,7 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem }: 
   }
 
   if (comecou)
-    return <p className="text-xs text-muted-foreground">{paraQuem ? `Sem resposta pra ${paraQuem}.` : 'Você não respondeu a esse ensaio.'}</p>
+    return <p className="text-xs text-muted-foreground">{paraQuem ? `Sem resposta pra ${paraQuem}.` : `Você não respondeu a esse ${tipo}.`}</p>
 
   return (
     <div className="space-y-2">
@@ -183,7 +203,7 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem }: 
         <Button
           size="sm"
           className="flex-1 gap-1.5"
-          onClick={() => run(() => confirmarPresenca(ensaio.id, uid))}
+          onClick={() => run(() => confirmar(ensaio.id, uid))}
           disabled={saving || !podeConfirmar}
         >
           {saving ? <Spinner size="sm" className="border-white/40 border-t-white" /> : <Check className="h-4 w-4" />}
@@ -192,7 +212,7 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem }: 
       </div>
       {!podeConfirmar && (
         <p className="text-center text-[11px] text-muted-foreground">
-          A confirmação abre no dia do ensaio, até {checkinLimiteHoras}h antes do horário.
+          A confirmação abre no dia do {tipo}, até {checkinLimiteHoras}h antes do horário.
         </p>
       )}
       {error && <p className="text-xs text-red-600">{error}</p>}

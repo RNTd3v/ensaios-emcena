@@ -464,5 +464,46 @@ service cloud.firestore {
           || (isAuthenticated() && uid.matches('dep_.*') && responsavelDe(uid) && uid in cenaDoEnsaio().participantes);
       }
     }
+
+    // Treinamentos: qualquer autenticado lê (o público — elenco/pessoas escolhidas — é filtrado no app), só admin
+    // cadastra/edita/exclui. Cada dia/horário é um doc em `treinamentoSessoes`, com a resposta de
+    // presença no mesmo esquema do ensaio: a pessoa só se inclui/tira de `presencas`/`ausentes`
+    // (listaPropriaOk) e o motivo fica privado na subcoleção `ausencias`. Como no ensaio, a janela
+    // do check-in e o público (todos, elenco ou pessoas) são checados pelo cliente.
+    match /treinamentos/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Pai/mãe respondendo por UM filho numa sessão de treinamento: só esse uid muda nas listas.
+    function respostaDeDependenteTreinamentoOk() {
+      let alterados = alteradosEm('presencas').concat(alteradosEm('ausentes'));
+      return alterados.size() >= 1
+        && alterados.toSet().size() == 1
+        && alterados[0].matches('dep_.*')
+        && responsavelDe(alterados[0]);
+    }
+
+    match /treinamentoSessoes/{id} {
+      allow read: if isAuthenticated();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isActiveParticipant()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presencas', 'ausentes'])
+            && listaPropriaOk('presencas')
+            && listaPropriaOk('ausentes'))
+        || (isActiveParticipant()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presencas', 'ausentes'])
+            && respostaDeDependenteTreinamentoOk());
+
+      match /ausencias/{uid} {
+        allow read: if isAdmin()
+          || (isAuthenticated() && request.auth.uid == uid)
+          || (isAuthenticated() && uid.matches('dep_.*') && responsavelDe(uid));
+        allow write: if isAdmin()
+          || (isActiveParticipant() && request.auth.uid == uid)
+          || (isActiveParticipant() && uid.matches('dep_.*') && responsavelDe(uid));
+      }
+    }
   }
 }

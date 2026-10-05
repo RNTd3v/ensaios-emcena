@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Check, CheckCircle2, Clock, ExternalLink, Plus, MapPin, NotebookPen, Pause, Pencil, Play, RotateCcw, Shirt, Star, Users, X, XCircle, RefreshCw } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
+import { NotificarElenco } from '@/components/ensaio/NotificarElenco'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -793,6 +794,9 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
   const [obrigatorios, setObrigatorios] = useState<string[]>(ensaio.obrigatorios ?? [])
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [canceling, setCanceling] = useState(false)
+  // Só horário e local geram aviso de "Ensaio alterado" — aí aparece a opção de notificar ou não.
+  const [notificar, setNotificar] = useState(true)
+  const mudaAviso = horario !== ensaio.horario || local.trim() !== (ensaio.local ?? '').trim()
   const [extraUid, setExtraUid] = useState('')
   const elencoUids = new Set(elenco.map(p => p.participanteUid as string))
   const extras = presencas.filter(uid => !elencoUids.has(uid))
@@ -819,6 +823,7 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
         ensaio.id,
         { horario, local, geral, comFigurino, obrigatorios, presencas: presencasMudaram ? presencas : undefined },
         currentUser.uid,
+        notificar,
       )
       const registroMudou = duracao !== duracaoInicial || anotacoes !== (ensaio.anotacoes ?? '')
       if (comRegistro && registroMudou) {
@@ -836,7 +841,7 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
     if (!currentUser) return
     setCanceling(true)
     try {
-      await cancelarEnsaio(ensaio.id, currentUser.uid)
+      await cancelarEnsaio(ensaio.id, currentUser.uid, notificar)
       onClose()
     } catch {
       setError('Não foi possível cancelar. Tente de novo.')
@@ -1035,6 +1040,8 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
+        {mudaAviso && !confirmCancel && <NotificarElenco value={notificar} onChange={setNotificar} />}
+
         <Button className="w-full" onClick={handleSave} disabled={saving}>
           {saving && <Spinner size="sm" className="border-white/40 border-t-white" />}
           Salvar
@@ -1045,6 +1052,7 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
             <p className="text-xs text-red-700">
               Cancelar esse ensaio? O registro continua visível como cancelado e pode ser reconfirmado depois (as presenças são zeradas).
             </p>
+            <NotificarElenco value={notificar} onChange={setNotificar} />
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={() => setConfirmCancel(false)} disabled={canceling}>
                 Voltar

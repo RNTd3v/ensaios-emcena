@@ -20,12 +20,14 @@ import {
   Shirt,
   Star,
   Trash2,
+  CalendarX,
   X,
 } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { AvatarStack } from '@/components/ui/AvatarStack'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { NotificarElenco } from '@/components/ensaio/NotificarElenco'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -643,13 +645,40 @@ export function CenaDetalhe() {
     }
   }
 
+  // Cancelar pela lista da semana: o X abre a escolha de avisar ou não o elenco.
+  const [cancelandoId, setCancelandoId] = useState<string | null>(null)
+  const [notificarCancelamento, setNotificarCancelamento] = useState(true)
   async function handleUnconfirm(ensaio: Ensaio) {
     if (!currentUser) return
     setSavingConfirm(true)
     try {
-      await cancelarEnsaio(ensaio.id, currentUser.uid)
+      await cancelarEnsaio(ensaio.id, currentUser.uid, notificarCancelamento)
+      setCancelandoId(null)
     } finally {
       setSavingConfirm(false)
+    }
+  }
+
+  // Cancelar direto pela agenda (sem entrar na página do ensaio).
+  const [cancelarDaAgenda, setCancelarDaAgenda] = useState<Ensaio | null>(null)
+  const [notificarDaAgenda, setNotificarDaAgenda] = useState(true)
+  const [cancelandoDaAgenda, setCancelandoDaAgenda] = useState(false)
+  const [erroCancelarDaAgenda, setErroCancelarDaAgenda] = useState('')
+  function abrirCancelarDaAgenda(ensaio: Ensaio) {
+    setNotificarDaAgenda(true)
+    setErroCancelarDaAgenda('')
+    setCancelarDaAgenda(ensaio)
+  }
+  async function handleCancelarDaAgenda() {
+    if (!currentUser || !cancelarDaAgenda) return
+    setCancelandoDaAgenda(true)
+    try {
+      await cancelarEnsaio(cancelarDaAgenda.id, currentUser.uid, notificarDaAgenda)
+      setCancelarDaAgenda(null)
+    } catch {
+      setErroCancelarDaAgenda('Não foi possível cancelar. Tente de novo.')
+    } finally {
+      setCancelandoDaAgenda(false)
     }
   }
 
@@ -908,6 +937,18 @@ export function CenaDetalhe() {
                               className="shrink-0"
                             >
                               <Play className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {ativo && canManageAgenda && dateKey >= todayKey && !ensaio.finalizadoAt && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => abrirCancelarDaAgenda(ensaio)}
+                              title="Cancelar ensaio"
+                              aria-label="Cancelar ensaio"
+                              className="shrink-0 text-gray-400 hover:text-red-600 active:text-red-600"
+                            >
+                              <CalendarX className="h-4 w-4" />
                             </Button>
                           )}
                           </div>
@@ -1219,6 +1260,28 @@ export function CenaDetalhe() {
             </CardContent>
           </Card>
         </>
+      )}
+
+      {cancelarDaAgenda && (
+        <Dialog open onClose={() => setCancelarDaAgenda(null)} title="Cancelar ensaio">
+          <div className="space-y-3">
+            <p className="text-sm text-gray-700">
+              {formatRelativeDia(cancelarDaAgenda.data, todayKey)} · {formatHoraCompacta(cancelarDaAgenda.horario)} — o registro continua
+              visível como cancelado e pode ser reconfirmado depois (as presenças são zeradas).
+            </p>
+            <NotificarElenco value={notificarDaAgenda} onChange={setNotificarDaAgenda} />
+            {erroCancelarDaAgenda && <p className="text-sm text-red-600">{erroCancelarDaAgenda}</p>}
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setCancelarDaAgenda(null)} disabled={cancelandoDaAgenda}>
+                Voltar
+              </Button>
+              <Button variant="destructive" className="flex-1" onClick={handleCancelarDaAgenda} disabled={cancelandoDaAgenda}>
+                {cancelandoDaAgenda && <Spinner size="sm" className="border-white/40 border-t-white" />}
+                Cancelar ensaio
+              </Button>
+            </div>
+          </div>
+        </Dialog>
       )}
 
       {cena && pessoaModal && (
@@ -1599,12 +1662,36 @@ export function CenaDetalhe() {
                         <p className="text-xs text-gray-500">{o.horario} · cancelado</p>
                       ) : null}
                     </div>
-                    {confirmado && (
-                      <Button variant="ghost" size="icon" onClick={() => handleUnconfirm(confirmado)} disabled={savingConfirm} title="Cancelar">
+                    {confirmado && cancelandoId !== confirmado.id && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setNotificarCancelamento(true)
+                          setCancelandoId(confirmado.id)
+                        }}
+                        disabled={savingConfirm}
+                        title="Cancelar"
+                      >
                         <X className="h-4 w-4 text-gray-400" />
                       </Button>
                     )}
                   </div>
+
+                  {confirmado && cancelandoId === confirmado.id && (
+                    <div className="mt-2.5 space-y-2 rounded-lg border border-red-200 bg-red-50 p-2.5">
+                      <p className="text-xs text-red-700">Cancelar o ensaio desse dia?</p>
+                      <NotificarElenco value={notificarCancelamento} onChange={setNotificarCancelamento} />
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" className="flex-1" onClick={() => setCancelandoId(null)} disabled={savingConfirm}>
+                          Voltar
+                        </Button>
+                        <Button variant="destructive" size="sm" className="flex-1" onClick={() => handleUnconfirm(confirmado)} disabled={savingConfirm}>
+                          Cancelar ensaio
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   {!confirmado && detail && (
                     <div className="mt-2.5 space-y-2 pl-7">

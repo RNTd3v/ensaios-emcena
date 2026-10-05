@@ -59,10 +59,12 @@ export async function updateEnsaioInfo(
   id: string,
   info: { horario: string; local: string; geral: boolean; comFigurino: boolean; obrigatorios: string[]; presencas?: string[] },
   byUid?: string,
+  notificar = true,
 ): Promise<void> {
   await updateDoc(doc(db, 'ensaios', id), {
     // Quem mexeu por último — as Cloud Functions usam pra não notificar a própria pessoa.
     ...(byUid ? { atualizadoPorUid: byUid } : {}),
+    ...campoNotificar(notificar),
     horario: info.horario,
     local: info.local.trim() || deleteField(),
     geral: info.geral || deleteField(),
@@ -85,9 +87,17 @@ export async function updateEnsaioFlags(id: string, flags: { geral: boolean; com
   })
 }
 
+/**
+ * `notificar: false` no mesmo update = a Cloud Function `ensaioAlterado` não manda o aviso dessa
+ * mudança (e apaga o campo). Com `true`, nem grava — o padrão é avisar.
+ */
+function campoNotificar(notificar: boolean) {
+  return notificar ? {} : { notificar: false }
+}
+
 /** Cancela um ensaio confirmado — mantém o registro (pra mostrar "cancelado por Fulano"), não apaga. */
-export async function cancelarEnsaio(id: string, canceledByUid: string): Promise<void> {
-  await updateDoc(doc(db, 'ensaios', id), { canceledByUid, canceledAt: serverTimestamp() })
+export async function cancelarEnsaio(id: string, canceledByUid: string, notificar = true): Promise<void> {
+  await updateDoc(doc(db, 'ensaios', id), { canceledByUid, canceledAt: serverTimestamp(), ...campoNotificar(notificar) })
 }
 
 /** Reconfirma um ensaio cancelado — limpa o cancelamento e reinicia as presenças confirmadas. */

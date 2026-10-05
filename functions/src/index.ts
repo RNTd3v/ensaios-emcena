@@ -225,6 +225,12 @@ export const ensaioAlterado = onDocumentUpdated('ensaios/{id}', async event => {
   const antes = event.data?.before.data()
   const depois = event.data?.after.data()
   if (!antes || !depois) return
+  // Quem alterou/cancelou escolheu não notificar (`notificar: false` no mesmo update): o elenco vê
+  // só pelo app. Apaga o campo pra próxima mudança voltar ao padrão (esse update não gera aviso).
+  if (depois.notificar === false) {
+    await event.data!.after.ref.update({ notificar: FieldValue.delete() })
+    return
+  }
   const cena = await getCena(depois.cenaId)
   if (!cena || cena.ativo === false) return
   const link = `/cenas/${depois.cenaId}/ensaios/${event.params.id}`

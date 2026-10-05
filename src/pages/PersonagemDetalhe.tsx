@@ -21,6 +21,7 @@ import { toDateKey, formatRelativeDia } from '@/lib/agenda'
 import { formatHoraCompacta } from '@/lib/cenaHorario'
 import { whatsappLink } from '@/lib/formatters'
 import { FIGURINO_MAX_BYTES } from '@/lib/uploads'
+import { corsDoStorage } from '@/lib/imagem'
 import { cn } from '@/lib/utils'
 
 const FICHA_VAZIA: PersonagemFicha = {}
@@ -420,7 +421,7 @@ export function PersonagemDetalhe() {
                       onClick={() => setViewerIndex(index)}
                       className="relative aspect-square overflow-hidden rounded-lg bg-gray-100"
                     >
-                      <img src={f.url} alt="" className="h-full w-full object-cover" />
+                      <img src={f.url} crossOrigin={corsDoStorage(f.url)} alt="" className="h-full w-full object-cover" />
                       {f.aprovacao && f.aprovacao !== 'aprovado' && (
                         <span
                           className={cn(
@@ -479,7 +480,7 @@ export function PersonagemDetalhe() {
         {viewerIndex !== null && fotos[viewerIndex] && (
           <div className="space-y-3">
             <div className="relative">
-              <img src={fotos[viewerIndex].url} alt="" className="w-full rounded-lg" />
+              <img src={fotos[viewerIndex].url} crossOrigin={corsDoStorage(fotos[viewerIndex].url)} alt="" className="w-full rounded-lg" />
               {viewerIndex > 0 && (
                 <button
                   type="button"

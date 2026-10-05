@@ -2,7 +2,7 @@ import { GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect,
 import { doc, getDoc, getDocs, collection, setDoc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { auth, db, storage } from './config'
-import { deleteCenaFile } from './storage'
+import { CACHE_IMUTAVEL, deleteCenaFile } from './storage'
 import type { AppUser, UserRole } from '@/types'
 
 /** O login roda no mesmo domínio do app (authDomain = domínio do Hosting, com /__/auth/ servido por ele). */
@@ -73,7 +73,7 @@ export async function ensureUserDoc(uid: string, email: string, displayName: str
 export async function salvarFotoPerfil(uid: string, foto: Blob, pathAnterior?: string): Promise<{ url: string; path: string }> {
   const path = `usuarios/${uid}/${crypto.randomUUID()}.jpg`
   const fileRef = ref(storage, path)
-  await uploadBytes(fileRef, foto, { contentType: 'image/jpeg' })
+  await uploadBytes(fileRef, foto, { contentType: 'image/jpeg', cacheControl: CACHE_IMUTAVEL })
   const url = await getDownloadURL(fileRef)
   await updateDoc(doc(db, 'users', uid), { photoURL: url, fotoPath: path })
   if (pathAnterior) await deleteCenaFile(pathAnterior)

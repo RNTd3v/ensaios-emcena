@@ -559,6 +559,38 @@ export interface Notificacao {
   link?: string | null
   tipo: 'ensaio' | 'treinamento' | 'figurino' | 'tarefa' | 'aviso' | 'reporte'
   lida: boolean
+  lidaEm?: string
+  createdAt: string
+  /** Resultado do push (gravado pela Cloud Function). Ausente = notificação de antes do rastreio. */
+  push?: {
+    /** Aparelhos com push ativo que a pessoa tinha no envio (0 = só no app). */
+    aparelhos: number
+    /** Em quantos o FCM aceitou a mensagem. */
+    enviados?: number
+    /** Códigos de erro do FCM, um por aparelho que falhou. */
+    falhas?: string[]
+    enviadoEm?: string
+    /** Quando um aparelho confirmou que recebeu (service worker). */
+    recebidoEm?: string
+  }
+}
+
+/** Estado do push de cada pessoa (`pushStatus/{uid}`), atualizado pelo app ao abrir. */
+export interface PushStatus {
+  uid: string
+  estado: 'ativo' | 'desligado' | 'negado' | 'sem-suporte'
+  ios: boolean
+  /** Aberto como app instalado (tela inicial) — no iPhone, o push só funciona assim. */
+  instalado: boolean
+  userAgent: string
+  atualizadoEm: string
+}
+
+/** Aparelho com push ativo (`fcmTokens/{token}`). */
+export interface AparelhoPush {
+  token: string
+  uid: string
+  userAgent?: string
   createdAt: string
 }
 

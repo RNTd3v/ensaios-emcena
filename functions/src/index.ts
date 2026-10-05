@@ -12,6 +12,7 @@ import { getMessaging } from 'firebase-admin/messaging'
 import { setGlobalOptions } from 'firebase-functions/v2'
 import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from 'firebase-functions/v2/firestore'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
+import { onRequest } from 'firebase-functions/v2/https'
 import { logger } from 'firebase-functions'
 
 initializeApp()
@@ -82,13 +83,29 @@ async function notificar(uids: (string | undefined | null)[], base: Notificacao,
   for (const { n, uids: destinos } of porTitulo.values()) await gravarEEnviar(destinos, n)
 }
 
-/** Grava a notificação pra cada destinatário e manda o push pros aparelhos deles. */
+/**
+ * Grava a notificação pra cada destinatário e manda o push pros aparelhos deles. Cada doc guarda
+ * o resultado do push (`push`): quantos aparelhos a pessoa tinha, em quantos o FCM aceitou, os
+ * erros — e o aparelho confirma depois que recebeu (`push.recebidoEm`, via `pushRecebido`). É o
+ * que a tela "Entrega de notificações" do admin mostra.
+ */
 async function gravarEEnviar(destinatarios: string[], n: Notificacao): Promise<void> {
+  // Tokens dos aparelhos (consulta `in` aceita até 30 valores por vez).
+  const tokens: { token: string; uid: string; ref: FirebaseFirestore.DocumentReference }[] = []
+  for (const grupo of chunks(destinatarios, 30)) {
+    const snap = await db.collection('fcmTokens').where('uid', 'in', grupo).get()
+    snap.forEach(d => tokens.push({ token: d.id, uid: d.data().uid, ref: d.ref }))
+  }
+  const aparelhosPorUid = new Map<string, number>()
+  for (const t of tokens) aparelhosPorUid.set(t.uid, (aparelhosPorUid.get(t.uid) ?? 0) + 1)
 
+  const notifPorUid = new Map<string, FirebaseFirestore.DocumentReference>()
   for (const grupo of chunks(destinatarios, 400)) {
     const batch = db.batch()
     for (const uid of grupo) {
-      batch.set(db.collection('notificacoes').doc(), {
+      const ref = db.collection('notificacoes').doc()
+      notifPorUid.set(uid, ref)
+      batch.set(ref, {
         uid,
         titulo: n.titulo,
         corpo: n.corpo,
@@ -96,35 +113,76 @@ async function gravarEEnviar(destinatarios: string[], n: Notificacao): Promise<v
         tipo: n.tipo,
         lida: false,
         createdAt: FieldValue.serverTimestamp(),
+        push: { aparelhos: aparelhosPorUid.get(uid) ?? 0 },
       })
     }
     await batch.commit()
   }
-
-  // Tokens dos aparelhos (consulta `in` aceita até 30 valores por vez).
-  const tokens: { token: string; ref: FirebaseFirestore.DocumentReference }[] = []
-  for (const grupo of chunks(destinatarios, 30)) {
-    const snap = await db.collection('fcmTokens').where('uid', 'in', grupo).get()
-    snap.forEach(d => tokens.push({ token: d.id, ref: d.ref }))
-  }
   if (!tokens.length) return
 
+  // Uma mensagem por aparelho (não multicast): cada uma leva o id da notificação da pessoa, que o
+  // service worker devolve ao receber.
   const link = `${APP_URL}${n.link ?? '/notificacoes'}`
+  const resultado = new Map<string, { enviados: number; falhas: string[] }>()
+  let ok = 0
+  let falhas = 0
+  const invalidos: FirebaseFirestore.DocumentReference[] = []
   for (const grupo of chunks(tokens, 500)) {
-    const res = await getMessaging().sendEachForMulticast({
-      tokens: grupo.map(t => t.token),
-      // Só `data`: o service worker do app (public/firebase-messaging-sw.js) monta a notificação.
-      data: { titulo: n.titulo, corpo: n.corpo, link, tipo: n.tipo },
-      webpush: { headers: { Urgency: 'high', TTL: String(60 * 60 * 24) } },
+    const res = await getMessaging().sendEach(
+      grupo.map(t => ({
+        token: t.token,
+        // Só `data`: o service worker do app (public/firebase-messaging-sw.js) monta a notificação.
+        data: { titulo: n.titulo, corpo: n.corpo, link, tipo: n.tipo, nid: notifPorUid.get(t.uid)!.id },
+        webpush: { headers: { Urgency: 'high', TTL: String(60 * 60 * 24) } },
+      })),
+    )
+    res.responses.forEach((r, i) => {
+      const t = grupo[i]
+      const atual = resultado.get(t.uid) ?? { enviados: 0, falhas: [] }
+      if (r.success) {
+        atual.enviados++
+        ok++
+      } else {
+        const codigo = r.error?.code ?? 'desconhecido'
+        atual.falhas.push(codigo)
+        falhas++
+        // Tokens que não valem mais (app desinstalado, permissão revogada): remove.
+        if (/registration-token-not-registered|invalid-argument|invalid-registration-token/.test(codigo)) invalidos.push(t.ref)
+      }
+      resultado.set(t.uid, atual)
     })
-    // Tokens que não valem mais (app desinstalado, permissão revogada): remove.
-    const invalidos = res.responses
-      .map((r, i) => (!r.success && r.error && /registration-token-not-registered|invalid-argument|invalid-registration-token/.test(r.error.code) ? grupo[i].ref : null))
-      .filter((r): r is FirebaseFirestore.DocumentReference => !!r)
-    await Promise.all(invalidos.map(r => r.delete()))
-    if (res.failureCount) logger.info(`push: ${res.successCount} ok, ${res.failureCount} falharam (${invalidos.length} tokens removidos)`)
   }
+  await Promise.all(invalidos.map(r => r.delete()))
+
+  const pares = [...resultado.entries()]
+  for (const grupo of chunks(pares, 400)) {
+    const batch = db.batch()
+    for (const [uid, r] of grupo) {
+      batch.update(notifPorUid.get(uid)!, { 'push.enviados': r.enviados, 'push.falhas': r.falhas, 'push.enviadoEm': FieldValue.serverTimestamp() })
+    }
+    await batch.commit()
+  }
+  logger.info(`push "${n.titulo}": ${destinatarios.length} pessoas, ${aparelhosPorUid.size} com aparelho; ${ok} ok, ${falhas} falharam (${invalidos.length} tokens removidos)`)
 }
+
+/**
+ * Confirmação de entrega: o service worker chama (POST, corpo = id da notificação) quando o push
+ * chega no aparelho. Fica atrás do Hosting em /api/push-recebido (firebase.json), mesma origem do
+ * app. Sem login — o id é aleatório e só marca a data de recebimento.
+ */
+export const pushRecebido = onRequest({ maxInstances: 5 }, async (req, res) => {
+  const nid = typeof req.body === 'string' ? req.body.trim() : String(req.rawBody ?? '').trim()
+  if (req.method !== 'POST' || !/^[A-Za-z0-9]{20}$/.test(nid)) {
+    res.status(400).end()
+    return
+  }
+  await db
+    .collection('notificacoes')
+    .doc(nid)
+    .update({ 'push.recebidoEm': FieldValue.serverTimestamp() })
+    .catch(() => {})
+  res.status(204).end()
+})
 
 // ---------- Helpers de dados ----------
 
@@ -370,6 +428,10 @@ export const lembretesDoDia = onSchedule({ schedule: 'every 5 minutes', timeZone
     if (Number.isNaN(h)) continue
     const inicio = h * 60 + (m || 0)
     if (minutos >= inicio) continue
+    // O que marcar não depende do público: sem nada devido agora, nem carrega a cena/treinamento
+    // (o público de um treinamento "todos" são todos os usuários — leitura cara a cada 5 min).
+    const vazio: Ocorrencia = { e, oQue: 'ensaio', participantes: [], nome: '', descricao: '', link: '' }
+    if (!Object.keys(lembretesDaOcorrencia(vazio, inicio, minutos, limiteHoras).atualizacao).length) continue
     const ocorrencia = await carregar()
     if (!ocorrencia) continue
     const { atualizacao, envios } = lembretesDaOcorrencia(ocorrencia, inicio, minutos, limiteHoras)

@@ -15,7 +15,7 @@ import {
 } from 'firebase/firestore'
 import { getMessaging, getToken, isSupported } from 'firebase/messaging'
 import { app, db } from './config'
-import type { Notificacao } from '@/types'
+import type { AparelhoPush, Notificacao, PushStatus } from '@/types'
 
 /**
  * Notificações da pessoa (criadas pelas Cloud Functions — ver functions/src/index.ts) e o
@@ -26,11 +26,27 @@ function toIso(value: unknown): string {
   return (value as { toDate?: () => Date })?.toDate?.().toISOString() ?? new Date().toISOString()
 }
 
-export function subscribeToNotificacoes(uid: string, callback: (lista: Notificacao[]) => void) {
-  const q = query(collection(db, 'notificacoes'), where('uid', '==', uid), orderBy('createdAt', 'desc'), limit(60))
+function talvezIso(value: unknown): string | undefined {
+  return (value as { toDate?: () => Date })?.toDate?.().toISOString()
+}
+
+function notificacaoFromSnap(id: string, data: Record<string, unknown>): Notificacao {
+  const push = data.push as Record<string, unknown> | undefined
+  return {
+    ...data,
+    id,
+    createdAt: toIso(data.createdAt),
+    lidaEm: talvezIso(data.lidaEm),
+    push: push ? { ...push, enviadoEm: talvezIso(push.enviadoEm), recebidoEm: talvezIso(push.recebidoEm) } : undefined,
+  } as Notificacao
+}
+
+/** As notificações de `uid` (a própria pessoa — ou qualquer uma, pro admin). */
+export function subscribeToNotificacoes(uid: string, callback: (lista: Notificacao[]) => void, max = 60) {
+  const q = query(collection(db, 'notificacoes'), where('uid', '==', uid), orderBy('createdAt', 'desc'), limit(max))
   return onSnapshot(
     q,
-    snap => callback(snap.docs.map(d => ({ ...d.data(), id: d.id, createdAt: toIso(d.data().createdAt) }) as Notificacao)),
+    snap => callback(snap.docs.map(d => notificacaoFromSnap(d.id, d.data()))),
     () => callback([]),
   )
 }
@@ -103,6 +119,56 @@ export async function ativarPush(uid: string): Promise<PushEstado> {
 
   await setDoc(doc(db, 'fcmTokens', token), { uid, userAgent: navigator.userAgent.slice(0, 200), createdAt: serverTimestamp() })
   return 'ativo'
+}
+
+// ---------- Rastreio de entrega (tela do admin) ----------
+
+const ESTADO_PUSH_CACHE = 'pushStatus.ultimo'
+
+/**
+ * Grava em `pushStatus/{uid}` como está o push nesse aparelho (permissão, instalado, iPhone) —
+ * é o que explica, na tela do admin, por que alguém não recebe. Só escreve se mudou ou a cada 12h.
+ */
+export async function registrarEstadoPush(uid: string): Promise<void> {
+  const dados = {
+    uid,
+    estado: await estadoPush(),
+    ios: ehIOS(),
+    instalado: rodandoComoApp(),
+    userAgent: navigator.userAgent.slice(0, 200),
+  }
+  const chave = JSON.stringify(dados)
+  try {
+    const anterior = JSON.parse(localStorage.getItem(ESTADO_PUSH_CACHE) ?? 'null') as { chave: string; em: number } | null
+    if (anterior?.chave === chave && Date.now() - anterior.em < 12 * 60 * 60 * 1000) return
+  } catch {
+    // cache ilegível — grava de novo
+  }
+  await setDoc(doc(db, 'pushStatus', uid), { ...dados, atualizadoEm: serverTimestamp() })
+  try {
+    localStorage.setItem(ESTADO_PUSH_CACHE, JSON.stringify({ chave, em: Date.now() }))
+  } catch {
+    // storage indisponível
+  }
+}
+
+/** Admin: estado do push de todo mundo, por uid. */
+export function subscribeToPushStatus(callback: (porUid: Record<string, PushStatus>) => void) {
+  return onSnapshot(
+    collection(db, 'pushStatus'),
+    snap =>
+      callback(Object.fromEntries(snap.docs.map(d => [d.id, { ...d.data(), uid: d.id, atualizadoEm: toIso(d.data().atualizadoEm) } as PushStatus]))),
+    () => callback({}),
+  )
+}
+
+/** Admin: todos os aparelhos com push ativo. */
+export function subscribeToAparelhosPush(callback: (lista: AparelhoPush[]) => void) {
+  return onSnapshot(
+    collection(db, 'fcmTokens'),
+    snap => callback(snap.docs.map(d => ({ ...d.data(), token: d.id, createdAt: toIso(d.data().createdAt) }) as AparelhoPush)),
+    () => callback([]),
+  )
 }
 
 /** Instalado como app (tela inicial) — no iPhone o push só funciona assim. */

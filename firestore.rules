@@ -293,7 +293,8 @@ service cloud.firestore {
     // Notificações: um doc por destinatário, criado só pelas Cloud Functions (functions/). Cada um
     // lê as suas e só pode marcar como lida (ou apagar).
     match /notificacoes/{id} {
-      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      // Admin também lê (tela "Entrega de notificações", pra rastrear quem recebeu o quê).
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
       allow update: if isAuthenticated() && resource.data.uid == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lida', 'lidaEm']);
       allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
@@ -302,8 +303,16 @@ service cloud.firestore {
 
     // Tokens de push (id = token do aparelho): cada um registra/remove os próprios.
     match /fcmTokens/{token} {
-      allow read, delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
       allow create, update: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+    }
+
+    // Estado do push de cada pessoa (permissão, app instalado, iPhone), gravado pelo próprio app ao
+    // abrir. Não fica em `users` porque aquele é lido por todo mundo; aqui só a pessoa e o admin.
+    match /pushStatus/{uid} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == uid);
+      allow write: if isAuthenticated() && request.auth.uid == uid && request.resource.data.uid == uid;
     }
 
     // Avisos manuais: admin manda pra todos/qualquer grupo; líder da cena ou da equipe, só pro

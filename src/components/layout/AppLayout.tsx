@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Bug, Camera, User as UserIcon, CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, GraduationCap, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
+import { BellRing, Bug, Camera, User as UserIcon, CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, GraduationCap, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -14,7 +14,7 @@ import { PhoneMockup } from '@/components/layout/PhoneMockup'
 import { useApresentacaoLaterais } from '@/components/layout/ApresentacaoLaterais'
 import { lerModoApresentacao } from '@/lib/apresentacao'
 import { SinoNotificacoes } from '@/components/layout/SinoNotificacoes'
-import { ativarPush } from '@/services/firebase/notificacoes'
+import { ativarPush, registrarEstadoPush } from '@/services/firebase/notificacoes'
 import { cn } from '@/lib/utils'
 import { SemConexaoBanner } from '@/components/layout/SemConexao'
 import { ReportarProblemaDialog } from '@/components/layout/ReportarProblemaDialog'
@@ -54,8 +54,10 @@ export function AppLayout() {
   // com o tempo) — sem pedir nada, já que a permissão foi dada.
   const uid = user?.uid
   useEffect(() => {
-    if (!uid || !('Notification' in window) || Notification.permission !== 'granted') return
-    ativarPush(uid).catch(() => {})
+    if (!uid) return
+    // Depois de renovar o token, registra como está o push aqui (pra tela "Entrega de notificações").
+    const renovar = 'Notification' in window && Notification.permission === 'granted' ? ativarPush(uid).catch(() => {}) : Promise.resolve()
+    renovar.then(() => registrarEstadoPush(uid)).catch(() => {})
   }, [uid])
 
   return (
@@ -176,6 +178,7 @@ export function AppLayout() {
                           <MenuItem to="/calendario" label="Calendário geral de ensaios" icon={CalendarClock} onClick={() => setMenuOpen(false)} />
                           <MenuItem to="/admin" label="Gerenciamento" icon={ShieldCheck} onClick={() => setMenuOpen(false)} />
                           <MenuItem to="/admin/reportes" label="Problemas reportados" icon={Bug} onClick={() => setMenuOpen(false)} />
+                          <MenuItem to="/admin/notificacoes" label="Entrega de notificações" icon={BellRing} onClick={() => setMenuOpen(false)} />
                         </>
                       )}
                     </>

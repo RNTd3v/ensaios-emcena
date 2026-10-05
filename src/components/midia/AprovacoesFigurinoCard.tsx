@@ -8,6 +8,8 @@ import { Textarea } from '@/components/ui/Textarea'
 import { avaliarFigurino, subscribeToFigurinos } from '@/services/firebase/midias'
 import { useAuthStore } from '@/stores/authStore'
 import type { AppUser, Cena, FigurinoImagem } from '@/types'
+import { corsDoStorage } from '@/lib/imagem'
+
 
 /**
  * Fotos de figurino que o elenco mandou e ainda esperam a aprovação do líder da cena. Só aparece
@@ -53,7 +55,7 @@ export function AprovacoesFigurinoCard({ cena, users }: { cena: Cena; users: Rec
           return (
             <div key={f.id} className="flex gap-3 rounded-xl bg-gray-50 p-2">
               <a href={f.url} target="_blank" rel="noreferrer" className="shrink-0">
-                <img src={f.url} alt="" className="h-20 w-20 rounded-lg object-cover" />
+                <img src={f.url} crossOrigin={corsDoStorage(f.url)} alt="" className="h-20 w-20 rounded-lg object-cover" />
               </a>
               <div className="min-w-0 flex-1 space-y-1.5">
                 <div>

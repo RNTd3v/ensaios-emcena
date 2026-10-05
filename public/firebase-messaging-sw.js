@@ -3,7 +3,8 @@
  * (/firebase-cloud-messaging-push-scope), separado do service worker do PWA.
  * Não importa script de fora (o CSP do app bloquearia) — o FCM entrega um Web Push padrão e
  * aqui a gente monta a notificação a partir do `data` que as Cloud Functions mandam
- * (titulo, corpo, link, tipo).
+ * (titulo, corpo, link, tipo, nid). Depois de mostrar, confirma o recebimento (`nid` = id da
+ * notificação) pra tela "Entrega de notificações" do admin.
  */
 self.addEventListener('push', event => {
   let payload = {}
@@ -18,15 +19,17 @@ self.addEventListener('push', event => {
   const corpo = data.corpo || notification.body || ''
   const link = data.link || '/notificacoes'
 
-  event.waitUntil(
-    self.registration.showNotification(titulo, {
-      body: corpo,
-      icon: '/web-app-manifest-192x192.png',
-      badge: '/favicon-96x96.png',
-      data: { link },
-      tag: data.tipo ? `${data.tipo}-${Date.now()}` : undefined,
-    }),
-  )
+  const mostrar = self.registration.showNotification(titulo, {
+    body: corpo,
+    icon: '/web-app-manifest-192x192.png',
+    badge: '/favicon-96x96.png',
+    data: { link },
+    tag: data.tipo ? `${data.tipo}-${Date.now()}` : undefined,
+  })
+  const confirmar = data.nid
+    ? fetch('/api/push-recebido', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: data.nid }).catch(() => {})
+    : Promise.resolve()
+  event.waitUntil(Promise.all([mostrar, confirmar]))
 })
 
 self.addEventListener('notificationclick', event => {

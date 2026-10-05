@@ -19,3 +19,12 @@ export async function reduzirFotoQuadrada(file: File, lado = 512): Promise<Blob>
     canvas.toBlob(b => (b ? resolve(b) : reject(new Error('Falha ao gerar a imagem'))), 'image/jpeg', 0.85),
   )
 }
+
+/**
+ * `crossOrigin` pra uma `<img>`: foto do Storage é pedida com CORS (o Storage responde
+ * `Access-Control-Allow-Origin: *`), pro service worker guardar a resposta de verdade — a "opaca"
+ * (sem CORS) conta ~7 MB cada na cota do navegador, que estourava e apagava o cache de fotos.
+ */
+export function corsDoStorage(url: string | undefined | null): 'anonymous' | undefined {
+  return url?.startsWith('https://firebasestorage.googleapis.com/') ? 'anonymous' : undefined
+}

@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { FIGURINO_MAX_BYTES } from '@/lib/uploads'
 import type { Cena, FigurinoImagem } from '@/types'
 import { CenaSelect } from '@/components/midia/CenaSelect'
+import { corsDoStorage } from '@/lib/imagem'
 import { cn } from '@/lib/utils'
 
 type FigurinoItem = FigurinoImagem & { legado?: boolean }
@@ -264,7 +265,7 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhive
                     onClick={() => setViewer(f)}
                     className="relative aspect-square overflow-hidden rounded-lg bg-gray-100"
                   >
-                    <img src={f.url} alt={f.legenda ?? ''} className="h-full w-full object-cover" loading="lazy" />
+                    <img src={f.url} crossOrigin={corsDoStorage(f.url)} alt={f.legenda ?? ''} className="h-full w-full object-cover" loading="lazy" />
                     {f.aprovacao && f.aprovacao !== 'aprovado' && (
                       <span
                         className={`absolute left-1 top-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium text-white ${
@@ -590,7 +591,7 @@ function FigurinoViewer({ figurino, rotulo, podeEditar, cena, cenas, equipeId, p
   return (
     <Dialog open onClose={onClose} title="Figurino">
       <div className="space-y-3">
-        <img src={figurino.url} alt={figurino.legenda ?? ''} className="max-h-[55vh] w-full rounded-lg object-contain bg-gray-50" />
+        <img src={figurino.url} crossOrigin={corsDoStorage(figurino.url)} alt={figurino.legenda ?? ''} className="max-h-[55vh] w-full rounded-lg object-contain bg-gray-50" />
         <div className="text-xs text-muted-foreground">
           <p>
             {!cena && (figurino.cenaNome ? `${figurino.cenaNome} · ` : 'Sem cena · ')}

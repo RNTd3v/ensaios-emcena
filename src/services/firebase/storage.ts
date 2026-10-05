@@ -1,6 +1,13 @@
 import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import { storage } from './config'
 
+/**
+ * Todo arquivo sobe com nome aleatório (trocar = arquivo novo, URL nova), então o conteúdo de uma
+ * URL nunca muda: o navegador pode guardar pra sempre. Sem isso o Storage manda
+ * `private, max-age=0` e o navegador baixa/confere de novo a cada vez.
+ */
+export const CACHE_IMUTAVEL = 'private, max-age=31536000, immutable'
+
 function extensionOf(fileName: string): string {
   const dot = fileName.lastIndexOf('.')
   return dot >= 0 ? fileName.slice(dot) : ''
@@ -15,7 +22,7 @@ export async function uploadCenaFile(
   const id = crypto.randomUUID()
   const path = `cenas/${cenaId}/${pasta}/${id}${extensionOf(file.name)}`
   const fileRef = ref(storage, path)
-  await uploadBytes(fileRef, file, { contentType: file.type })
+  await uploadBytes(fileRef, file, { contentType: file.type, cacheControl: CACHE_IMUTAVEL })
   const url = await getDownloadURL(fileRef)
   return { id, url, path }
 }
@@ -34,7 +41,7 @@ export async function uploadArquivo(pasta: string, file: File): Promise<{ id: st
   const id = crypto.randomUUID()
   const path = `${pasta}/${id}${extensionOf(file.name)}`
   const fileRef = ref(storage, path)
-  await uploadBytes(fileRef, file, { contentType: file.type })
+  await uploadBytes(fileRef, file, { contentType: file.type, cacheControl: CACHE_IMUTAVEL })
   const url = await getDownloadURL(fileRef)
   return { id, url, path }
 }

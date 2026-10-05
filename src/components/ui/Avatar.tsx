@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { User } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { corsDoStorage } from '@/lib/imagem'
 
 interface Props {
   photoURL?: string | null
@@ -8,7 +9,10 @@ interface Props {
   className?: string
 }
 
-/** Foto do usuário (Google), com fallback pras iniciais ou um ícone genérico. */
+/**
+ * Foto do usuário (Google ou escolhida no app), com fallback pras iniciais ou um ícone genérico.
+ * Foto do Storage vai com CORS pra ficar no cache do aparelho (ver `corsDoStorage`).
+ */
 export function Avatar({ photoURL, name, className }: Props) {
   // Foto que não carregou (link expirado, bloqueio, sem internet): cai pras iniciais, em vez do
   // ícone de imagem quebrada. Volta a tentar se o link mudar.
@@ -20,6 +24,9 @@ export function Avatar({ photoURL, name, className }: Props) {
         src={photoURL}
         alt={name ?? ''}
         referrerPolicy="no-referrer"
+        crossOrigin={corsDoStorage(photoURL)}
+        loading="lazy"
+        decoding="async"
         onError={() => setFalhou(photoURL)}
         className={cn('rounded-full object-cover shrink-0', className)}
       />

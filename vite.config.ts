@@ -54,6 +54,19 @@ export default defineConfig({
         // connect-src — as fotos quebravam.
         runtimeCaching: [
           {
+            // Fotos de perfil e de figurino (pedidas com CORS — ver corsDoStorage): resposta normal,
+            // que ocupa o tamanho real. Cache separado do de baixo: uma resposta opaca guardada lá não
+            // serve pra um pedido CORS. O de baixo fica pras imagens restantes (fundo, prints).
+            urlPattern: ({ url, request }) =>
+              url.hostname === 'firebasestorage.googleapis.com' && request.destination === 'image' && request.mode === 'cors',
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'fotos-v1',
+              expiration: { maxEntries: 800, maxAgeSeconds: 60 * 60 * 24 * 365, purgeOnQuotaError: true },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+          {
             urlPattern: ({ url, request }) => url.hostname === 'firebasestorage.googleapis.com' && request.destination === 'image',
             handler: 'CacheFirst',
             options: {

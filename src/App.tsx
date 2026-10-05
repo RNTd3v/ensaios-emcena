@@ -33,6 +33,7 @@ import { Treinamentos } from '@/pages/Treinamentos'
 import { TreinamentoDetalhe } from '@/pages/TreinamentoDetalhe'
 import { initAuth } from '@/stores/authStore'
 import { AdminReportes } from '@/pages/AdminReportes'
+import { AdminEntregas } from '@/pages/AdminEntregas'
 
 function App() {
   useEffect(() => {
@@ -69,6 +70,14 @@ function App() {
             element={
               <AdminGuard>
                 <AdminReportes />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="admin/notificacoes"
+            element={
+              <AdminGuard>
+                <AdminEntregas />
               </AdminGuard>
             }
           />

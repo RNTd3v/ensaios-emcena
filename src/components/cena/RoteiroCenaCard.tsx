@@ -227,7 +227,7 @@ function configurarVoz(u: SpeechSynthesisUtterance, voz: SpeechSynthesisVoice | 
   u.lang = voz?.lang ?? 'pt-BR'
 }
 
-function LeitorRoteiro({ blocos, meusPersonagens }: { blocos: BlocoRoteiro[]; meusPersonagens: string[] }) {
+export function LeitorRoteiro({ blocos, meusPersonagens }: { blocos: BlocoRoteiro[]; meusPersonagens: string[] }) {
   const suportado = typeof window !== 'undefined' && 'speechSynthesis' in window
   const vozes = useVozesPt()
   const [prefs, setPrefs] = usePreferenciasVoz()

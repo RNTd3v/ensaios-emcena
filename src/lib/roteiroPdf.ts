@@ -1,7 +1,7 @@
 /**
- * Recorte do PDF do roteiro (só no navegador do admin, carregado sob demanda — `pdf-lib` e
- * `pdfjs-dist` não entram no app de quem só assiste): copia as páginas da cena pra um PDF novo e
- * extrai o texto delas pra montar as falas.
+ * Recorte do PDF do roteiro (carregado sob demanda — `pdf-lib` e `pdfjs-dist` não entram no bundle
+ * principal): copia as páginas da cena pra um PDF novo e extrai o texto delas pra montar as falas.
+ * Também extrai o texto do roteiro inteiro, pro áudio da Home.
  */
 import { PDFDocument } from 'pdf-lib'
 // Build "legacy" do pdf.js: a padrão (v6) usa APIs novíssimas do JS (ex.: Map.getOrInsertComputed)
@@ -77,4 +77,14 @@ export async function recortarPdf(original: ArrayBuffer, paginaInicio: number, p
   await tarefa.destroy()
 
   return { pdf, texto: partes.join('\n'), totalPaginas }
+}
+
+/** Texto do PDF inteiro, uma linha do PDF por linha. */
+export async function textoDoPdf(original: ArrayBuffer): Promise<string> {
+  const tarefa = pdfjs.getDocument({ data: new Uint8Array(original) })
+  const doc = await tarefa.promise
+  const partes: string[] = []
+  for (let n = 1; n <= doc.numPages; n++) partes.push(await textoDaPagina(await doc.getPage(n)))
+  await tarefa.destroy()
+  return partes.join('\n')
 }

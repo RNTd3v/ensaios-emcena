@@ -21,6 +21,7 @@ import { VERSICULOS_SUGERIDOS } from '@/lib/versiculosSugeridos'
 import { InstalarAppCard } from '@/components/home/InstalarAppCard'
 import { InteresseEquipesCard } from '@/components/inscricao/InteresseEquipes'
 import { TarefasEmAndamentoCard } from '@/components/home/TarefasEmAndamentoCard'
+import { OuvirRoteiro } from '@/components/home/OuvirRoteiro'
 
 function sortear<T>(lista: T[]): T | undefined {
   return lista[Math.floor(Math.random() * lista.length)]
@@ -119,6 +120,8 @@ export function Home() {
 function RoteiroCard({ roteiros }: { roteiros?: AppSettings['roteiros'] }) {
   const [urls, setUrls] = useState<Partial<Record<RoteiroTipo, string>>>({})
   const disponiveis = ROTEIRO_TIPOS.filter(t => roteiros?.[t.tipo])
+  // Áudio: sempre do roteiro de letra grande; sem ele, não aparece.
+  const paraOuvir = roteiros?.grande
 
   useEffect(() => {
     let ativo = true
@@ -180,6 +183,7 @@ function RoteiroCard({ roteiros }: { roteiros?: AppSettings['roteiros'] }) {
             </a>
           )
         })}
+        {paraOuvir && <OuvirRoteiro arquivo={paraOuvir} />}
       </CardContent>
     </Card>
   )

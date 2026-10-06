@@ -19,12 +19,33 @@ export interface RecortePdf {
   totalPaginas: number
 }
 
+interface ItemTexto {
+  str: string
+  hasEOL: boolean
+  transform: number[]
+}
+
+/**
+ * Os itens de texto da página. Não usa `getTextContent()`: ele percorre um ReadableStream com
+ * `for await`, que o Safari não suporta ("undefined is not a function") — aqui lê o mesmo stream
+ * com `getReader()`.
+ */
+async function itensDaPagina(pagina: pdfjs.PDFPageProxy): Promise<(ItemTexto | object)[]> {
+  const leitor = (pagina.streamTextContent() as ReadableStream<{ items: (ItemTexto | object)[] }>).getReader()
+  const itens: (ItemTexto | object)[] = []
+  for (;;) {
+    const { done, value } = await leitor.read()
+    if (done) break
+    itens.push(...value.items)
+  }
+  return itens
+}
+
 /** Texto de uma página, reconstruindo as linhas (quebra quando o item marca fim de linha ou a altura muda). */
 async function textoDaPagina(pagina: pdfjs.PDFPageProxy): Promise<string> {
-  const conteudo = await pagina.getTextContent()
   let texto = ''
   let ultimoY: number | null = null
-  for (const item of conteudo.items) {
+  for (const item of await itensDaPagina(pagina)) {
     if (!('str' in item)) continue
     const y = item.transform[5]
     if (ultimoY !== null && Math.abs(y - ultimoY) > 2 && !texto.endsWith('\n')) texto += '\n'

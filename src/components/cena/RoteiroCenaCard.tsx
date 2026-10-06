@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Download, Eye, FileText, Pause, Play, Settings2, SkipBack, SkipForward, Trash2 } from 'lucide-react'
+import { ChevronDown, Download, Eye, FileText, Pause, Play, Settings2, SkipBack, SkipForward, Trash2, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
@@ -165,9 +165,77 @@ function useVozesPt(): SpeechSynthesisVoice[] {
 
 const VELOCIDADES = [0.8, 1, 1.25, 1.5]
 
+/**
+ * A melhor voz em português pra ser a principal: pt-BR antes de pt-PT; instalada no aparelho
+ * (`localService`) antes das de rede — essas às vezes falham e o sistema cai na voz padrão dele,
+ * que pode ser em inglês.
+ */
+function melhorVoz(vozes: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
+  const peso = (v: SpeechSynthesisVoice) => (v.lang.toLowerCase().replace('_', '-') === 'pt-br' ? 0 : 2) + (v.localService ? 0 : 1)
+  return [...vozes].sort((a, b) => peso(a) - peso(b))[0]
+}
+
+/** Busca a voz de novo na lista atual (objeto antigo pode não valer mais, e o Safari cai pro inglês). */
+function vozAtual(uri: string | undefined): SpeechSynthesisVoice | undefined {
+  if (!uri) return undefined
+  return speechSynthesis.getVoices().find(v => v.voiceURI === uri && v.lang.toLowerCase().startsWith('pt'))
+}
+
+interface PreferenciasVoz {
+  /** voiceURI da voz principal (narrador e quem não tem voz própria). Vazio = automática. */
+  principal?: string
+  /** voiceURI por personagem (nome como está no roteiro). */
+  personagens: Record<string, string>
+  /** Muda o tom de cada personagem que usa a voz principal, pra diferenciar quem fala. */
+  variarTom: boolean
+}
+
+const CHAVE_PREFS = 'roteiro.vozes'
+
+/** Escolha de vozes, guardada no aparelho (cada aparelho tem vozes diferentes). */
+function usePreferenciasVoz(): [PreferenciasVoz, (p: PreferenciasVoz) => void] {
+  const [prefs, setPrefs] = useState<PreferenciasVoz>(() => {
+    try {
+      const salvo = JSON.parse(localStorage.getItem(CHAVE_PREFS) ?? 'null') as Partial<PreferenciasVoz> | null
+      return { personagens: {}, variarTom: true, ...salvo }
+    } catch {
+      return { personagens: {}, variarTom: true }
+    }
+  })
+  function salvar(p: PreferenciasVoz) {
+    setPrefs(p)
+    try {
+      localStorage.setItem(CHAVE_PREFS, JSON.stringify(p))
+    } catch {
+      // sem storage — vale só nessa sessão
+    }
+  }
+  return [prefs, salvar]
+}
+
+/** A voz e o tom de um trecho, conforme as preferências. */
+function vozDoTrecho(personagem: string | undefined, prefs: PreferenciasVoz, vozes: SpeechSynthesisVoice[]) {
+  const principal = vozAtual(prefs.principal) ?? melhorVoz(vozes)
+  const propria = personagem ? vozAtual(prefs.personagens[personagem]) : undefined
+  const tom = personagem && !propria && prefs.variarTom ? TONS[hash(personagem) % TONS.length] : 1
+  return { voz: propria ?? principal, tom }
+}
+
+function configurarVoz(u: SpeechSynthesisUtterance, voz: SpeechSynthesisVoice | undefined) {
+  if (voz) u.voice = voz
+  // O idioma sempre junto: sem voz (lista ainda vazia), o sistema escolhe uma em português.
+  u.lang = voz?.lang ?? 'pt-BR'
+}
+
 function LeitorRoteiro({ blocos, meusPersonagens }: { blocos: BlocoRoteiro[]; meusPersonagens: string[] }) {
   const suportado = typeof window !== 'undefined' && 'speechSynthesis' in window
   const vozes = useVozesPt()
+  const [prefs, setPrefs] = usePreferenciasVoz()
+  const [vozesAberto, setVozesAberto] = useState(false)
+  const personagensDoRoteiro = useMemo(
+    () => [...new Set(blocos.flatMap(b => (b.tipo === 'fala' ? [b.personagem] : [])))],
+    [blocos],
+  )
   const temMinhas = useMemo(() => blocos.some(b => b.tipo === 'fala' && falaDe(b.personagem, meusPersonagens)), [blocos, meusPersonagens])
 
   const [modo, setModo] = useState<'ouvir' | 'ensaiar'>('ouvir')
@@ -185,9 +253,9 @@ function LeitorRoteiro({ blocos, meusPersonagens }: { blocos: BlocoRoteiro[]; me
   const [revelado, setRevelado] = useState(false)
 
   // As opções podem mudar com a leitura em andamento: o encadeamento (onend) lê sempre as atuais.
-  const opcoes = useRef({ trechos, modo, velocidade, vozes })
+  const opcoes = useRef({ trechos, modo, velocidade, vozes, prefs })
   useEffect(() => {
-    opcoes.current = { trechos, modo, velocidade, vozes }
+    opcoes.current = { trechos, modo, velocidade, vozes, prefs }
   })
   const geracao = useRef(0)
 
@@ -208,7 +276,7 @@ function LeitorRoteiro({ blocos, meusPersonagens }: { blocos: BlocoRoteiro[]; me
 
   function falar(i: number, g: number) {
     if (g !== geracao.current) return
-    const { trechos: lista, modo: m, velocidade: vel, vozes: vs } = opcoes.current
+    const { trechos: lista, modo: m, velocidade: vel, vozes: vs, prefs: pv } = opcoes.current
     if (i >= lista.length) {
       setTocando(false)
       setAtual(-1)
@@ -223,17 +291,12 @@ function LeitorRoteiro({ blocos, meusPersonagens }: { blocos: BlocoRoteiro[]; me
       return
     }
     const u = new SpeechSynthesisUtterance(t.texto)
-    u.lang = 'pt-BR'
-    u.rate = vel
-    if (t.tipo === 'fala' && t.personagem) {
-      const h = hash(t.personagem)
-      if (vs.length) u.voice = vs[h % vs.length]
-      u.pitch = TONS[h % TONS.length]
-    } else {
-      // Narrador (nomes e direções): voz padrão, um pouco mais rápido.
-      if (vs.length) u.voice = vs[0]
-      u.rate = vel * 1.1
-    }
+    // Fala: a voz do personagem (ou a principal, com tom próprio). Narrador (nomes e direções):
+    // a principal, um pouco mais rápido.
+    const { voz, tom } = vozDoTrecho(t.tipo === 'fala' ? t.personagem : undefined, pv, vs)
+    configurarVoz(u, voz)
+    u.pitch = tom
+    u.rate = t.tipo === 'fala' ? vel : vel * 1.1
     u.onend = () => falar(i + 1, g)
     u.onerror = e => {
       if (e.error !== 'interrupted' && e.error !== 'canceled') falar(i + 1, g)
@@ -374,6 +437,17 @@ function LeitorRoteiro({ blocos, meusPersonagens }: { blocos: BlocoRoteiro[]; me
                 Esconder minhas falas
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => {
+                pausar()
+                setVozesAberto(true)
+              }}
+              className={cn(chip(false), 'flex items-center gap-1')}
+            >
+              <Volume2 className="h-3.5 w-3.5" />
+              Vozes
+            </button>
           </div>
           {modo === 'ensaiar' && (
             <p className="text-center text-[11px] text-muted-foreground">O áudio para na sua fala — fale e toque em Continuar.</p>
@@ -435,7 +509,138 @@ function LeitorRoteiro({ blocos, meusPersonagens }: { blocos: BlocoRoteiro[]; me
           })}
         </div>
       )}
+      {vozesAberto && (
+        <VozesDialog
+          vozes={vozes}
+          personagens={personagensDoRoteiro}
+          prefs={prefs}
+          onChange={setPrefs}
+          onClose={() => setVozesAberto(false)}
+        />
+      )}
     </div>
+  )
+}
+
+// ---------- Escolha de vozes ----------
+
+/** Nome da voz pra lista: "Luciana (pt-BR)", marcando as que dependem de internet. */
+function rotuloVoz(v: SpeechSynthesisVoice): string {
+  return `${v.name} (${v.lang})${v.localService ? '' : ' · internet'}`
+}
+
+function VozesDialog({
+  vozes,
+  personagens,
+  prefs,
+  onChange,
+  onClose,
+}: {
+  vozes: SpeechSynthesisVoice[]
+  personagens: string[]
+  prefs: PreferenciasVoz
+  onChange: (p: PreferenciasVoz) => void
+  onClose: () => void
+}) {
+  const automatica = melhorVoz(vozes)
+
+  function testar(personagem?: string) {
+    speechSynthesis.cancel()
+    const { voz, tom } = vozDoTrecho(personagem, prefs, vozes)
+    const u = new SpeechSynthesisUtterance(personagem ? `Olá, eu sou ${nomeLegivel(personagem)}.` : 'Olá, essa é a voz principal.')
+    configurarVoz(u, voz)
+    u.pitch = tom
+    speechSynthesis.speak(u)
+  }
+
+  useEffect(() => () => speechSynthesis.cancel(), [])
+
+  return (
+    <Dialog open onClose={onClose} title="Vozes">
+      <div className="space-y-4">
+        {vozes.length === 0 ? (
+          <p className="text-sm text-gray-700">
+            Esse aparelho não tem voz em português. No iPhone: Ajustes › Acessibilidade › Conteúdo Falado › Vozes › Português (Brasil). No
+            Android: Configurações › Idioma › Saída de conversão de texto em voz.
+          </p>
+        ) : (
+          <>
+            <div>
+              <Label htmlFor="voz-principal">Voz principal</Label>
+              <div className="flex gap-2">
+                <Select
+                  id="voz-principal"
+                  value={prefs.principal ?? ''}
+                  onChange={e => onChange({ ...prefs, principal: e.target.value || undefined })}
+                  className="flex-1"
+                >
+                  <option value="">Automática{automatica ? ` — ${automatica.name}` : ''}</option>
+                  {vozes.map(v => (
+                    <option key={v.voiceURI} value={v.voiceURI}>
+                      {rotuloVoz(v)}
+                    </option>
+                  ))}
+                </Select>
+                <Button variant="outline" size="icon" title="Testar" onClick={() => testar()}>
+                  <Play className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">Usada pelo narrador e por quem não tem voz própria abaixo.</p>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={prefs.variarTom}
+                onChange={e => onChange({ ...prefs, variarTom: e.target.checked })}
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              Variar o tom de cada personagem
+            </label>
+
+            {personagens.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Voz por personagem</p>
+                {personagens.map(p => (
+                  <div key={p} className="flex items-center gap-2">
+                    <span className="w-24 shrink-0 truncate text-xs font-semibold text-gray-700" title={p}>
+                      {nomeLegivel(p)}
+                    </span>
+                    <Select
+                      value={prefs.personagens[p] ?? ''}
+                      onChange={e => {
+                        const porPersonagem = { ...prefs.personagens }
+                        if (e.target.value) porPersonagem[p] = e.target.value
+                        else delete porPersonagem[p]
+                        onChange({ ...prefs, personagens: porPersonagem })
+                      }}
+                      className="h-9 flex-1 text-sm"
+                      aria-label={`Voz de ${nomeLegivel(p)}`}
+                    >
+                      <option value="">Principal</option>
+                      {vozes.map(v => (
+                        <option key={v.voiceURI} value={v.voiceURI}>
+                          {rotuloVoz(v)}
+                        </option>
+                      ))}
+                    </Select>
+                    <Button variant="ghost" size="icon" title="Testar" onClick={() => testar(p)}>
+                      <Play className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="text-[11px] text-muted-foreground">
+              As vozes são as do próprio aparelho e a escolha fica salva só nele. Se alguma falar em outro idioma, ela não está instalada
+              de verdade — escolha outra. Pra vozes mais naturais no iPhone: Ajustes › Acessibilidade › Conteúdo Falado › Vozes (baixe as
+              "Aprimoradas").
+            </p>
+          </>
+        )}
+      </div>
+    </Dialog>
   )
 }
 

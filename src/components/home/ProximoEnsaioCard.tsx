@@ -4,6 +4,7 @@ import { CalendarClock, ChevronRight, Clapperboard, MapPin } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
+import { PreparoInfo } from '@/components/ensaio/PreparoEnsaio'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useProximosTreinamentos } from '@/hooks/useTreinamentos'
 import { subscribeToCenasDoParticipante, subscribeToCenasDosMeusDependentes } from '@/services/firebase/cenas'
@@ -160,6 +161,7 @@ export function ProximoEnsaioCard({
                 <span className="truncate">{ensaio.local}</span>
               </p>
             )}
+            <PreparoInfo roupa={ensaio.roupa} levar={ensaio.levar} className="mt-1" />
           </div>
         </Link>
 

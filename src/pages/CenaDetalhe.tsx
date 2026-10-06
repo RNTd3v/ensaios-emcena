@@ -21,6 +21,7 @@ import {
   Star,
   Trash2,
   CalendarX,
+  Timer,
   X,
 } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
@@ -28,6 +29,8 @@ import { AvatarStack } from '@/components/ui/AvatarStack'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { NotificarElenco } from '@/components/ensaio/NotificarElenco'
+import { RoteiroCenaCard } from '@/components/cena/RoteiroCenaCard'
+import { PreparoCampos } from '@/components/ensaio/PreparoEnsaio'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -56,6 +59,7 @@ import {
   reconfirmarEnsaio,
   subscribeToEnsaiosDaCena,
   updateEnsaioFlags,
+  updateEnsaioPreparo,
   updateEnsaioHorario,
   updateEnsaioObrigatorios,
   uidsAusentes,
@@ -77,7 +81,7 @@ import {
   type Personagem,
 } from '@/types'
 import { DIAS_ORDER, diasDisponiveis, sortDias } from '@/lib/dias'
-import { formatDuracao, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
+import { formatDuracao, formatTempoTotal, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { addDays, canCheckin, DIA_TO_WEEKDAY, formatRelativeDia, toDateKey, weekDates } from '@/lib/agenda'
 import { cn } from '@/lib/utils'
 import { PessoaSelect, pessoaOpcao } from '@/components/ui/PessoaSelect'
@@ -95,6 +99,8 @@ interface ConfirmDetail {
   horario: string
   geral: boolean
   comFigurino: boolean
+  roupa: string
+  levar: string
   obrigatorios: string[]
 }
 
@@ -282,6 +288,13 @@ export function CenaDetalhe() {
     () => (ensaios ?? []).filter(e => e.finalizadoAt).sort((a, b) => b.data.localeCompare(a.data) || b.horario.localeCompare(a.horario)),
     [ensaios],
   )
+
+  /** Soma do tempo cronometrado dos ensaios encerrados (os que têm duração registrada). */
+  const tempoDeEnsaio = useMemo(() => {
+    const comDuracao = registros.filter(e => !e.canceledByUid && (e.duracaoSegundos ?? 0) > 0)
+    const total = comDuracao.reduce((soma, e) => soma + (e.duracaoSegundos ?? 0), 0)
+    return { total, ensaios: comDuracao.length, media: comDuracao.length ? total / comDuracao.length : 0 }
+  }, [registros])
 
   /** Ordem da lista: o(s) personagem(ns) de quem está vendo, depois o do líder, depois os recorrentes. */
   const personagensOrdenados = useMemo(() => {
@@ -601,7 +614,7 @@ export function CenaDetalhe() {
   function openConfirmModal() {
     const pending = weekOccurrences.filter(o => !ensaiosByDate[o.dateKey] || isCanceled(ensaiosByDate[o.dateKey]))
     setConfirmSelections(Object.fromEntries(pending.map(o => [o.dateKey, true])))
-    setConfirmDetails(Object.fromEntries(pending.map(o => [o.dateKey, { horario: o.horario, geral: false, comFigurino: false, obrigatorios: [] }])))
+    setConfirmDetails(Object.fromEntries(pending.map(o => [o.dateKey, { horario: o.horario, geral: false, comFigurino: false, roupa: '', levar: '', obrigatorios: [] }])))
     setConfirmModalOpen(true)
   }
 
@@ -621,7 +634,7 @@ export function CenaDetalhe() {
       const toConfirm = weekOccurrences.filter(o => confirmSelections[o.dateKey] && (!ensaiosByDate[o.dateKey] || isCanceled(ensaiosByDate[o.dateKey])))
       await Promise.all(
         toConfirm.map(o => {
-          const detail = confirmDetails[o.dateKey] ?? { horario: o.horario, geral: false, comFigurino: false, obrigatorios: [] }
+          const detail = confirmDetails[o.dateKey] ?? { horario: o.horario, geral: false, comFigurino: false, roupa: '', levar: '', obrigatorios: [] }
           const existing = ensaiosByDate[o.dateKey]
           // Depois de criar/reconfirmar (que zera as respostas), quem marcou a data como
           // indisponível na inscrição já entra como "não vai".
@@ -632,10 +645,13 @@ export function CenaDetalhe() {
                 updateEnsaioHorario(existing.id, detail.horario),
                 updateEnsaioObrigatorios(existing.id, detail.obrigatorios),
                 updateEnsaioFlags(existing.id, { geral: detail.geral, comFigurino: detail.comFigurino }),
+                updateEnsaioPreparo(existing.id, { roupa: detail.roupa, levar: detail.levar }),
               ])
             : createEnsaio(cena.id, o.dateKey, detail.horario, currentUser.uid, detail.obrigatorios, {
                 geral: detail.geral,
                 comFigurino: detail.comFigurino,
+                roupa: detail.roupa,
+                levar: detail.levar,
               }).then(novoId => aplicarIndisponibilidades(novoId, indisponiveis))
         }),
       )
@@ -1083,6 +1099,42 @@ export function CenaDetalhe() {
           </Card>
 
           <MusicasCard cena={cena} recolhivel ocultarSeVazio={!canManageCena} />
+
+          <RoteiroCenaCard
+            cena={cena}
+            isAdmin={isAdmin}
+            meusPersonagens={cena.personagens.filter(p => p.participanteUid && p.participanteUid === currentUser?.uid).map(p => p.nome)}
+          />
+
+          {tempoDeEnsaio.ensaios > 0 && (
+            <Card>
+              <CardContent className="space-y-3">
+                <p className="flex items-center gap-1.5 text-base font-semibold">
+                  <Timer className="h-4 w-4 text-primary" />
+                  Tempo de ensaio
+                </p>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-lg bg-primary/10 px-2 py-2.5">
+                    <p className="text-lg font-bold text-primary">{formatTempoTotal(tempoDeEnsaio.total)}</p>
+                    <p className="text-[11px] text-muted-foreground">no total</p>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 px-2 py-2.5">
+                    <p className="text-lg font-bold text-gray-900">{tempoDeEnsaio.ensaios}</p>
+                    <p className="text-[11px] text-muted-foreground">{tempoDeEnsaio.ensaios === 1 ? 'ensaio' : 'ensaios'}</p>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 px-2 py-2.5">
+                    <p className="text-lg font-bold text-gray-900">{formatTempoTotal(tempoDeEnsaio.media)}</p>
+                    <p className="text-[11px] text-muted-foreground">por ensaio</p>
+                  </div>
+                </div>
+                {registros.length > tempoDeEnsaio.ensaios && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {registros.length - tempoDeEnsaio.ensaios} ensaio(s) encerrado(s) sem tempo registrado ficaram de fora.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {registros.length > 0 && (
             <Card>
@@ -1725,6 +1777,12 @@ export function CenaDetalhe() {
                           Com figurino
                         </button>
                       </div>
+                      <PreparoCampos
+                        compacto
+                        idPrefixo={`confirmar-${o.dateKey}`}
+                        value={{ roupa: detail.roupa, levar: detail.levar }}
+                        onChange={patch => updateConfirmDetail(o.dateKey, patch)}
+                      />
                       {cena && cena.personagens.length > 0 && (
                         <div>
                           <p className="text-xs text-muted-foreground mb-1">Quem precisa estar</p>

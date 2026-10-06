@@ -46,6 +46,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        // Recorte de PDF do roteiro (pdf-lib + pdf.js, ~850 KB): só o admin usa, carrega sob demanda.
+        globIgnores: ['**/roteiroPdf-*.js'],
         // Fotos do Storage (figurinos, dependentes) ficam no aparelho depois da primeira vez —
         // economiza o download do Storage. A URL do Storage muda quando o arquivo é trocado, então
         // não tem risco de mostrar foto velha. Músicas são guardadas pelo app (src/lib/midiaCache.ts),

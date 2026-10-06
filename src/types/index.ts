@@ -324,6 +324,9 @@ export interface Ensaio {
   geral?: boolean
   /** Ensaio em que o figurino deve ser usado. */
   comFigurino?: boolean
+  /** O que vestir e o que levar (texto livre, definidos ao confirmar/editar). */
+  roupa?: string
+  levar?: string
   /** Setado quando o ensaio é cancelado — o documento continua existindo (pra mostrar quem cancelou). */
   canceledByUid?: string
   canceledAt?: string
@@ -600,6 +603,27 @@ export type RoteiroTipo = 'normal' | 'grande' | 'contexto'
  * Só o path no Storage, não a URL de download: `settings` tem leitura pública (tela de login) e a
  * URL de download abre pra qualquer um. A URL é pedida na hora, com a pessoa logada.
  */
+/**
+ * Recorte do roteiro pra uma cena (`roteirosCena/{cenaId}`), gerado pelo admin a partir de um dos
+ * PDFs de Configurações: o PDF só com as páginas da cena (pra baixar) e o texto já separado em falas
+ * (pro áudio com SpeechSynthesis). Ver src/lib/roteiroCena.ts.
+ */
+export interface RoteiroCena {
+  cenaId: string
+  /** De qual PDF de Configurações saiu. */
+  tipo: RoteiroTipo
+  paginaInicio: number
+  paginaFim: number
+  /** Textos opcionais que marcam onde a cena começa/termina dentro dessas páginas (só pro áudio). */
+  marcadorInicio?: string
+  marcadorFim?: string
+  pdfPath: string
+  pdfUrl: string
+  blocos: import('@/lib/roteiroCena').BlocoRoteiro[]
+  geradoPorUid: string
+  geradoEm: string
+}
+
 export interface RoteiroArquivo {
   path: string
   nome: string

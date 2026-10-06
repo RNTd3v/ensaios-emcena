@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Check, CheckCircle2, Clock, ExternalLink, Plus, MapPin, NotebookPen, Pause, Pencil, Play, RotateCcw, Shirt, Star, Users, X, XCircle, RefreshCw } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { NotificarElenco } from '@/components/ensaio/NotificarElenco'
+import { PreparoCampos, PreparoInfo, type Preparo } from '@/components/ensaio/PreparoEnsaio'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -192,12 +193,13 @@ export function EnsaioAoVivo() {
   const [horarioNovoDraft, setHorarioNovoDraft] = useState<string | null>(null)
   const horarioNovo = horarioNovoDraft ?? horarioPrevisto
   const [confirmandoEnsaio, setConfirmandoEnsaio] = useState(false)
+  const [preparoNovo, setPreparoNovo] = useState<Preparo>({ roupa: '', levar: '' })
 
   async function handleConfirmarEnsaio() {
     if (!cena || !currentUser || !dataParam || !horarioNovo) return
     setConfirmandoEnsaio(true)
     try {
-      const novoId = await createEnsaio(cena.id, dataParam, horarioNovo, currentUser.uid)
+      const novoId = await createEnsaio(cena.id, dataParam, horarioNovo, currentUser.uid, undefined, preparoNovo)
       await aplicarIndisponibilidades(novoId, uidsIndisponiveis(cena, dataParam, inscricoesByUid)).catch(() => {})
       navigate(`/cenas/${cena.id}/ensaios/${novoId}`, { replace: true })
     } finally {
@@ -325,6 +327,7 @@ export function EnsaioAoVivo() {
                   <Label htmlFor="novo-ensaio-horario">Horário</Label>
                   <Input id="novo-ensaio-horario" type="time" value={horarioNovo} onChange={e => setHorarioNovoDraft(e.target.value)} />
                 </div>
+                <PreparoCampos idPrefixo="novo-ensaio" value={preparoNovo} onChange={patch => setPreparoNovo(p => ({ ...p, ...patch }))} />
                 <Button className="w-full gap-1.5" onClick={handleConfirmarEnsaio} disabled={confirmandoEnsaio || !horarioNovo}>
                   {confirmandoEnsaio ? <Spinner size="sm" className="border-white/40 border-t-white" /> : <Check className="h-4 w-4" />}
                   Confirmar ensaio
@@ -467,6 +470,7 @@ function InfoEnsaio({ ensaio }: { ensaio: Ensaio }) {
           </p>
           <EnsaioStatusChip status={ensaioStatus(ensaio, toDateKey(new Date()))} className="mt-0.5" />
         </div>
+        <PreparoInfo roupa={ensaio.roupa} levar={ensaio.levar} />
         {(ensaio.geral || ensaio.comFigurino) && (
           <div className="flex flex-wrap gap-1.5">
             {ensaio.geral && (
@@ -788,6 +792,7 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
   const localCadastrado = findLocal(locais, local)
   const [geral, setGeral] = useState(!!ensaio.geral)
   const [comFigurino, setComFigurino] = useState(!!ensaio.comFigurino)
+  const [preparo, setPreparo] = useState<Preparo>({ roupa: ensaio.roupa ?? '', levar: ensaio.levar ?? '' })
   const [duracao, setDuracao] = useState(duracaoInicial)
   const [anotacoes, setAnotacoes] = useState(ensaio.anotacoes ?? '')
   const [presencas, setPresencas] = useState<string[]>(ensaio.presencas ?? [])
@@ -821,7 +826,7 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
       const presencasMudaram = JSON.stringify([...presencas].sort()) !== JSON.stringify([...(ensaio.presencas ?? [])].sort())
       await updateEnsaioInfo(
         ensaio.id,
-        { horario, local, geral, comFigurino, obrigatorios, presencas: presencasMudaram ? presencas : undefined },
+        { horario, local, geral, comFigurino, ...preparo, obrigatorios, presencas: presencasMudaram ? presencas : undefined },
         currentUser.uid,
         notificar,
       )
@@ -904,6 +909,7 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
             Com figurino
           </button>
         </div>
+        <PreparoCampos idPrefixo="editar-ensaio" value={preparo} onChange={patch => setPreparo(p => ({ ...p, ...patch }))} />
 
         {personagens.length > 0 && (
           <div>

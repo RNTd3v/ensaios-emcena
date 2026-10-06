@@ -20,6 +20,16 @@ service firebase.storage {
       allow delete: if isSignedIn();
     }
 
+    // Roteiro recortado da cena (PDF gerado pelo admin a partir do roteiro completo — o doc
+    // `roteirosCena` no Firestore, que só admin grava, é o que aparece no app).
+    match /cenas/{cenaId}/roteiro/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType == 'application/pdf';
+      allow delete: if isSignedIn();
+    }
+
     // Foto de dependente (criança inscrita por um responsável). Quem pode vincular é decidido no
     // Firestore (inscrição do dependente só pelos responsáveis).
     match /dependentes/{depId}/{fileName} {

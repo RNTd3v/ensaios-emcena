@@ -18,6 +18,15 @@ export function formatDuracao(totalSegundos: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
 }
 
+/** Duração "por extenso" pra totais: 45 min, 2h, 12h30. */
+export function formatTempoTotal(totalSegundos: number): string {
+  const minutos = Math.round(totalSegundos / 60)
+  const h = Math.floor(minutos / 60)
+  const m = minutos % 60
+  if (h === 0) return `${m} min`
+  return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`
+}
+
 /** O horário de um dia específico da cena (por dia se houver, senão o comum). */
 export function horarioDoDia(cena: Pick<Cena, 'horario' | 'horarios'>, dia: DiaSemana): string | undefined {
   return cena.horarios?.[dia] ?? cena.horario

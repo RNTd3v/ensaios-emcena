@@ -54,7 +54,9 @@ export function TreinamentoDetalhe() {
         ? [...uidsDoElenco(cenas)]
         : treinamento.publico === 'pessoas'
           ? (treinamento.pessoas ?? [])
-          : Object.values(users).filter(u => u.active).map(u => u.uid)
+          : Object.values(users)
+              .filter(u => u.active && u.inscricaoStatus !== 'recusado')
+              .map(u => u.uid)
     return uids.filter(u => users[u])
   }, [isAdmin, treinamento, cenas, users])
 

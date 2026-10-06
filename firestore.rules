@@ -110,6 +110,13 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Roteiro recortado de cada cena (id = id da cena): PDF das páginas + falas pro áudio. Todos
+    // leem, só admin gera/remove.
+    match /roteirosCena/{cenaId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
     // Catálogo de personagens (tela de Personagens): todos leem, só admin escreve. Os personagens
     // em si continuam dentro de cada cena — aqui ficam só os criados pela tela, inclusive os sem cena.
     match /personagens/{id} {

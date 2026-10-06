@@ -76,9 +76,9 @@ export function AdminEntregas() {
   }, [aparelhos])
 
   const pessoas = useMemo(() => {
-    // Dependentes não têm aparelho: o push deles vai pros responsáveis.
+    // Dependentes não têm aparelho: o push deles vai pros responsáveis. Inscrição recusada não entra.
     const lista = Object.values(users)
-      .filter(u => u.active && !u.dependente)
+      .filter(u => u.active && !u.dependente && u.inscricaoStatus !== 'recusado')
       .map(u => ({ user: u, diag: diagnosticoPessoa(aparelhosPorUid[u.uid]?.length ?? 0, status?.[u.uid]) }))
     return lista.sort((a, b) => Number(a.diag.nivel === 'ok') - Number(b.diag.nivel === 'ok') || a.user.displayName.localeCompare(b.user.displayName, 'pt-BR'))
   }, [users, aparelhosPorUid, status])

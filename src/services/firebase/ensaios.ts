@@ -24,7 +24,7 @@ export async function createEnsaio(
   horario: string,
   confirmedByUid: string,
   obrigatorios?: string[],
-  flags?: { geral?: boolean; comFigurino?: boolean },
+  flags?: { geral?: boolean; comFigurino?: boolean; roupa?: string; levar?: string },
 ): Promise<string> {
   const ref = await addDoc(collection(db, 'ensaios'), {
     cenaId,
@@ -34,6 +34,8 @@ export async function createEnsaio(
     ...(obrigatorios?.length ? { obrigatorios } : {}),
     ...(flags?.geral ? { geral: true } : {}),
     ...(flags?.comFigurino ? { comFigurino: true } : {}),
+    ...(flags?.roupa?.trim() ? { roupa: flags.roupa.trim() } : {}),
+    ...(flags?.levar?.trim() ? { levar: flags.levar.trim() } : {}),
     confirmedByUid,
     confirmedAt: serverTimestamp(),
     createdAt: serverTimestamp(),
@@ -57,7 +59,16 @@ export async function updateEnsaioHorario(id: string, horario: string): Promise<
  */
 export async function updateEnsaioInfo(
   id: string,
-  info: { horario: string; local: string; geral: boolean; comFigurino: boolean; obrigatorios: string[]; presencas?: string[] },
+  info: {
+    horario: string
+    local: string
+    geral: boolean
+    comFigurino: boolean
+    roupa: string
+    levar: string
+    obrigatorios: string[]
+    presencas?: string[]
+  },
   byUid?: string,
   notificar = true,
 ): Promise<void> {
@@ -69,6 +80,8 @@ export async function updateEnsaioInfo(
     local: info.local.trim() || deleteField(),
     geral: info.geral || deleteField(),
     comFigurino: info.comFigurino || deleteField(),
+    roupa: info.roupa.trim() || deleteField(),
+    levar: info.levar.trim() || deleteField(),
     obrigatorios: info.obrigatorios.length ? info.obrigatorios : deleteField(),
     ...(info.presencas ? { presencas: info.presencas } : {}),
   })
@@ -77,6 +90,14 @@ export async function updateEnsaioInfo(
 /** Define (ou limpa, se vazio) o local do ensaio. */
 export async function updateEnsaioLocal(id: string, local: string): Promise<void> {
   await updateDoc(doc(db, 'ensaios', id), { local: local.trim() || deleteField() })
+}
+
+/** Define (ou limpa) o que vestir e o que levar no ensaio. */
+export async function updateEnsaioPreparo(id: string, preparo: { roupa: string; levar: string }): Promise<void> {
+  await updateDoc(doc(db, 'ensaios', id), {
+    roupa: preparo.roupa.trim() || deleteField(),
+    levar: preparo.levar.trim() || deleteField(),
+  })
 }
 
 /** Marca/desmarca as flags "ensaio geral" e "ensaio com figurino" desse ensaio. */

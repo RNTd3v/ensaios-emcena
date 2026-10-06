@@ -452,7 +452,8 @@ export const lembretesDoDia = onSchedule({ schedule: 'every 5 minutes', timeZone
 
 /**
  * Quem um treinamento alcança: "elenco" = quem tem personagem em alguma cena ativa; "pessoas" = só
- * as escolhidas; "todos" = todo mundo com acesso ativo (dependentes viram os responsáveis no `notificar`).
+ * as escolhidas; "todos" = todo mundo com acesso ativo e inscrição não recusada (dependentes viram
+ * os responsáveis no `notificar`).
  */
 async function publicoDoTreinamento(t: DocumentData): Promise<string[]> {
   if (t.publico === 'pessoas') return (t.pessoas as string[] | undefined) ?? []
@@ -466,8 +467,9 @@ async function publicoDoTreinamento(t: DocumentData): Promise<string[]> {
     }
     return [...uids]
   }
+  // Inscrição recusada não entra (a cópia do status fica no perfil — ver AppUser.inscricaoStatus).
   const users = await db.collection('users').where('active', '==', true).get()
-  return users.docs.map(d => d.id)
+  return users.docs.filter(d => d.data().inscricaoStatus !== 'recusado').map(d => d.id)
 }
 
 function descricaoTreinamento(t: DocumentData, s: DocumentData): string {

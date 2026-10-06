@@ -4,8 +4,10 @@
  * extrai o texto delas pra montar as falas.
  */
 import { PDFDocument } from 'pdf-lib'
-import * as pdfjs from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+// Build "legacy" do pdf.js: a padrão (v6) usa APIs novíssimas do JS (ex.: Map.getOrInsertComputed)
+// sem polyfill e quebra em quase todo navegador atual; a legacy traz os polyfills.
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
+import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 

@@ -9,6 +9,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { PessoaLinha } from '@/components/ui/PessoaLinha'
 import { pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { useUsersMap } from '@/components/oracao/OrandoAgora'
+import { inscricaoValida, useInscricoesStatus } from '@/hooks/useInscricoesStatus'
 import { subscribeToAparelhosPush, subscribeToNotificacoes, subscribeToPushStatus } from '@/services/firebase/notificacoes'
 import { formatDateTime } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
@@ -60,6 +61,7 @@ function nomeAparelho(userAgent = ''): string {
  */
 export function AdminEntregas() {
   const users = useUsersMap()
+  const inscricoes = useInscricoesStatus()
   const [status, setStatus] = useState<Record<string, PushStatus> | null>(null)
   const [aparelhos, setAparelhos] = useState<AparelhoPush[]>([])
   const [soProblemas, setSoProblemas] = useState(true)
@@ -76,12 +78,13 @@ export function AdminEntregas() {
   }, [aparelhos])
 
   const pessoas = useMemo(() => {
-    // Dependentes não têm aparelho: o push deles vai pros responsáveis. Inscrição recusada não entra.
+    // Dependentes não têm aparelho: o push deles vai pros responsáveis. Só quem fez inscrição (e
+    // não foi recusada).
     const lista = Object.values(users)
-      .filter(u => u.active && !u.dependente && u.inscricaoStatus !== 'recusado')
+      .filter(u => u.active && !u.dependente && inscricaoValida(inscricoes?.[u.uid]))
       .map(u => ({ user: u, diag: diagnosticoPessoa(aparelhosPorUid[u.uid]?.length ?? 0, status?.[u.uid]) }))
     return lista.sort((a, b) => Number(a.diag.nivel === 'ok') - Number(b.diag.nivel === 'ok') || a.user.displayName.localeCompare(b.user.displayName, 'pt-BR'))
-  }, [users, aparelhosPorUid, status])
+  }, [users, inscricoes, aparelhosPorUid, status])
 
   const normalizar = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
   const visiveis = pessoas.filter(
@@ -102,7 +105,7 @@ export function AdminEntregas() {
         <h1 className="text-xl font-semibold text-white">Entrega de notificações</h1>
       </div>
 
-      {!status || !Object.keys(users).length ? (
+      {!status || !inscricoes || !Object.keys(users).length ? (
         <div className="flex justify-center py-10">
           <Spinner />
         </div>

@@ -171,16 +171,26 @@ async function gravarEEnviar(destinatarios: string[], n: Notificacao): Promise<v
  * app. Sem login — o id é aleatório e só marca a data de recebimento.
  */
 export const pushRecebido = onRequest({ maxInstances: 5 }, async (req, res) => {
-  const nid = typeof req.body === 'string' ? req.body.trim() : String(req.rawBody ?? '').trim()
-  if (req.method !== 'POST' || !/^[A-Za-z0-9]{20}$/.test(nid)) {
+  // Corpo: "<id> <origem>" — origem = "chegada" (push chegou) ou "clique" (tocou na notificação).
+  const [nid, origem = 'chegada'] = (typeof req.body === 'string' ? req.body : String(req.rawBody ?? '')).trim().split(/\s+/)
+  if (req.method !== 'POST' || !/^[A-Za-z0-9]{20}$/.test(nid ?? '')) {
+    logger.warn(`pushRecebido: pedido inválido (${req.method}, ${req.get('content-type') ?? 'sem content-type'})`)
     res.status(400).end()
     return
   }
-  await db
-    .collection('notificacoes')
-    .doc(nid)
-    .update({ 'push.recebidoEm': FieldValue.serverTimestamp() })
-    .catch(() => {})
+  const ref = db.collection('notificacoes').doc(nid)
+  try {
+    // A primeira confirmação vale: o clique só grava se a chegada não tiver sido registrada.
+    const atual = (await ref.get()).data()
+    if (!atual) {
+      logger.warn(`pushRecebido: notificação ${nid} não existe (${origem})`)
+    } else if (!atual.push?.recebidoEm) {
+      await ref.update({ 'push.recebidoEm': FieldValue.serverTimestamp(), 'push.confirmadoPor': origem })
+      logger.info(`pushRecebido: ${nid} confirmada (${origem})`)
+    }
+  } catch (e) {
+    logger.error(`pushRecebido: falha ao gravar ${nid}`, e)
+  }
   res.status(204).end()
 })
 
@@ -452,7 +462,7 @@ export const lembretesDoDia = onSchedule({ schedule: 'every 5 minutes', timeZone
 
 /**
  * Quem um treinamento alcança: "elenco" = quem tem personagem em alguma cena ativa; "pessoas" = só
- * as escolhidas; "todos" = todo mundo com acesso ativo e inscrição não recusada (dependentes viram
+ * as escolhidas; "todos" = todo mundo com acesso ativo e inscrição feita e não recusada (dependentes viram
  * os responsáveis no `notificar`).
  */
 async function publicoDoTreinamento(t: DocumentData): Promise<string[]> {
@@ -467,9 +477,11 @@ async function publicoDoTreinamento(t: DocumentData): Promise<string[]> {
     }
     return [...uids]
   }
-  // Inscrição recusada não entra (a cópia do status fica no perfil — ver AppUser.inscricaoStatus).
-  const users = await db.collection('users').where('active', '==', true).get()
-  return users.docs.filter(d => d.data().inscricaoStatus !== 'recusado').map(d => d.id)
+  // Só quem fez inscrição e não foi recusada (direto de `inscricoes` — a cópia do status no perfil
+  // só é preenchida quando o admin abre o Gerenciamento).
+  const [users, inscricoes] = await Promise.all([db.collection('users').where('active', '==', true).get(), db.collection('inscricoes').get()])
+  const validas = new Set(inscricoes.docs.filter(d => d.data().status !== 'recusado').map(d => d.id))
+  return users.docs.map(d => d.id).filter(uid => validas.has(uid))
 }
 
 function descricaoTreinamento(t: DocumentData, s: DocumentData): string {

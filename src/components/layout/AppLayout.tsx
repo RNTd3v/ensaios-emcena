@@ -14,6 +14,7 @@ import { PhoneMockup } from '@/components/layout/PhoneMockup'
 import { useApresentacaoLaterais } from '@/components/layout/ApresentacaoLaterais'
 import { lerModoApresentacao } from '@/lib/apresentacao'
 import { SinoNotificacoes } from '@/components/layout/SinoNotificacoes'
+import { AbrirLinkDoPush } from '@/components/layout/AbrirLinkDoPush'
 import { ativarPush, registrarEstadoPush } from '@/services/firebase/notificacoes'
 import { cn } from '@/lib/utils'
 import { SemConexaoBanner } from '@/components/layout/SemConexao'
@@ -62,6 +63,7 @@ export function AppLayout() {
 
   return (
     <PhoneMockup laterais={laterais}>
+      <AbrirLinkDoPush />
       <div className="absolute inset-0">
         {settings.internalBgUrl ? (
           <img src={settings.internalBgUrl} alt="" className="h-full w-full object-cover" />

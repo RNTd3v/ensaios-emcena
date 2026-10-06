@@ -4,8 +4,16 @@
  * Não importa script de fora (o CSP do app bloquearia) — o FCM entrega um Web Push padrão e
  * aqui a gente monta a notificação a partir do `data` que as Cloud Functions mandam
  * (titulo, corpo, link, tipo, nid). Depois de mostrar, confirma o recebimento (`nid` = id da
- * notificação) pra tela "Entrega de notificações" do admin.
+ * notificação) pra tela "Entrega de notificações" do admin — e de novo no clique, se a primeira
+ * confirmação não tiver saído.
  */
+
+/** Avisa o servidor que a notificação `nid` chegou nesse aparelho. */
+function confirmarRecebimento(nid, origem) {
+  if (!nid) return Promise.resolve()
+  return fetch('/api/push-recebido', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: `${nid} ${origem}` }).catch(() => {})
+}
+
 self.addEventListener('push', event => {
   let payload = {}
   try {
@@ -23,28 +31,40 @@ self.addEventListener('push', event => {
     body: corpo,
     icon: '/web-app-manifest-192x192.png',
     badge: '/favicon-96x96.png',
-    data: { link },
+    data: { link, nid: data.nid },
     tag: data.tipo ? `${data.tipo}-${Date.now()}` : undefined,
   })
-  const confirmar = data.nid
-    ? fetch('/api/push-recebido', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: data.nid }).catch(() => {})
-    : Promise.resolve()
-  event.waitUntil(Promise.all([mostrar, confirmar]))
+  event.waitUntil(Promise.all([mostrar, confirmarRecebimento(data.nid, 'chegada')]))
 })
+
+/** Página pendente pro app abrir (lida pelo app ao voltar pra frente — ver AbrirLinkDoPush). */
+const CACHE_LINK = 'push-link'
 
 self.addEventListener('notificationclick', event => {
   event.notification.close()
-  const link = (event.notification.data && event.notification.data.link) || '/notificacoes'
+  const dados = event.notification.data || {}
+  // Só o caminho: o app pode estar aberto em outro domínio do Firebase (web.app / firebaseapp.com).
+  const url = new URL(dados.link || '/notificacoes', self.location.origin)
+  const caminho = url.pathname + url.search
+
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(janelas => {
-      // Se o app já está aberto numa aba/janela, foca nela e navega; senão abre uma nova.
-      for (const janela of janelas) {
-        if ('focus' in janela) {
-          janela.navigate(link).catch(() => {})
-          return janela.focus()
+    Promise.all([
+      confirmarRecebimento(dados.nid, 'clique'),
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async janelas => {
+        const janela = janelas.find(j => 'focus' in j)
+        if (!janela) return self.clients.openWindow(caminho)
+        // `navigate()` não serve: só funciona pro service worker que controla a página (o do PWA,
+        // não este). Então o app é quem navega: por mensagem (app ativo) e, se ela se perder
+        // (iPhone acordando o app), pela página guardada no cache, que o app confere ao voltar.
+        try {
+          const cache = await caches.open(CACHE_LINK)
+          await cache.put('/link', new Response(JSON.stringify({ caminho, em: Date.now() })))
+        } catch {
+          // sem Cache Storage — fica só a mensagem
         }
-      }
-      return self.clients.openWindow(link)
-    }),
+        janela.postMessage({ tipo: 'abrir-link', caminho })
+        return janela.focus()
+      }),
+    ]),
   )
 })

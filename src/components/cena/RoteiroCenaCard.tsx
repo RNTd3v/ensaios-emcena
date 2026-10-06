@@ -484,7 +484,10 @@ function RoteiroCenaDialog({ cena, roteiro, onClose }: { cena: Cena; roteiro: Ro
       const recorte = await recortarPdf(await resp.arrayBuffer(), paginaInicio, paginaFim)
       setPrevia({ pdf: recorte.pdf, blocos: lerRoteiro(recortarTexto(recorte.texto, marcadorInicio, marcadorFim)) })
     } catch (e) {
-      setErro(e instanceof Error && e.message.startsWith('O roteiro tem') ? e.message : 'Não foi possível ler o roteiro. Tente de novo.')
+      // Vai pro console (e pro diagnóstico do "Reportar problema") e aparece na tela, pra saber o motivo.
+      console.error('Roteiro da cena: falha ao gerar prévia', e)
+      const detalhe = e instanceof Error ? e.message : String(e)
+      setErro(detalhe.startsWith('O roteiro tem') ? detalhe : `Não foi possível ler o roteiro. Tente de novo. (${detalhe})`)
     } finally {
       setTrabalhando(null)
     }

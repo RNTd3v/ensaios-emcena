@@ -9,6 +9,7 @@ import { pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
 import { useUsersMap } from '@/components/oracao/OrandoAgora'
 import { useEhElenco } from '@/hooks/useTreinamentos'
+import { inscricaoValida, useInscricoesStatus } from '@/hooks/useInscricoesStatus'
 import { subscribeToTodasCenas } from '@/services/firebase/cenas'
 import {
   subscribeToAusenciasSessao,
@@ -45,6 +46,7 @@ export function TreinamentoDetalhe() {
 
   // Admin: quem deveria responder (o mesmo público que a notificação usa).
   const users = useUsersMap()
+  const inscricoes = useInscricoesStatus(isAdmin)
   const [cenas, setCenas] = useState<Cena[]>([])
   useEffect(() => (isAdmin ? subscribeToTodasCenas(setCenas) : undefined), [isAdmin])
   const publico = useMemo(() => {
@@ -55,10 +57,10 @@ export function TreinamentoDetalhe() {
         : treinamento.publico === 'pessoas'
           ? (treinamento.pessoas ?? [])
           : Object.values(users)
-              .filter(u => u.active && u.inscricaoStatus !== 'recusado')
+              .filter(u => u.active && inscricaoValida(inscricoes?.[u.uid]))
               .map(u => u.uid)
     return uids.filter(u => users[u])
-  }, [isAdmin, treinamento, cenas, users])
+  }, [isAdmin, treinamento, cenas, users, inscricoes])
 
   if (!treinamentos) {
     return (

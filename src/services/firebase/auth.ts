@@ -52,21 +52,17 @@ export async function logout() {
   return signOut(auth)
 }
 
-/** Cria o documento do usuário na primeira vez que ele faz login. Sempre como 'participante' e ativo. */
-export async function ensureUserDoc(uid: string, email: string, displayName: string, photoURL: string | null) {
+/**
+ * Lê o perfil do usuário numa leitura só; na primeira vez que ele faz login, cria o documento
+ * (sempre como 'participante' e ativo) e devolve o perfil recém-criado.
+ */
+export async function carregarOuCriarPerfil(uid: string, email: string, displayName: string, photoURL: string | null): Promise<AppUser> {
   const ref = doc(db, 'users', uid)
   const snap = await getDoc(ref)
-  if (!snap.exists()) {
-    await setDoc(ref, {
-      uid,
-      email,
-      displayName,
-      photoURL,
-      role: 'participante' satisfies UserRole,
-      active: true,
-      createdAt: serverTimestamp(),
-    })
-  }
+  if (snap.exists()) return fromUserSnap(snap.data())
+  const novo = { uid, email, displayName, photoURL, role: 'participante' satisfies UserRole, active: true }
+  await setDoc(ref, { ...novo, createdAt: serverTimestamp() })
+  return { ...novo, createdAt: new Date().toISOString() } as AppUser
 }
 
 /** Troca a foto de perfil por uma escolhida no app (já reduzida) e apaga a anterior do Storage. */
@@ -94,12 +90,6 @@ function fromUserSnap(data: Record<string, unknown>): AppUser {
     createdAt: createdAt?.toDate?.().toISOString() ?? new Date().toISOString(),
     revokedAt: revokedAt?.toDate?.().toISOString(),
   } as AppUser
-}
-
-export async function getUserDoc(uid: string): Promise<AppUser | null> {
-  const snap = await getDoc(doc(db, 'users', uid))
-  if (!snap.exists()) return null
-  return fromUserSnap(snap.data())
 }
 
 export async function getUsers(): Promise<AppUser[]> {

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { getRedirectResult, onAuthStateChanged, type User } from 'firebase/auth'
 import { auth } from '@/services/firebase/config'
-import { ensureUserDoc, getUserDoc } from '@/services/firebase/auth'
+import { carregarOuCriarPerfil } from '@/services/firebase/auth'
 import type { AppUser } from '@/types'
 
 interface AuthState {
@@ -31,6 +31,33 @@ function lerVisao(): boolean {
   }
 }
 
+/**
+ * Último perfil carregado, guardado no aparelho. Na próxima abertura o app entra direto com ele e
+ * confere o servidor em segundo plano — no iPhone o PWA é fechado o tempo todo, e esperar o
+ * servidor a cada abertura deixava o login lento (ou dava timeout) com a conexão ruim. A segurança
+ * não depende disso: as regras do Firestore valem do mesmo jeito; quem foi revogado vê a tela de
+ * acesso revogado assim que a conferência chega.
+ */
+const PERFIL_KEY = 'perfil.cache'
+
+function lerPerfilGuardado(uid: string): AppUser | null {
+  try {
+    const perfil = JSON.parse(localStorage.getItem(PERFIL_KEY) ?? 'null') as AppUser | null
+    return perfil?.uid === uid ? perfil : null
+  } catch {
+    return null
+  }
+}
+
+function guardarPerfil(perfil: AppUser | null) {
+  try {
+    if (perfil) localStorage.setItem(PERFIL_KEY, JSON.stringify(perfil))
+    else localStorage.removeItem(PERFIL_KEY)
+  } catch {
+    // storage indisponível — a próxima abertura espera o servidor, como antes
+  }
+}
+
 /** Aplica a visão escolhida ao perfil real. */
 function efetivo(perfil: AppUser | null, visaoParticipante: boolean): AppUser | null {
   if (perfil?.role === 'admin' && visaoParticipante) return { ...perfil, role: 'participante' }
@@ -40,6 +67,7 @@ function efetivo(perfil: AppUser | null, visaoParticipante: boolean): AppUser | 
 /** Grava o perfil carregado (real + efetivo). */
 function definirPerfil(perfil: AppUser | null, extra: Partial<AuthState> = {}) {
   const { visaoParticipante } = useAuthStore.getState()
+  if (perfil) guardarPerfil(perfil)
   useAuthStore.setState({ ...extra, perfilReal: perfil, user: efetivo(perfil, visaoParticipante) })
 }
 
@@ -90,7 +118,7 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, attempts = 3): 
   let lastErr: unknown
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      return await withTimeout(fn(), 12000, label)
+      return await withTimeout(fn(), 8000, label)
     } catch (err) {
       lastErr = err
       console.warn(`[auth] ${label} falhou (tentativa ${attempt}/${attempts}):`, err)
@@ -101,16 +129,18 @@ async function withRetry<T>(fn: () => Promise<T>, label: string, attempts = 3): 
 }
 
 async function loadProfile(firebaseUser: User) {
-  console.log('[auth] ensureUserDoc...')
-  await withRetry(
+  const perfil = await withRetry(
     () =>
-      ensureUserDoc(firebaseUser.uid, firebaseUser.email ?? '', firebaseUser.displayName ?? firebaseUser.email ?? '', firebaseUser.photoURL),
-    'ensureUserDoc',
+      carregarOuCriarPerfil(
+        firebaseUser.uid,
+        firebaseUser.email ?? '',
+        firebaseUser.displayName ?? firebaseUser.email ?? '',
+        firebaseUser.photoURL,
+      ),
+    'carregarOuCriarPerfil',
   )
-  console.log('[auth] getUserDoc...')
-  const userDoc = await withRetry(() => getUserDoc(firebaseUser.uid), 'getUserDoc')
-  console.log('[auth] perfil carregado:', userDoc)
-  return userDoc
+  console.log('[auth] perfil carregado:', perfil)
+  return perfil
 }
 
 export function initAuth() {
@@ -124,6 +154,17 @@ export function initAuth() {
   return onAuthStateChanged(auth, async firebaseUser => {
     console.log('[auth] onAuthStateChanged:', firebaseUser ? `uid ${firebaseUser.uid}` : 'null')
     if (firebaseUser) {
+      const guardado = lerPerfilGuardado(firebaseUser.uid)
+      if (guardado) {
+        // Entra na hora com o perfil guardado e confere o servidor sem segurar a tela.
+        definirPerfil(guardado, { loading: false, initialized: true, redirectError: null })
+        loadProfile(firebaseUser)
+          .then(perfil => {
+            if (auth.currentUser?.uid === firebaseUser.uid) definirPerfil(perfil)
+          })
+          .catch(err => console.warn('[auth] Conferência do perfil falhou; seguindo com o guardado:', err))
+        return
+      }
       try {
         const userDoc = await loadProfile(firebaseUser)
         definirPerfil(userDoc, { loading: false, initialized: true, redirectError: null })
@@ -136,6 +177,7 @@ export function initAuth() {
         })
       }
     } else {
+      guardarPerfil(null)
       definirPerfil(null, { loading: false, initialized: true })
     }
   })

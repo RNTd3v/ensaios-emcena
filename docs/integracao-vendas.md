@@ -35,14 +35,18 @@ somas, sem dado de comprador nem de pedido. A leitura fica em `src/services/exte
   "Viagem Missionária Piauí". Por isso o total é separado por meta, e pedidos sem meta ficam em
   `porMeta.sem_meta`.
 - **Como fica em dia**, em `doces-emcena/src/firebase/stats.ts`: `syncPublicStats(pedidos)`
-  recalcula tudo a partir de todos os pedidos. É chamado pela tela **Relatório**
-  (`src/pages/admin/Relatorio.tsx`, que exige login) sempre que ela carrega, e ela recarrega
-  depois de criar, editar ou excluir um pedido.
+  recalcula tudo a partir de todos os pedidos (`atualizarTotalPublico()` busca os pedidos e chama).
+  É chamado:
+  - ao **finalizar a venda** (estoque), em `src/pages/admin/Estoque.tsx` e `src/pages/admin/Pedidos.tsx`.
+    É o momento principal: a venda ao vivo fecha e o total do musical passa a contar ela;
+  - ao excluir um pedido no painel ao vivo (`Pedidos.tsx`);
+  - pela tela **Relatório** (`src/pages/admin/Relatorio.tsx`) sempre que ela carrega. Agora ela é
+    mais para consulta, mas continua corrigindo qualquer diferença.
 - **Por que não atualiza a cada pedido:** qualquer pessoa, mesmo sem login, cria pedido pela tela
-  pública (`allow create: if true`). Por isso o pedido não pode mexer no total público. Um pedido
-  feito pela tela pública só entra no total quando alguém abre o Relatório.
-- **Regra** (`doces-emcena/firestore.rules`): `stats` com leitura pública e escrita por quem está
-  logado.
+  pública (`allow create: if true`). Por isso o pedido não pode mexer no total público. Durante uma
+  venda aberta, o total do musical só muda quando ela é finalizada.
+- **Regra** (`doces-emcena/firestore.rules`): `stats` com leitura pública e escrita pela equipe
+  (vendedor ou admin ativos), porque o vendedor também finaliza a venda.
 - **No app de ensaios:**
   1. No app de doces, crie uma meta própria do musical, por exemplo "Musical de Natal", e use-a nas
      vendas.

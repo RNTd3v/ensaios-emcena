@@ -96,7 +96,18 @@ service cloud.firestore {
     // mexer em `figurinos` (fotos de referência) e `personagens` (a "ficha do personagem" que o
     // próprio ator/atriz preenche na página do personagem) — mas só nesses campos, nada mais; a UI
     // garante que cada um só edita a própria ficha dentro do array, a regra não valida isso.
+    // Assistentes da cena podem tirar pessoas do grupo (só tirar, e nunca o líder nem outro assistente).
     match /cenas/{id} {
+      function assistenteRemovendoParticipante() {
+        let removidos = resource.data.participantes.toSet().difference(request.resource.data.participantes.toSet());
+        return isAuthenticated()
+          && request.auth.uid in resource.data.get('assistentes', [])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantes', 'updatedByUid', 'updatedAt'])
+          && resource.data.participantes.hasAll(request.resource.data.participantes)
+          && !removidos.hasAny([resource.data.get('liderUid', '')])
+          && !removidos.hasAny(resource.data.get('assistentes', []));
+      }
+
       // Responsáveis de crianças (dependentes) da cena também veem — lista mantida pela Cloud
       // Function `cenaResponsaveisDependentes`.
       allow read: if isAuthenticated();
@@ -106,7 +117,8 @@ service cloud.firestore {
             && !(resource.data.ativo == false && request.resource.data.ativo == true)
             && request.resource.data.musicas == resource.data.musicas)
         || (isAuthenticated() && request.auth.uid in resource.data.participantes
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['figurinos', 'personagens', 'updatedByUid', 'updatedAt']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['figurinos', 'personagens', 'updatedByUid', 'updatedAt']))
+        || assistenteRemovendoParticipante();
       allow delete: if isAdmin();
     }
 
@@ -295,6 +307,31 @@ service cloud.firestore {
         || (isAuthenticated()
             && resource.data.uploadedByUid == request.auth.uid
             && resource.data.get('aprovacao', null) != 'aprovado');
+    }
+
+    // Referências (imagens) das equipes: todos leem. Membros da equipe (e admin) sobem a própria;
+    // líder, assistentes, admin e quem subiu editam (só cena/legenda) e excluem. Com `cenaId` a
+    // imagem aparece também na página da cena.
+    match /imagensEquipe/{id} {
+      function equipeDaImagem(equipeId) {
+        return get(/databases/$(database)/documents/equipes/$(equipeId)).data;
+      }
+      function gerenciaImagem() {
+        return isAdmin()
+          || (isAuthenticated()
+              && (resource.data.uploadedByUid == request.auth.uid
+                  || equipeDaImagem(resource.data.equipeId).get('liderUid', '') == request.auth.uid
+                  || request.auth.uid in equipeDaImagem(resource.data.equipeId).get('assistentes', [])));
+      }
+
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+        && request.resource.data.equipeId is string
+        && request.resource.data.uploadedByUid == request.auth.uid
+        && (isAdmin() || request.auth.uid in equipeDaImagem(request.resource.data.equipeId).get('membros', []));
+      allow update: if gerenciaImagem()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cenaId', 'cenaNome', 'legenda']);
+      allow delete: if gerenciaImagem();
     }
 
     // Notificações: um doc por destinatário, criado só pelas Cloud Functions (functions/). Cada um

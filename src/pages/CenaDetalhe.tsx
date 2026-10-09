@@ -69,6 +69,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { MusicasCard } from '@/components/midia/MusicasCard'
 import { FigurinosCard } from '@/components/midia/FigurinosCard'
 import { AprovacoesFigurinoCard } from '@/components/midia/AprovacoesFigurinoCard'
+import { ReferenciasEquipeCard } from '@/components/equipe/ReferenciasEquipeCard'
 import { useMigrarMidiasLegadas } from '@/hooks/useMigrarMidiasLegadas'
 import { useSettingsStore } from '@/stores/settingsStore'
 import {
@@ -139,7 +140,8 @@ export function CenaDetalhe() {
   const isAssistenteDaCena = !!cena && !!currentUser && !!cena.assistentes?.includes(currentUser.uid)
   /** Estrutura da cena (agenda recorrente, grupo, assistentes): admin e líder. */
   const canManageCena = isAdmin || isLiderDaCena
-  /** Dia a dia dos ensaios (confirmar, abrir, presença...): também os assistentes. */
+  /** Dia a dia dos ensaios (confirmar, abrir, presença...): também os assistentes. Eles também
+   * tiram pessoas do grupo (menos o líder e outros assistentes — firestore.rules reforça). */
   const canManageAgenda = canManageCena || isAssistenteDaCena
 
   const [editModalOpen, setEditModalOpen] = useState(false)
@@ -1197,6 +1199,8 @@ export function CenaDetalhe() {
 
           <FigurinosCard cena={cena} titulo="Figurinos" recolhivel ocultarSeVazio={!canManageCena} />
 
+          <ReferenciasEquipeCard cena={cena} />
+
           <Card>
             <CardContent>
               <div className={cn('flex items-center justify-between gap-2', participantesOpen && 'pb-2.5 border-b border-gray-100')}>
@@ -1290,7 +1294,7 @@ export function CenaDetalhe() {
                               <HandHelping className="h-4 w-4" />
                             </Button>
                           )}
-                          {canManageCena && (
+                          {(canManageCena || (isAssistenteDaCena && !assistente)) && (
                             <Button
                               variant="ghost"
                               size="icon"

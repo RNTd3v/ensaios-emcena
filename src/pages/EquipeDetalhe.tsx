@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { EquipeFormDialog } from '@/components/equipe/EquipeFormDialog'
 import { TarefasCard } from '@/components/equipe/TarefasCard'
 import { PrazoFigurinoCard } from '@/components/equipe/PrazoFigurinoCard'
+import { ReferenciasEquipeCard } from '@/components/equipe/ReferenciasEquipeCard'
 import { MusicasCard } from '@/components/midia/MusicasCard'
 import { FigurinosCard } from '@/components/midia/FigurinosCard'
 import { useUsersMap } from '@/components/oracao/OrandoAgora'
@@ -149,6 +150,8 @@ export function EquipeDetalhe() {
       {equipe.gerencia?.includes('musicas') && (
         <MusicasCard gerenciar={podeGerenciarMidia ? { equipeId: equipe.id } : undefined} />
       )}
+
+      <ReferenciasEquipeCard equipe={equipe} />
 
       <Card>
         <CardContent className="space-y-3">

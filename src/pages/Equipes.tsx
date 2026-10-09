@@ -123,16 +123,22 @@ function formatPrazo(prazo: string) {
 
 /**
  * Uma equipe: fechada mostra ícone, nome e líder; aberta mostra quantas pessoas, o total de
- * tarefas e as que estão em andamento com o prazo. As tarefas só são lidas com o card aberto.
+ * tarefas e as que estão em andamento com o prazo. As tarefas só são lidas com o card aberto
+ * (em "Minhas equipes" já abre, a não ser que a equipe não tenha nenhuma tarefa).
  */
 function EquipeCard({ equipe, users, uid, abertaInicial }: { equipe: Equipe; users: Record<string, AppUser>; uid?: string; abertaInicial: boolean }) {
-  const [aberta, setAberta] = useState(abertaInicial)
+  // 'auto' (minhas equipes): lê as tarefas com o card ainda fechado e só abre se tiver alguma.
+  const [estado, setEstado] = useState<boolean | 'auto'>(abertaInicial ? 'auto' : false)
+  const aberta = estado === true
   const [tarefas, setTarefas] = useState<Tarefa[] | null>(null)
 
   useEffect(() => {
-    if (!aberta) return
-    return subscribeToTarefas(equipe.id, setTarefas)
-  }, [aberta, equipe.id])
+    if (!estado) return
+    return subscribeToTarefas(equipe.id, ts => {
+      setTarefas(ts)
+      setEstado(v => (v === 'auto' ? ts.length > 0 : v))
+    })
+  }, [estado, equipe.id])
 
   const Icon = equipeIcon(equipe.icone)
   const funcao = funcaoNaEquipe(equipe, uid)
@@ -188,7 +194,7 @@ function EquipeCard({ equipe, users, uid, abertaInicial }: { equipe: Equipe; use
       {/* Só o chevron abre/fecha o resumo; o resto do card leva pra equipe. */}
       <button
         type="button"
-        onClick={() => setAberta(v => !v)}
+        onClick={() => setEstado(!aberta)}
         aria-expanded={aberta}
         aria-label={aberta ? 'Fechar resumo' : 'Abrir resumo'}
         className="flex shrink-0 items-center self-stretch pl-2 pr-2.5"

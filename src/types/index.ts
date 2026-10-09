@@ -475,6 +475,24 @@ export interface Equipe {
   createdAt: string
 }
 
+/**
+ * Imagem de referência de uma equipe (coleção `imagensEquipe`). Membros da equipe (e admin) sobem;
+ * com `cenaId` também aparece na página da cena, sem cena fica só na página da equipe.
+ */
+export interface ImagemEquipe {
+  id: string
+  equipeId: string
+  equipeNome: string
+  url: string
+  /** Path no Storage — usado pra excluir o arquivo. */
+  path: string
+  cenaId?: string
+  cenaNome?: string
+  legenda?: string
+  uploadedByUid: string
+  uploadedAt: string
+}
+
 export type TarefaStatus = 'a_fazer' | 'fazendo' | 'feito' | 'bloqueado' | 'cancelado'
 
 /**

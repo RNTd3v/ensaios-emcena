@@ -36,7 +36,7 @@ import {
   deleteCenaPermanently,
   reactivateCena,
   subscribeToCenas,
-  updateCena,
+  editarCena,
   type CenaInput,
 } from '@/services/firebase/cenas'
 import { preservarPersonagensNoCatalogo } from '@/services/firebase/personagens'
@@ -180,6 +180,8 @@ export function Cenas() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [nome, setNome] = useState('')
   const [participantesUids, setParticipantesUids] = useState<Set<string>>(new Set())
+  /** Participantes quando o modal de edição abriu — pra saber quem entrou/saiu (ver `editarCena`). */
+  const [participantesIniciais, setParticipantesIniciais] = useState<string[]>([])
   const [dias, setDias] = useState<DiaSemana[]>([])
   const [horarioMode, setHorarioMode] = useState<'comum' | 'porDia'>('comum')
   const [horarioDraft, setHorarioDraft] = useState('')
@@ -357,6 +359,7 @@ export function Cenas() {
     setEditingId(cena.id)
     setNome(cena.nome)
     setParticipantesUids(new Set(cena.participantes))
+    setParticipantesIniciais(cena.participantes)
     setDias(cena.dias)
     setHorarioMode(cena.horarios ? 'porDia' : 'comum')
     setHorarioDraft(cena.horario ?? '')
@@ -380,10 +383,9 @@ export function Cenas() {
     if (!currentUser) return
     setSaving(true)
     setFormError('')
-    // Editar preserva os campos que ainda não têm UI completa aqui (líder, observação) — essas
-    // "detalhes" são geridas na tela de detalhe da cena. Personagens só ganham entradas novas
-    // aqui (os recorrentes escolhidos); editar os já existentes também é lá.
-    const editingCena = editingId ? (cenas ?? []).find(c => c.id === editingId) : null
+    // Editar não mexe nos campos geridos na tela de detalhe da cena (líder, observação, personagens
+    // já existentes): personagens só ganham entradas novas aqui (os recorrentes escolhidos), e quem
+    // sai do grupo perde os dele (ver `editarCena`).
     const stillParticipant = (uid?: string) => !!uid && participantesUids.has(uid)
     const novosPersonagens = [...personagensRecorrentesSelecionados].flatMap(key => {
       const origem = personagensRecorrentes.find(o => o.nome.trim().toLowerCase() === key)
@@ -400,22 +402,29 @@ export function Cenas() {
     const input: CenaInput = {
       nome: nome.trim(),
       participantes: [...participantesUids],
-      liderUid: stillParticipant(editingCena?.liderUid) ? editingCena?.liderUid : undefined,
-      personagens: [
-        ...(editingCena?.personagens ?? []).map(p => (stillParticipant(p.participanteUid) ? p : { ...p, participanteUid: undefined })),
-        ...novosPersonagens,
-      ],
+      personagens: novosPersonagens,
       dias,
       horario: horarioMode === 'comum' ? horarioDraft.trim() || undefined : undefined,
       horarios:
         horarioMode === 'porDia'
           ? Object.fromEntries(dias.filter(d => horariosPorDiaDraft[d]).map(d => [d, horariosPorDiaDraft[d] as string]))
           : undefined,
-      observacao: editingCena?.observacao,
     }
     try {
       if (editingId) {
-        await updateCena(editingId, input, currentUser.uid)
+        await editarCena(
+          editingId,
+          {
+            nome: input.nome,
+            dias: input.dias,
+            horario: input.horario,
+            horarios: input.horarios,
+            adicionar: [...participantesUids].filter(u => !participantesIniciais.includes(u)),
+            remover: participantesIniciais.filter(u => !participantesUids.has(u)),
+            novosPersonagens,
+          },
+          currentUser.uid,
+        )
         setModalOpen(false)
       } else {
         const id = await createCena(input, currentUser.uid)

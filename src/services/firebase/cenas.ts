@@ -7,6 +7,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   updateDoc,
   where,
@@ -64,18 +65,50 @@ export async function createCena(input: CenaInput, createdByUid: string): Promis
   return ref.id
 }
 
-export async function updateCena(id: string, input: CenaInput, updatedByUid: string): Promise<void> {
-  await updateDoc(doc(db, 'cenas', id), {
-    nome: input.nome,
-    participantes: input.participantes,
-    personagens: input.personagens,
-    liderUid: input.liderUid || deleteField(),
-    dias: input.dias,
-    horario: input.horario || deleteField(),
-    horarios: input.horarios || deleteField(),
-    observacao: input.observacao || deleteField(),
-    updatedByUid,
-    updatedAt: serverTimestamp(),
+/**
+ * Edição da cena pelo modal da lista de Cenas. Participantes vêm como mudança (quem entrou / quem
+ * saiu desde que o modal abriu) e são aplicados sobre a versão atual da cena, numa transação — o
+ * modal fica aberto um tempo e, se gravasse a lista inteira, tiraria quem entrou nesse meio-tempo
+ * (e desvincularia os personagens dessa pessoa). Só quem saiu de fato perde personagens e liderança.
+ */
+export async function editarCena(
+  id: string,
+  input: Pick<CenaInput, 'nome' | 'dias' | 'horario' | 'horarios'> & {
+    adicionar: string[]
+    remover: string[]
+    novosPersonagens: Personagem[]
+  },
+  updatedByUid: string,
+): Promise<void> {
+  const ref = doc(db, 'cenas', id)
+  await runTransaction(db, async tx => {
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new Error('Cena não encontrada')
+    const data = snap.data()
+    const remover = new Set(input.remover)
+    const participantes = [
+      ...((data.participantes as string[] | undefined) ?? []).filter(u => !remover.has(u)),
+      ...input.adicionar,
+    ].filter((u, i, lista) => lista.indexOf(u) === i)
+    const ficam = new Set(participantes)
+    const personagens = [
+      ...((data.personagens as Personagem[] | undefined) ?? []).map(p =>
+        p.participanteUid && remover.has(p.participanteUid) ? { ...p, participanteUid: undefined } : p,
+      ),
+      ...input.novosPersonagens.map(p => (p.participanteUid && !ficam.has(p.participanteUid) ? { ...p, participanteUid: undefined } : p)),
+    ]
+    tx.update(ref, {
+      nome: input.nome,
+      participantes,
+      personagens,
+      ...(data.liderUid && remover.has(data.liderUid) && { liderUid: deleteField() }),
+      ...(remover.size && { assistentes: ((data.assistentes as string[] | undefined) ?? []).filter(u => !remover.has(u)) }),
+      dias: input.dias,
+      horario: input.horario || deleteField(),
+      horarios: input.horarios || deleteField(),
+      updatedByUid,
+      updatedAt: serverTimestamp(),
+    })
   })
 }
 
@@ -113,8 +146,23 @@ export async function updateCenaRoteiro(
   })
 }
 
-export async function updateCenaPersonagens(id: string, personagens: Personagem[], updatedByUid: string): Promise<void> {
-  await updateDoc(doc(db, 'cenas', id), { personagens, updatedByUid, updatedAt: serverTimestamp() })
+/**
+ * Muda os personagens da cena a partir da versão atual no servidor (transação), e não da cópia que
+ * a tela tinha: a lista é gravada inteira, e com uma cópia velha uma gravação desfazia o que outra
+ * pessoa salvou nesse meio-tempo (vínculo de personagem, ficha...).
+ */
+export async function alterarCenaPersonagens(
+  id: string,
+  alterar: (atuais: Personagem[]) => Personagem[],
+  updatedByUid: string,
+): Promise<void> {
+  const ref = doc(db, 'cenas', id)
+  await runTransaction(db, async tx => {
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new Error('Cena não encontrada')
+    const atuais = (snap.data().personagens as Personagem[] | undefined) ?? []
+    tx.update(ref, { personagens: alterar(atuais), updatedByUid, updatedAt: serverTimestamp() })
+  })
 }
 
 export async function updateCenaParticipantes(id: string, participantes: string[], updatedByUid: string): Promise<void> {

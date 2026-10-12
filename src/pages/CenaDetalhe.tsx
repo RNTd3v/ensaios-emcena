@@ -48,7 +48,7 @@ import {
   updateCenaLider,
   updateCenaNome,
   updateCenaParticipantes,
-  updateCenaPersonagens,
+  alterarCenaPersonagens,
   updateCenaRoteiro,
 } from '@/services/firebase/cenas'
 import { preservarPersonagensNoCatalogo } from '@/services/firebase/personagens'
@@ -146,6 +146,8 @@ export function CenaDetalhe() {
   const [pessoaModal, setPessoaModal] = useState<string | null>(null)
   /** Pessoa do grupo com o modal dos personagens dela aberto (pelo badge). */
   const [personagensDe, setPersonagensDe] = useState<string | null>(null)
+  /** Pessoa do grupo com a confirmação de remoção aberta (o "X" da linha). */
+  const [removerDoGrupo, setRemoverDoGrupo] = useState<string | null>(null)
   const [nomeDraft, setNomeDraft] = useState('')
   const [liderUidDraft, setLiderUidDraft] = useState('')
   const [roteiroReferenciaDraft, setRoteiroReferenciaDraft] = useState('')
@@ -163,7 +165,6 @@ export function CenaDetalhe() {
   const [personagemParticipanteDraft, setPersonagemParticipanteDraft] = useState('')
   const [personagemRecorrenteDraft, setPersonagemRecorrenteDraft] = useState(false)
   const [personagemOrigemKey, setPersonagemOrigemKey] = useState('')
-  const [personagensBase, setPersonagensBase] = useState<Personagem[]>([])
   const [savingPersonagem, setSavingPersonagem] = useState(false)
   const [personagemError, setPersonagemError] = useState('')
 
@@ -399,7 +400,7 @@ export function CenaDetalhe() {
         liderUidDraft !== (cena.liderUid ?? '') ? updateCenaLider(cena.id, liderUidDraft || undefined, currentUser.uid) : Promise.resolve(),
         updateCenaRoteiro(cena.id, { referencia: roteiroReferenciaDraft.trim() || undefined, url: url || undefined }, currentUser.uid),
         novosPersonagens.length
-          ? updateCenaPersonagens(cena.id, [...cena.personagens, ...novosPersonagens], currentUser.uid)
+          ? alterarCenaPersonagens(cena.id, atuais => [...atuais, ...novosPersonagens], currentUser.uid)
           : Promise.resolve(),
       ])
       if (liderUidDraft && liderUidDraft !== cena.liderUid && (users[liderUidDraft]?.role ?? 'participante') === 'participante') {
@@ -422,7 +423,6 @@ export function CenaDetalhe() {
     setPersonagemRecorrenteDraft(false)
     setPersonagemOrigemKey('')
     setPersonagemError('')
-    setPersonagensBase(cena?.personagens ?? [])
     setPersonagemModalOpen(true)
   }
 
@@ -434,7 +434,6 @@ export function CenaDetalhe() {
     setPersonagemRecorrenteDraft(!!p.recorrente)
     setPersonagemOrigemKey('')
     setPersonagemError('')
-    setPersonagensBase(cena?.personagens ?? [])
     setPersonagemModalOpen(true)
   }
 
@@ -450,10 +449,9 @@ export function CenaDetalhe() {
   }
 
   /**
-   * `keepOpen` é o "cadastro em lote": salva e deixa o modal aberto pra adicionar o próximo. Usa
-   * `personagensBase` (atualizado a cada save) em vez de `cena.personagens` porque o snapshot do
-   * Firestore ainda não voltou entre um clique e outro — se lesse de `cena` de novo, perderia o
-   * personagem que acabou de salvar.
+   * `keepOpen` é o "cadastro em lote": salva e deixa o modal aberto pra adicionar o próximo. A lista
+   * é alterada sobre a versão atual da cena (transação), então nem o personagem recém-salvo nem o
+   * que outra pessoa mudou enquanto o modal estava aberto se perdem.
    */
   async function handleSavePersonagem(keepOpen: boolean) {
     if (!cena || !currentUser) return
@@ -471,11 +469,14 @@ export function CenaDetalhe() {
     try {
       const participanteUid = personagemParticipanteDraft || undefined
       const recorrente = personagemRecorrenteDraft || undefined
-      const next = editingPersonagemId
-        ? personagensBase.map(p => (p.id === editingPersonagemId ? { ...p, nome, participanteUid, recorrente } : p))
-        : [...personagensBase, { id: crypto.randomUUID(), nome, participanteUid, recorrente }]
-      await updateCenaPersonagens(cena.id, next, currentUser.uid)
-      setPersonagensBase(next)
+      await alterarCenaPersonagens(
+        cena.id,
+        atuais =>
+          editingPersonagemId
+            ? atuais.map(p => (p.id === editingPersonagemId ? { ...p, nome, participanteUid, recorrente } : p))
+            : [...atuais, { id: crypto.randomUUID(), nome, participanteUid, recorrente }],
+        currentUser.uid,
+      )
       if (keepOpen) {
         setPersonagemModo('novo')
         setPersonagemNomeDraft('')
@@ -498,10 +499,8 @@ export function CenaDetalhe() {
     setSavingPersonagem(true)
     try {
       // Sai só da cena — o personagem continua na base (tela de Personagens).
-      await preservarPersonagensNoCatalogo(personagensBase.filter(p => p.id === editingPersonagemId))
-      const next = personagensBase.filter(p => p.id !== editingPersonagemId)
-      await updateCenaPersonagens(cena.id, next, currentUser.uid)
-      setPersonagensBase(next)
+      await preservarPersonagensNoCatalogo(cena.personagens.filter(p => p.id === editingPersonagemId))
+      await alterarCenaPersonagens(cena.id, atuais => atuais.filter(p => p.id !== editingPersonagemId), currentUser.uid)
       setPersonagemModalOpen(false)
     } finally {
       setSavingPersonagem(false)
@@ -558,14 +557,15 @@ export function CenaDetalhe() {
       }
       if (cena.personagens.some(p => p.participanteUid === uid)) {
         tasks.push(
-          updateCenaPersonagens(
+          alterarCenaPersonagens(
             cena.id,
-            cena.personagens.map(p => (p.participanteUid === uid ? { ...p, participanteUid: undefined } : p)),
+            atuais => atuais.map(p => (p.participanteUid === uid ? { ...p, participanteUid: undefined } : p)),
             currentUser.uid,
           ),
         )
       }
       await Promise.all(tasks)
+      setRemoverDoGrupo(null)
     } finally {
       setSavingParticipante(false)
     }
@@ -1306,7 +1306,7 @@ export function CenaDetalhe() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => handleRemoveParticipante(uid)}
+                              onClick={() => setRemoverDoGrupo(uid)}
                               disabled={savingParticipante}
                               className="shrink-0"
                               title="Remover"
@@ -1347,6 +1347,45 @@ export function CenaDetalhe() {
           </div>
         </Dialog>
       )}
+
+      {cena && removerDoGrupo && (() => {
+        const personagensDela = cena.personagens.filter(p => p.participanteUid === removerDoGrupo)
+        // Assistente só pode tirar a pessoa do grupo (regras) — desvincular personagens é com admin/líder.
+        const bloqueado = !canManageCena && personagensDela.length > 0
+        return (
+          <Dialog open onClose={() => !savingParticipante && setRemoverDoGrupo(null)} title="Remover do grupo">
+            <div className="space-y-3">
+              <p className="text-sm text-gray-700">
+                <span className="font-medium">{nameFor(removerDoGrupo)}</span> sai do grupo da cena.
+              </p>
+              {personagensDela.length > 0 && (
+                <div className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                  <p className="font-medium">
+                    {bloqueado
+                      ? 'Essa pessoa faz personagem nessa cena — só admin ou o líder podem removê-la:'
+                      : `Também deixa de fazer ${personagensDela.length === 1 ? 'o personagem' : `os ${personagensDela.length} personagens`}:`}
+                  </p>
+                  <p className="mt-0.5">{personagensDela.map(p => p.nome).join(', ')}</p>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setRemoverDoGrupo(null)} disabled={savingParticipante}>
+                  Voltar
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => handleRemoveParticipante(removerDoGrupo)}
+                  disabled={savingParticipante || bloqueado}
+                >
+                  {savingParticipante && <Spinner size="sm" className="border-white/40 border-t-white" />}
+                  Remover
+                </Button>
+              </div>
+            </div>
+          </Dialog>
+        )
+      })()}
 
       {cena && personagensDe && (
         <Dialog open onClose={() => setPersonagensDe(null)} title={`Personagens de ${nameFor(personagensDe)}`}>

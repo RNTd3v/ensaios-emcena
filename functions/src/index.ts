@@ -697,6 +697,47 @@ export const dependenteResponsaveis = onDocumentUpdated('users/{uid}', async eve
   for (const c of cenas.docs) await sincronizarResponsaveisDaCena(c.ref, c.data())
 })
 
+// ---------- Histórico de personagens ----------
+
+interface PersonagemDoc {
+  id: string
+  nome: string
+  participanteUid?: string
+}
+
+/**
+ * Cada mudança nos personagens de uma cena (entrou/saiu da cena, pessoa vinculada/desvinculada/
+ * trocada) vira um registro em `cenas/{id}/historicoPersonagens`, com quem gravou (`updatedByUid`
+ * do próprio update) e o vínculo de antes — pra saber o que aconteceu e poder restaurar. Só admin lê.
+ */
+export const cenaHistoricoPersonagens = onDocumentUpdated('cenas/{id}', async event => {
+  const antes = event.data?.before.data()
+  const depois = event.data?.after.data()
+  if (!antes || !depois) return
+  const lista = (d: DocumentData) => new Map(((d.personagens as PersonagemDoc[] | undefined) ?? []).map(p => [p.id, p]))
+  const [mapaAntes, mapaDepois] = [lista(antes), lista(depois)]
+  const mudancas: Record<string, unknown>[] = []
+  for (const id of new Set([...mapaAntes.keys(), ...mapaDepois.keys()])) {
+    const a = mapaAntes.get(id)
+    const d = mapaDepois.get(id)
+    const tipo = !a ? 'adicionado' : !d ? 'removido' : (a.participanteUid ?? null) !== (d.participanteUid ?? null) ? 'vinculo' : null
+    if (!tipo) continue
+    mudancas.push({
+      tipo,
+      personagemId: id,
+      nome: (d ?? a)!.nome,
+      participanteAntes: a?.participanteUid ?? null,
+      participanteDepois: d?.participanteUid ?? null,
+    })
+  }
+  if (!mudancas.length) return
+  await event.data!.after.ref.collection('historicoPersonagens').add({
+    mudancas,
+    porUid: depois.updatedByUid ?? null,
+    em: FieldValue.serverTimestamp(),
+  })
+})
+
 // ---------- Problemas reportados ----------
 
 /** Relato novo (menu → Reportar problema): avisa só quem está em Configurações → Suporte. */

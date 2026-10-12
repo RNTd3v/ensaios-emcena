@@ -122,6 +122,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Histórico das mudanças de personagens da cena — gravado só pela Cloud Function
+    // `cenaHistoricoPersonagens`; só admin lê.
+    match /cenas/{cenaId}/historicoPersonagens/{id} {
+      allow read: if isAdmin();
+    }
+
     // Roteiro recortado de cada cena (id = id da cena): PDF das páginas + falas pro áudio. Todos
     // leem, só admin gera/remove.
     match /roteirosCena/{cenaId} {

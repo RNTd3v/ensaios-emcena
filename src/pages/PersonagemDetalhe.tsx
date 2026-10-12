@@ -11,7 +11,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { Textarea } from '@/components/ui/Textarea'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers } from '@/services/firebase/auth'
-import { subscribeToCena, updateCenaPersonagens } from '@/services/firebase/cenas'
+import { subscribeToCena, alterarCenaPersonagens } from '@/services/firebase/cenas'
 import { subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
 import { subscribeToEquipes } from '@/services/firebase/equipes'
@@ -179,8 +179,11 @@ export function PersonagemDetalhe() {
     if (!cena || !currentUser || !personagem) return
     setSavingFicha(true)
     try {
-      const novaLista = cena.personagens.map(p => (p.id === personagem.id ? { ...p, ficha: fichaDraft } : p))
-      await updateCenaPersonagens(cena.id, novaLista, currentUser.uid)
+      await alterarCenaPersonagens(
+        cena.id,
+        atuais => atuais.map(p => (p.id === personagem.id ? { ...p, ficha: fichaDraft } : p)),
+        currentUser.uid,
+      )
     } finally {
       setSavingFicha(false)
     }

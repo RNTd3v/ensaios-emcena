@@ -1,11 +1,12 @@
-import { collection, doc, onSnapshot, serverTimestamp, setDoc, writeBatch, type WriteBatch } from 'firebase/firestore'
+import { collection, doc, onSnapshot, runTransaction, serverTimestamp, setDoc, writeBatch, type Transaction } from 'firebase/firestore'
 import { db } from './config'
 import { personagemKey, type PersonagemAgregado } from '@/lib/personagens'
 import type { Cena, Personagem, PersonagemCatalogo } from '@/types'
 
 /**
  * Catálogo de personagens (só admin) + as operações da tela de Personagens, que mexem no
- * personagem em todas as cenas onde ele aparece de uma vez (writeBatch, tudo ou nada).
+ * personagem em todas as cenas onde ele aparece de uma vez (transação, tudo ou nada — e sobre a
+ * versão atual de cada cena, pra não desfazer o que outra pessoa salvou nesse meio-tempo).
  * O vínculo com pessoa exige que ela seja participante da cena — por isso vincular/adicionar
  * também inclui a pessoa em `participantes` quando ela ainda não está lá.
  */
@@ -39,14 +40,37 @@ export async function createPersonagem(nome: string, participanteUid: string | u
   await setDoc(catalogoRef(personagemKey(nome, participanteUid)), { nome: nome.trim(), participanteUid: participanteUid ?? null, createdAt: serverTimestamp() })
 }
 
-function upsertCatalogo(batch: WriteBatch, nome: string, participanteUid: string | undefined) {
-  batch.set(catalogoRef(personagemKey(nome, participanteUid)), { nome: nome.trim(), participanteUid: participanteUid ?? null }, { merge: true })
+function dadosCatalogo(nome: string, participanteUid: string | undefined) {
+  return { nome: nome.trim(), participanteUid: participanteUid ?? null }
 }
 
-function updateCenaNoBatch(batch: WriteBatch, cena: Cena, personagens: Personagem[], participanteUid: string | undefined, byUid: string) {
-  const participantes =
-    participanteUid && !cena.participantes.includes(participanteUid) ? [...cena.participantes, participanteUid] : cena.participantes
-  batch.update(doc(db, 'cenas', cena.id), { personagens, participantes, updatedByUid: byUid, updatedAt: serverTimestamp() })
+/**
+ * Aplica `alterar` nos personagens atuais de cada cena (relidos na transação) e, ao vincular,
+ * inclui a pessoa em `participantes`. `catalogo` faz as gravações do catálogo na mesma transação.
+ */
+async function alterarCenas(
+  cenaIds: string[],
+  alterar: (personagens: Personagem[]) => Personagem[],
+  participanteUid: string | undefined,
+  byUid: string,
+  catalogo: (tx: Transaction) => void,
+): Promise<void> {
+  const refs = [...new Set(cenaIds)].map(id => doc(db, 'cenas', id))
+  await runTransaction(db, async tx => {
+    const snaps = await Promise.all(refs.map(ref => tx.get(ref)))
+    snaps.forEach((snap, i) => {
+      const data = snap.data()
+      if (!data) return
+      const participantes = (data.participantes as string[] | undefined) ?? []
+      tx.update(refs[i], {
+        personagens: alterar((data.personagens as Personagem[] | undefined) ?? []),
+        ...(participanteUid && !participantes.includes(participanteUid) && { participantes: [...participantes, participanteUid] }),
+        updatedByUid: byUid,
+        updatedAt: serverTimestamp(),
+      })
+    })
+    catalogo(tx)
+  })
 }
 
 /**
@@ -56,7 +80,7 @@ function updateCenaNoBatch(batch: WriteBatch, cena: Cena, personagens: Personage
 export async function preservarPersonagensNoCatalogo(personagens: Personagem[]): Promise<void> {
   if (!personagens.length) return
   const batch = writeBatch(db)
-  for (const p of personagens) upsertCatalogo(batch, p.nome, p.participanteUid)
+  for (const p of personagens) batch.set(catalogoRef(personagemKey(p.nome, p.participanteUid)), dadosCatalogo(p.nome, p.participanteUid), { merge: true })
   await batch.commit()
 }
 
@@ -67,16 +91,16 @@ export async function updatePersonagem(
   byUid: string,
 ): Promise<void> {
   const nome = input.nome.trim()
-  const batch = writeBatch(db)
-  for (const cena of new Set(agregado.ocorrencias.map(o => o.cena))) {
-    const personagens = cena.personagens.map(p =>
-      isDoAgregado(p, agregado) ? { ...p, nome, participanteUid: input.participanteUid } : p,
-    )
-    updateCenaNoBatch(batch, cena, personagens, input.participanteUid, byUid)
-  }
-  if (personagemKey(nome, input.participanteUid) !== agregado.key) batch.delete(catalogoRef(agregado.key))
-  upsertCatalogo(batch, nome, input.participanteUid)
-  await batch.commit()
+  await alterarCenas(
+    agregado.ocorrencias.map(o => o.cena.id),
+    personagens => personagens.map(p => (isDoAgregado(p, agregado) ? { ...p, nome, participanteUid: input.participanteUid } : p)),
+    input.participanteUid,
+    byUid,
+    tx => {
+      if (personagemKey(nome, input.participanteUid) !== agregado.key) tx.delete(catalogoRef(agregado.key))
+      tx.set(catalogoRef(personagemKey(nome, input.participanteUid)), dadosCatalogo(nome, input.participanteUid), { merge: true })
+    },
+  )
 }
 
 /** Adiciona o personagem numa cena onde ele ainda não está, reaproveitando a ficha de outra cena. */
@@ -89,10 +113,9 @@ export async function addPersonagemNaCena(agregado: PersonagemAgregado, cena: Ce
     recorrente: agregado.ocorrencias.length > 0 || undefined,
     ficha,
   }
-  const batch = writeBatch(db)
-  updateCenaNoBatch(batch, cena, [...cena.personagens, novo], agregado.participanteUid, byUid)
-  upsertCatalogo(batch, agregado.nome, agregado.participanteUid)
-  await batch.commit()
+  await alterarCenas([cena.id], personagens => [...personagens, novo], agregado.participanteUid, byUid, tx =>
+    tx.set(catalogoRef(personagemKey(agregado.nome, agregado.participanteUid)), dadosCatalogo(agregado.nome, agregado.participanteUid), { merge: true }),
+  )
 }
 
 /**
@@ -101,26 +124,18 @@ export async function addPersonagemNaCena(agregado: PersonagemAgregado, cena: Ce
  * personagem continue na lista mesmo sem cena nenhuma.
  */
 export async function removePersonagemDaCena(agregado: PersonagemAgregado, cena: Cena, byUid: string): Promise<void> {
-  const batch = writeBatch(db)
-  batch.update(doc(db, 'cenas', cena.id), {
-    personagens: cena.personagens.filter(p => !isDoAgregado(p, agregado)),
-    updatedByUid: byUid,
-    updatedAt: serverTimestamp(),
-  })
-  upsertCatalogo(batch, agregado.nome, agregado.participanteUid)
-  await batch.commit()
+  await alterarCenas([cena.id], personagens => personagens.filter(p => !isDoAgregado(p, agregado)), undefined, byUid, tx =>
+    tx.set(catalogoRef(personagemKey(agregado.nome, agregado.participanteUid)), dadosCatalogo(agregado.nome, agregado.participanteUid), { merge: true }),
+  )
 }
 
 /** Exclui o personagem de todas as cenas e do catálogo. */
 export async function deletePersonagem(agregado: PersonagemAgregado, byUid: string): Promise<void> {
-  const batch = writeBatch(db)
-  for (const cena of new Set(agregado.ocorrencias.map(o => o.cena))) {
-    batch.update(doc(db, 'cenas', cena.id), {
-      personagens: cena.personagens.filter(p => !isDoAgregado(p, agregado)),
-      updatedByUid: byUid,
-      updatedAt: serverTimestamp(),
-    })
-  }
-  batch.delete(catalogoRef(agregado.key))
-  await batch.commit()
+  await alterarCenas(
+    agregado.ocorrencias.map(o => o.cena.id),
+    personagens => personagens.filter(p => !isDoAgregado(p, agregado)),
+    undefined,
+    byUid,
+    tx => tx.delete(catalogoRef(agregado.key)),
+  )
 }

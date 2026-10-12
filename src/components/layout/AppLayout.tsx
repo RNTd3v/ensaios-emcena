@@ -154,6 +154,12 @@ export function AppLayout() {
                   <MenuItem to="/" label="Início" icon={Home} end onClick={() => setMenuOpen(false)} />
                   <MenuItem to="/cenas" label={isAdmin ? 'Cenas' : 'Minhas Cenas'} icon={Clapperboard} onClick={() => setMenuOpen(false)} />
                   <MenuItem to="/treinamentos" label="Treinamentos" icon={GraduationCap} onClick={() => setMenuOpen(false)} />
+                  <MenuItem
+                    to="/calendario"
+                    label={isAdmin ? 'Calendário geral de ensaios' : 'Calendário de ensaios'}
+                    icon={CalendarClock}
+                    onClick={() => setMenuOpen(false)}
+                  />
                   {equipesVisivel && (
                     <MenuItem to="/equipes" label="Equipes" icon={UsersRound} onClick={() => setMenuOpen(false)} />
                   )}
@@ -177,7 +183,6 @@ export function AppLayout() {
                       <MenuItem to="/disponibilidade" label="Disponibilidade" icon={CalendarDays} onClick={() => setMenuOpen(false)} />
                       {isAdmin && (
                         <>
-                          <MenuItem to="/calendario" label="Calendário geral de ensaios" icon={CalendarClock} onClick={() => setMenuOpen(false)} />
                           <MenuItem to="/admin" label="Gerenciamento" icon={ShieldCheck} onClick={() => setMenuOpen(false)} />
                           <MenuItem to="/admin/reportes" label="Problemas reportados" icon={Bug} onClick={() => setMenuOpen(false)} />
                           <MenuItem to="/admin/notificacoes" label="Entrega de notificações" icon={BellRing} onClick={() => setMenuOpen(false)} />

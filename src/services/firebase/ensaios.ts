@@ -24,13 +24,14 @@ export async function createEnsaio(
   horario: string,
   confirmedByUid: string,
   obrigatorios?: string[],
-  flags?: { geral?: boolean; comFigurino?: boolean; roupa?: string; levar?: string },
+  flags?: { geral?: boolean; comFigurino?: boolean; roupa?: string; levar?: string; local?: string },
 ): Promise<string> {
   const ref = await addDoc(collection(db, 'ensaios'), {
     cenaId,
     data,
     horario,
     presencas: [],
+    ...(flags?.local?.trim() ? { local: flags.local.trim() } : {}),
     ...(obrigatorios?.length ? { obrigatorios } : {}),
     ...(flags?.geral ? { geral: true } : {}),
     ...(flags?.comFigurino ? { comFigurino: true } : {}),
@@ -53,29 +54,19 @@ export async function updateEnsaioHorario(id: string, horario: string): Promise<
   await updateDoc(doc(db, 'ensaios', id), { horario })
 }
 
-/**
- * Edição das infos do ensaio pelo modal da página do ensaio (admin/líder), num update só.
- * `presencas` só vem quando o ensaio já aconteceu (modo consulta) — ao vivo a presença é pela lista.
- */
-export async function updateEnsaioInfo(
-  id: string,
-  info: {
-    horario: string
-    local: string
-    geral: boolean
-    comFigurino: boolean
-    roupa: string
-    levar: string
-    obrigatorios: string[]
-    presencas?: string[]
-  },
-  byUid?: string,
-  notificar = true,
-): Promise<void> {
-  await updateDoc(doc(db, 'ensaios', id), {
-    // Quem mexeu por último — as Cloud Functions usam pra não notificar a própria pessoa.
-    ...(byUid ? { atualizadoPorUid: byUid } : {}),
-    ...campoNotificar(notificar),
+/** Infos do ensaio editáveis pelo modal (o mesmo usado pra confirmar/reconfirmar). */
+export interface EnsaioInfo {
+  horario: string
+  local: string
+  geral: boolean
+  comFigurino: boolean
+  roupa: string
+  levar: string
+  obrigatorios: string[]
+}
+
+function camposInfo(info: EnsaioInfo) {
+  return {
     horario: info.horario,
     local: info.local.trim() || deleteField(),
     geral: info.geral || deleteField(),
@@ -83,6 +74,24 @@ export async function updateEnsaioInfo(
     roupa: info.roupa.trim() || deleteField(),
     levar: info.levar.trim() || deleteField(),
     obrigatorios: info.obrigatorios.length ? info.obrigatorios : deleteField(),
+  }
+}
+
+/**
+ * Edição das infos do ensaio pelo modal da página do ensaio (admin/líder), num update só.
+ * `presencas` só vem quando o ensaio já aconteceu (modo consulta) — ao vivo a presença é pela lista.
+ */
+export async function updateEnsaioInfo(
+  id: string,
+  info: EnsaioInfo & { presencas?: string[] },
+  byUid?: string,
+  notificar = true,
+): Promise<void> {
+  await updateDoc(doc(db, 'ensaios', id), {
+    // Quem mexeu por último — as Cloud Functions usam pra não notificar a própria pessoa.
+    ...(byUid ? { atualizadoPorUid: byUid } : {}),
+    ...campoNotificar(notificar),
+    ...camposInfo(info),
     ...(info.presencas ? { presencas: info.presencas } : {}),
   })
 }
@@ -121,9 +130,13 @@ export async function cancelarEnsaio(id: string, canceledByUid: string, notifica
   await updateDoc(doc(db, 'ensaios', id), { canceledByUid, canceledAt: serverTimestamp(), ...campoNotificar(notificar) })
 }
 
-/** Reconfirma um ensaio cancelado — limpa o cancelamento e reinicia as presenças confirmadas. */
-export async function reconfirmarEnsaio(id: string, confirmedByUid: string): Promise<void> {
+/**
+ * Reconfirma um ensaio cancelado — limpa o cancelamento e reinicia as presenças confirmadas.
+ * Com `info`, grava as infos no mesmo update (o aviso de "reconfirmado" já sai com elas).
+ */
+export async function reconfirmarEnsaio(id: string, confirmedByUid: string, info?: EnsaioInfo): Promise<void> {
   await updateDoc(doc(db, 'ensaios', id), {
+    ...(info ? camposInfo(info) : {}),
     canceledByUid: deleteField(),
     canceledAt: deleteField(),
     presencas: [],

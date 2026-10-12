@@ -7,6 +7,7 @@ import { MinhaFotoDialog } from '@/components/layout/MinhaFotoDialog'
 import { Card, CardContent } from '@/components/ui/card'
 import { ProximoEnsaioCard } from '@/components/home/ProximoEnsaioCard'
 import { ProximoTreinamentoCard } from '@/components/home/ProximoTreinamentoCard'
+import { MeusPersonagensCard } from '@/components/home/MeusPersonagensCard'
 import { ApresentacoesCard } from '@/components/home/ApresentacoesCard'
 import { FinanceiroCards } from '@/components/home/FinanceiroCards'
 import { OrandoAgoraCard } from '@/components/oracao/OrandoAgora'
@@ -97,6 +98,8 @@ export function Home() {
       {user && <ProximoEnsaioCard uid={user.uid} />}
       {user &&
         dependentes.map(d => <ProximoEnsaioCard key={d.uid} uid={d.uid} dependenteDe={user.uid} nome={d.apelido || d.nomeCompleto} />)}
+
+      {user && <MeusPersonagensCard uid={user.uid} />}
 
       {user && <TarefasEmAndamentoCard uid={user.uid} />}
 

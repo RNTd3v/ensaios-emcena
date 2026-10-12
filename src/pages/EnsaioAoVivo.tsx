@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, CheckCircle2, Clock, ExternalLink, Plus, MapPin, NotebookPen, Pause, Pencil, Play, RotateCcw, Shirt, Star, Users, X, XCircle, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Check, CheckCircle2, Clock, ExternalLink, Info, Plus, MapPin, NotebookPen, Pause, Pencil, Play, RotateCcw, Shirt, SlidersHorizontal, Star, Users, X, XCircle, RefreshCw } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { NotificarElenco } from '@/components/ensaio/NotificarElenco'
 import { PreparoCampos, PreparoInfo, type Preparo } from '@/components/ensaio/PreparoEnsaio'
@@ -31,6 +31,7 @@ import {
   uidsAusentes,
   uidsIndisponiveis,
   updateEnsaioInfo,
+  type EnsaioInfo,
 } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -41,6 +42,7 @@ import { DIA_TO_WEEKDAY, formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { formatDuracao, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { DIAS_ORDER } from '@/lib/dias'
 import { cn } from '@/lib/utils'
+import { formatDateTime } from '@/lib/formatters'
 import { ensaioStatus } from '@/lib/ensaioStatus'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
@@ -190,21 +192,15 @@ export function EnsaioAoVivo() {
     ? DIAS_ORDER.find(d => DIA_TO_WEEKDAY[d] === new Date(`${dataParam}T00:00:00`).getDay())
     : undefined
   const horarioPrevisto = (cena && diaDaData && horarioDoDia(cena, diaDaData)) || cena?.horario || ''
-  const [horarioNovoDraft, setHorarioNovoDraft] = useState<string | null>(null)
-  const horarioNovo = horarioNovoDraft ?? horarioPrevisto
-  const [confirmandoEnsaio, setConfirmandoEnsaio] = useState(false)
-  const [preparoNovo, setPreparoNovo] = useState<Preparo>({ roupa: '', levar: '' })
+  // Confirmar (data sem ensaio) e reconfirmar (ensaio cancelado) abrem o mesmo modal da edição.
+  const [confirmarOpen, setConfirmarOpen] = useState(false)
 
-  async function handleConfirmarEnsaio() {
-    if (!cena || !currentUser || !dataParam || !horarioNovo) return
-    setConfirmandoEnsaio(true)
-    try {
-      const novoId = await createEnsaio(cena.id, dataParam, horarioNovo, currentUser.uid, undefined, preparoNovo)
-      await aplicarIndisponibilidades(novoId, uidsIndisponiveis(cena, dataParam, inscricoesByUid)).catch(() => {})
-      navigate(`/cenas/${cena.id}/ensaios/${novoId}`, { replace: true })
-    } finally {
-      setConfirmandoEnsaio(false)
-    }
+  async function handleConfirmarEnsaio(info: EnsaioInfo) {
+    if (!cena || !currentUser || !dataParam) return
+    const { obrigatorios, ...flags } = info
+    const novoId = await createEnsaio(cena.id, dataParam, info.horario, currentUser.uid, obrigatorios, flags)
+    await aplicarIndisponibilidades(novoId, uidsIndisponiveis(cena, dataParam, inscricoesByUid)).catch(() => {})
+    navigate(`/cenas/${cena.id}/ensaios/${novoId}`, { replace: true })
   }
 
   // ---------- Finalizar ----------
@@ -224,16 +220,10 @@ export function EnsaioAoVivo() {
     }
   }
 
-  const [reconfirmando, setReconfirmando] = useState(false)
-  async function handleReconfirmar() {
+  async function handleReconfirmar(info: EnsaioInfo) {
     if (!ensaio || !currentUser) return
-    setReconfirmando(true)
-    try {
-      await reconfirmarEnsaio(ensaio.id, currentUser.uid)
-      if (cena) await aplicarIndisponibilidades(ensaio.id, uidsIndisponiveis(cena, ensaio.data, inscricoesByUid)).catch(() => {})
-    } finally {
-      setReconfirmando(false)
-    }
+    await reconfirmarEnsaio(ensaio.id, currentUser.uid, info)
+    if (cena) await aplicarIndisponibilidades(ensaio.id, uidsIndisponiveis(cena, ensaio.data, inscricoesByUid)).catch(() => {})
   }
 
   /** Voltar leva pra tela anterior; se a página foi aberta direto (sem histórico no app), pra cena. */
@@ -322,17 +312,19 @@ export function EnsaioAoVivo() {
                 : 'Não há ensaio dessa cena nessa data.'}
             </p>
             {canManageAgenda && dataParam >= todayKey && (
-              <div className="space-y-2">
-                <div>
-                  <Label htmlFor="novo-ensaio-horario">Horário</Label>
-                  <Input id="novo-ensaio-horario" type="time" value={horarioNovo} onChange={e => setHorarioNovoDraft(e.target.value)} />
-                </div>
-                <PreparoCampos idPrefixo="novo-ensaio" value={preparoNovo} onChange={patch => setPreparoNovo(p => ({ ...p, ...patch }))} />
-                <Button className="w-full gap-1.5" onClick={handleConfirmarEnsaio} disabled={confirmandoEnsaio || !horarioNovo}>
-                  {confirmandoEnsaio ? <Spinner size="sm" className="border-white/40 border-t-white" /> : <Check className="h-4 w-4" />}
-                  Confirmar ensaio
-                </Button>
+              <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs text-gray-700">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <p>
+                  Clique em <span className="font-semibold">Configurar ensaio</span> pra definir horário, local e personagens obrigatórios.
+                  O elenco só é avisado quando você confirmar — e, se marcar obrigatórios, só quem faz esses personagens.
+                </p>
               </div>
+            )}
+            {canManageAgenda && dataParam >= todayKey && (
+              <Button className="w-full gap-1.5" onClick={() => setConfirmarOpen(true)}>
+                <SlidersHorizontal className="h-4 w-4" />
+                Configurar ensaio
+              </Button>
             )}
           </CardContent>
         </Card>
@@ -354,8 +346,8 @@ export function EnsaioAoVivo() {
           <RegistroEnsaio ensaio={ensaio} nameFor={nameFor} users={users} />
           {!ensaio.canceledByUid && <PresencaCard {...presencaProps} ensaio={ensaio} podeAlterar={() => false} />}
           {ensaio.canceledByUid && canManageAgenda && ensaio.data >= todayKey && (
-            <Button className="w-full gap-1.5" onClick={handleReconfirmar} disabled={reconfirmando}>
-              {reconfirmando ? <Spinner size="sm" className="border-white/40 border-t-white" /> : <RefreshCw className="h-4 w-4" />}
+            <Button className="w-full gap-1.5" onClick={() => setConfirmarOpen(true)}>
+              <RefreshCw className="h-4 w-4" />
               Reconfirmar ensaio
             </Button>
           )}
@@ -438,6 +430,30 @@ export function EnsaioAoVivo() {
             </Button>
           )}
         </>
+      )}
+
+      {/* Rodapé discreto: quem confirmou (ou reconfirmou) e quando — e, se cancelado, quando. */}
+      {ensaio && (
+        <p className="text-center text-[11px] text-white/50">
+          Confirmado por {nameFor(ensaio.confirmedByUid)} em {formatDateTime(ensaio.confirmedAt)}
+          {ensaio.canceledByUid && ensaio.canceledAt && ` · cancelado em ${formatDateTime(ensaio.canceledAt)}`}
+        </p>
+      )}
+
+      {canManageAgenda && ((!ensaio && dataParam) || ensaio?.canceledByUid) && (
+        <EditarEnsaioDialog
+          key={`confirmar-${ensaio?.id ?? dataParam}-${confirmarOpen}`}
+          open={confirmarOpen}
+          onClose={() => setConfirmarOpen(false)}
+          ensaio={ensaio}
+          horarioInicial={ensaio ? undefined : horarioPrevisto}
+          onConfirmar={ensaio ? handleReconfirmar : handleConfirmarEnsaio}
+          comRegistro={false}
+          personagens={cena.personagens}
+          elenco={elenco}
+          pessoas={pessoas}
+          nameFor={nameFor}
+        />
       )}
 
       {ensaio && canManageAgenda && (
@@ -769,7 +785,15 @@ function RegistroEnsaio({ ensaio, nameFor, users }: RegistroEnsaioProps) {
 interface EditarEnsaioDialogProps {
   open: boolean
   onClose: () => void
-  ensaio: Ensaio
+  /** O ensaio editado — ao confirmar, o cancelado que está sendo reconfirmado (ou nenhum, se é novo). */
+  ensaio?: Ensaio
+  /**
+   * Modo confirmação: o modal grava por aqui (criar ou reconfirmar) em vez de editar, e esconde
+   * presenças e o cancelar.
+   */
+  onConfirmar?: (info: EnsaioInfo) => Promise<void>
+  /** Horário sugerido quando não há ensaio de base (o previsto pela agenda). */
+  horarioInicial?: string
   /** Ensaio já aconteceu: também edita duração, anotações e presenças. */
   comRegistro: boolean
   /** Todos os personagens da cena — pra marcar os obrigatórios. */
@@ -780,28 +804,42 @@ interface EditarEnsaioDialogProps {
 }
 
 /**
- * Modal de edição do ensaio (admin/líder). Remontado a cada abertura (via `key`), então os
+ * Modal de edição do ensaio (admin/líder) — o mesmo serve pra confirmar um ensaio novo ou
+ * reconfirmar um cancelado (`onConfirmar`). Remontado a cada abertura (via `key`), então os
  * rascunhos sempre partem do estado atual do ensaio.
  */
-function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, elenco, pessoas, nameFor }: EditarEnsaioDialogProps) {
+function EditarEnsaioDialog({
+  open,
+  onClose,
+  ensaio,
+  onConfirmar,
+  horarioInicial,
+  comRegistro,
+  personagens,
+  elenco,
+  pessoas,
+  nameFor,
+}: EditarEnsaioDialogProps) {
   const currentUser = useAuthStore(s => s.user)
-  const duracaoInicial = ensaio.duracaoSegundos !== undefined ? String(Math.round(ensaio.duracaoSegundos / 60)) : ''
-  const [horario, setHorario] = useState(ensaio.horario)
-  const [local, setLocal] = useState(ensaio.local ?? '')
+  const confirmando = !!onConfirmar
+  const duracaoInicial = ensaio?.duracaoSegundos !== undefined ? String(Math.round(ensaio.duracaoSegundos / 60)) : ''
+  const [horario, setHorario] = useState(horarioInicial ?? ensaio?.horario ?? '')
+  const [local, setLocal] = useState(ensaio?.local ?? '')
   const locais = useLocais()
   const localCadastrado = findLocal(locais, local)
-  const [geral, setGeral] = useState(!!ensaio.geral)
-  const [comFigurino, setComFigurino] = useState(!!ensaio.comFigurino)
-  const [preparo, setPreparo] = useState<Preparo>({ roupa: ensaio.roupa ?? '', levar: ensaio.levar ?? '' })
+  const [geral, setGeral] = useState(!!ensaio?.geral)
+  const [comFigurino, setComFigurino] = useState(!!ensaio?.comFigurino)
+  const [preparo, setPreparo] = useState<Preparo>({ roupa: ensaio?.roupa ?? '', levar: ensaio?.levar ?? '' })
   const [duracao, setDuracao] = useState(duracaoInicial)
-  const [anotacoes, setAnotacoes] = useState(ensaio.anotacoes ?? '')
-  const [presencas, setPresencas] = useState<string[]>(ensaio.presencas ?? [])
-  const [obrigatorios, setObrigatorios] = useState<string[]>(ensaio.obrigatorios ?? [])
+  const [anotacoes, setAnotacoes] = useState(ensaio?.anotacoes ?? '')
+  const [presencas, setPresencas] = useState<string[]>(ensaio?.presencas ?? [])
+  const [obrigatorios, setObrigatorios] = useState<string[]>(ensaio?.obrigatorios ?? [])
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [canceling, setCanceling] = useState(false)
   // Só horário e local geram aviso de "Ensaio alterado" — aí aparece a opção de notificar ou não.
   const [notificar, setNotificar] = useState(true)
-  const mudaAviso = horario !== ensaio.horario || local.trim() !== (ensaio.local ?? '').trim()
+  // Confirmar sempre avisa o elenco ("Ensaio confirmado"/"reconfirmado"), sem essa opção.
+  const mudaAviso = !confirmando && !!ensaio && (horario !== ensaio.horario || local.trim() !== (ensaio.local ?? '').trim())
   const [extraUid, setExtraUid] = useState('')
   const elencoUids = new Set(elenco.map(p => p.participanteUid as string))
   const extras = presencas.filter(uid => !elencoUids.has(uid))
@@ -821,6 +859,18 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
     }
     setSaving(true)
     setError('')
+    if (onConfirmar) {
+      try {
+        await onConfirmar({ horario, local, geral, comFigurino, ...preparo, obrigatorios })
+        onClose()
+      } catch {
+        setError('Não foi possível confirmar. Tente de novo.')
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
+    if (!ensaio) return
     try {
       // Só regrava presenças se mudaram — ao vivo, outras pessoas podem estar fazendo check-in ao mesmo tempo.
       const presencasMudaram = JSON.stringify([...presencas].sort()) !== JSON.stringify([...(ensaio.presencas ?? [])].sort())
@@ -843,7 +893,7 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
   }
 
   async function handleCancelar() {
-    if (!currentUser) return
+    if (!currentUser || !ensaio) return
     setCanceling(true)
     try {
       await cancelarEnsaio(ensaio.id, currentUser.uid, notificar)
@@ -865,7 +915,7 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
     )
 
   return (
-    <Dialog open={open} onClose={onClose} title="Editar ensaio">
+    <Dialog open={open} onClose={onClose} title={!confirmando ? 'Editar ensaio' : ensaio ? 'Reconfirmar ensaio' : 'Confirmar ensaio'}>
       <div className="space-y-4">
         <div>
           <Label htmlFor="editar-ensaio-horario">Horário</Label>
@@ -957,103 +1007,105 @@ function EditarEnsaioDialog({ open, onClose, ensaio, comRegistro, personagens, e
           </>
         )}
 
-        <div>
-          <p className="mb-1.5 text-sm font-medium">
-            Presença ({presencas.filter(uid => elencoUids.has(uid)).length}/{elencoUids.size}
-            {extras.length > 0 && ` + ${extras.length}`})
-          </p>
-          {elenco.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Nenhum personagem com participante vinculado.</p>
-          ) : (
-            <div className="space-y-1">
-              {elenco.map(p => {
-                const uid = p.participanteUid as string
-                const presente = presencas.includes(uid)
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => togglePresenca(uid)}
-                    className={cn(
-                      'flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm',
-                      presente ? 'bg-emerald-50' : 'hover:bg-gray-50',
-                    )}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{p.nome}</p>
-                      <p className="truncate text-xs text-muted-foreground">{nameFor(uid)}</p>
-                    </div>
-                    <span
-                      className={cn(
-                        'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
-                        presente ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-gray-300',
-                      )}
-                    >
-                      {presente && <Check className="h-3 w-3" />}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-          <div className="mt-3 border-t border-gray-100 pt-3">
-            <p className="mb-1.5 text-xs font-medium text-muted-foreground">Também presentes (fora do elenco)</p>
-            {extras.length > 0 && (
-              <div className="mb-2 space-y-1">
-                {extras.map(uid => (
-                  <PessoaLinha
-                    key={uid}
-                    pessoa={pessoas.find(p => p.uid === uid) ?? { uid, nome: nameFor(uid) }}
-                    className="rounded-lg bg-emerald-50 px-2 py-1.5"
-                  >
+        {!confirmando && (
+          <div>
+            <p className="mb-1.5 text-sm font-medium">
+              Presença ({presencas.filter(uid => elencoUids.has(uid)).length}/{elencoUids.size}
+              {extras.length > 0 && ` + ${extras.length}`})
+            </p>
+            {elenco.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Nenhum personagem com participante vinculado.</p>
+            ) : (
+              <div className="space-y-1">
+                {elenco.map(p => {
+                  const uid = p.participanteUid as string
+                  const presente = presencas.includes(uid)
+                  return (
                     <button
+                      key={p.id}
                       type="button"
                       onClick={() => togglePresenca(uid)}
-                      title="Remover"
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
+                      className={cn(
+                        'flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm',
+                        presente ? 'bg-emerald-50' : 'hover:bg-gray-50',
+                      )}
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{p.nome}</p>
+                        <p className="truncate text-xs text-muted-foreground">{nameFor(uid)}</p>
+                      </div>
+                      <span
+                        className={cn(
+                          'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
+                          presente ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-gray-300',
+                        )}
+                      >
+                        {presente && <Check className="h-3 w-3" />}
+                      </span>
                     </button>
-                  </PessoaLinha>
-                ))}
+                  )
+                })}
               </div>
             )}
-            <div className="flex items-center gap-1.5">
-              <div className="flex-1">
-                <PessoaSelect
-                  value={extraUid}
-                  onChange={setExtraUid}
-                  pessoas={disponiveisExtra}
-                  placeholder="Adicionar pessoa..."
-                  titulo="Adicionar ao ensaio"
-                />
+            <div className="mt-3 border-t border-gray-100 pt-3">
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">Também presentes (fora do elenco)</p>
+              {extras.length > 0 && (
+                <div className="mb-2 space-y-1">
+                  {extras.map(uid => (
+                    <PessoaLinha
+                      key={uid}
+                      pessoa={pessoas.find(p => p.uid === uid) ?? { uid, nome: nameFor(uid) }}
+                      className="rounded-lg bg-emerald-50 px-2 py-1.5"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => togglePresenca(uid)}
+                        title="Remover"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </PessoaLinha>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-1.5">
+                <div className="flex-1">
+                  <PessoaSelect
+                    value={extraUid}
+                    onChange={setExtraUid}
+                    pessoas={disponiveisExtra}
+                    placeholder="Adicionar pessoa..."
+                    titulo="Adicionar ao ensaio"
+                  />
+                </div>
+                <Button
+                  size="icon"
+                  title="Adicionar"
+                  disabled={!extraUid}
+                  onClick={() => {
+                    togglePresenca(extraUid)
+                    setExtraUid('')
+                  }}
+                  className="shrink-0 bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
               </div>
-              <Button
-                size="icon"
-                title="Adicionar"
-                disabled={!extraUid}
-                onClick={() => {
-                  togglePresenca(extraUid)
-                  setExtraUid('')
-                }}
-                className="shrink-0 bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
             </div>
           </div>
-        </div>
+        )}
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         {mudaAviso && !confirmCancel && <NotificarElenco value={notificar} onChange={setNotificar} />}
 
-        <Button className="w-full" onClick={handleSave} disabled={saving}>
-          {saving && <Spinner size="sm" className="border-white/40 border-t-white" />}
-          Salvar
+        <Button className="w-full gap-1.5" onClick={handleSave} disabled={saving || (confirmando && !horario)}>
+          {saving ? <Spinner size="sm" className="border-white/40 border-t-white" /> : confirmando && <Check className="h-4 w-4" />}
+          {!confirmando ? 'Salvar' : ensaio ? 'Reconfirmar ensaio' : 'Confirmar ensaio'}
         </Button>
 
-        {confirmCancel ? (
+        {confirmando ? null : confirmCancel ? (
           <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-3">
             <p className="text-xs text-red-700">
               Cancelar esse ensaio? O registro continua visível como cancelado e pode ser reconfirmado depois (as presenças são zeradas).

@@ -116,11 +116,7 @@ function App() {
           <Route path="personagens" element={<Personagens />} />
           <Route
             path="calendario"
-            element={
-              <AdminGuard>
-                <Calendario />
-              </AdminGuard>
-            }
+            element={<Calendario />}
           />
           {/* Relógio de oração: admin sempre; os demais quando o admin libera (botão na página). */}
           <Route

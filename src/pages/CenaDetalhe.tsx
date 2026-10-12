@@ -22,6 +22,7 @@ import {
   Trash2,
   CalendarX,
   Timer,
+  VenetianMask,
   X,
 } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
@@ -58,10 +59,6 @@ import {
   createEnsaio,
   reconfirmarEnsaio,
   subscribeToEnsaiosDaCena,
-  updateEnsaioFlags,
-  updateEnsaioPreparo,
-  updateEnsaioHorario,
-  updateEnsaioObrigatorios,
   uidsAusentes,
   uidsIndisponiveis,
 } from '@/services/firebase/ensaios'
@@ -147,6 +144,8 @@ export function CenaDetalhe() {
   const [editModalOpen, setEditModalOpen] = useState(false)
   /** Pessoa do grupo com o modal de contato aberto (líder, assistente ou participante). */
   const [pessoaModal, setPessoaModal] = useState<string | null>(null)
+  /** Pessoa do grupo com o modal dos personagens dela aberto (pelo badge). */
+  const [personagensDe, setPersonagensDe] = useState<string | null>(null)
   const [nomeDraft, setNomeDraft] = useState('')
   const [liderUidDraft, setLiderUidDraft] = useState('')
   const [roteiroReferenciaDraft, setRoteiroReferenciaDraft] = useState('')
@@ -283,6 +282,15 @@ export function CenaDetalhe() {
     return cena.participantes
       .filter(uid => uid !== cena.liderUid)
       .sort((a, b) => Number(!assistentes.includes(a)) - Number(!assistentes.includes(b)))
+  }, [cena])
+
+  /** Quantos personagens cada pessoa faz na cena — o badge ao lado dela no Grupo. */
+  const personagensPorUid = useMemo(() => {
+    const contagem: Record<string, number> = {}
+    for (const p of cena?.personagens ?? []) {
+      if (p.participanteUid) contagem[p.participanteUid] = (contagem[p.participanteUid] ?? 0) + 1
+    }
+    return contagem
   }, [cena])
 
   /** Ensaios finalizados pela tela "Iniciar ensaio" — os registros exibidos no card Anotações. */
@@ -641,14 +649,11 @@ export function CenaDetalhe() {
           // Depois de criar/reconfirmar (que zera as respostas), quem marcou a data como
           // indisponível na inscrição já entra como "não vai".
           const indisponiveis = uidsIndisponiveis(cena, o.dateKey, inscricoesByUid)
+          // Reconfirma e grava as infos num update só — o aviso sai uma vez, já pros obrigatórios certos.
           return existing
-            ? Promise.all([
-                reconfirmarEnsaio(existing.id, currentUser.uid).then(() => aplicarIndisponibilidades(existing.id, indisponiveis)),
-                updateEnsaioHorario(existing.id, detail.horario),
-                updateEnsaioObrigatorios(existing.id, detail.obrigatorios),
-                updateEnsaioFlags(existing.id, { geral: detail.geral, comFigurino: detail.comFigurino }),
-                updateEnsaioPreparo(existing.id, { roupa: detail.roupa, levar: detail.levar }),
-              ])
+            ? reconfirmarEnsaio(existing.id, currentUser.uid, { ...detail, local: existing.local ?? '' }).then(() =>
+                aplicarIndisponibilidades(existing.id, indisponiveis),
+              )
             : createEnsaio(cena.id, o.dateKey, detail.horario, currentUser.uid, detail.obrigatorios, {
                 geral: detail.geral,
                 comFigurino: detail.comFigurino,
@@ -1269,7 +1274,9 @@ export function CenaDetalhe() {
                         funcao="lider"
                         onClick={() => setPessoaModal(cena.liderUid!)}
                         className="rounded-lg px-1 py-1.5"
-                      />
+                      >
+                        <PersonagensBadge quantidade={personagensPorUid[cena.liderUid]} onClick={() => setPersonagensDe(cena.liderUid!)} />
+                      </PessoaLinha>
                     )}
                     {outrosParticipantes.map(uid => {
                       const assistente = !!cena.assistentes?.includes(uid)
@@ -1281,6 +1288,7 @@ export function CenaDetalhe() {
                           onClick={() => setPessoaModal(uid)}
                           className="rounded-lg px-1 py-1.5"
                         >
+                          <PersonagensBadge quantidade={personagensPorUid[uid]} onClick={() => setPersonagensDe(uid)} />
                           {canManageCena && (
                             <Button
                               variant="ghost"
@@ -1336,6 +1344,33 @@ export function CenaDetalhe() {
                 Cancelar ensaio
               </Button>
             </div>
+          </div>
+        </Dialog>
+      )}
+
+      {cena && personagensDe && (
+        <Dialog open onClose={() => setPersonagensDe(null)} title={`Personagens de ${nameFor(personagensDe)}`}>
+          <div className="space-y-1">
+            {cena.personagens
+              .filter(p => p.participanteUid === personagensDe)
+              .map(p => (
+                <Link
+                  key={p.id}
+                  to={`/cenas/${cena.id}/personagens/${p.id}`}
+                  className="flex items-center gap-2.5 rounded-lg px-1 py-1.5 hover:bg-gray-50"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <VenetianMask className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{p.nome}</span>
+                  {p.recorrente && (
+                    <span title="Personagem recorrente em outras cenas" className="shrink-0 text-primary">
+                      <Pin className="h-3 w-3" />
+                    </span>
+                  )}
+                  <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
+                </Link>
+              ))}
           </div>
         </Dialog>
       )}
@@ -1844,5 +1879,21 @@ export function CenaDetalhe() {
         </Dialog>
       )}
     </div>
+  )
+}
+
+/** Badge discreto com quantos personagens a pessoa faz na cena (nada se não faz nenhum); tocar abre a lista. */
+function PersonagensBadge({ quantidade, onClick }: { quantidade?: number; onClick: () => void }) {
+  if (!quantidade) return null
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary hover:bg-primary/15"
+      title={`${quantidade} ${quantidade === 1 ? 'personagem' : 'personagens'} nesta cena`}
+    >
+      <VenetianMask className="h-3 w-3" />
+      {quantidade}
+    </button>
   )
 }

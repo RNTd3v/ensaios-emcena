@@ -219,13 +219,27 @@ function descricaoEnsaio(cenaNome: string, e: DocumentData): string {
 
 // ---------- Ensaios ----------
 
+/**
+ * Quem recebe os avisos do ensaio: com personagens obrigatórios marcados, só quem faz esses
+ * personagens; sem nenhum marcado, a cena toda.
+ */
+function publicoDoEnsaio(cena: DocumentData, e: DocumentData): string[] {
+  const obrigatorios: string[] = e.obrigatorios ?? []
+  if (!obrigatorios.length) return cena.participantes ?? []
+  const uids = new Set<string>()
+  for (const p of (cena.personagens as { id: string; participanteUid?: string }[] | undefined) ?? []) {
+    if (p.participanteUid && obrigatorios.includes(p.id)) uids.add(p.participanteUid)
+  }
+  return [...uids]
+}
+
 export const ensaioCriado = onDocumentCreated('ensaios/{id}', async event => {
   const e = event.data?.data()
   if (!e || e.canceledByUid) return
   const cena = await getCena(e.cenaId)
   if (!cena || cena.ativo === false) return
   await notificar(
-    cena.participantes ?? [],
+    publicoDoEnsaio(cena, e),
     { titulo: 'Ensaio confirmado', corpo: descricaoEnsaio(cena.nome, e), link: `/cenas/${e.cenaId}/ensaios/${event.params.id}`, tipo: 'ensaio' },
     e.confirmedByUid,
   )
@@ -244,7 +258,7 @@ export const ensaioAlterado = onDocumentUpdated('ensaios/{id}', async event => {
   const cena = await getCena(depois.cenaId)
   if (!cena || cena.ativo === false) return
   const link = `/cenas/${depois.cenaId}/ensaios/${event.params.id}`
-  const participantes: string[] = cena.participantes ?? []
+  const participantes = publicoDoEnsaio(cena, depois)
 
   if (!antes.canceledByUid && depois.canceledByUid) {
     await notificar(participantes, { titulo: 'Ensaio cancelado', corpo: descricaoEnsaio(cena.nome, depois), link, tipo: 'ensaio' }, depois.canceledByUid)
@@ -288,7 +302,7 @@ export const lembreteEnsaio = onSchedule({ schedule: 'every 15 minutes', timeZon
     const ausentes = new Set<string>([...(e.ausentes ?? []), ...Object.keys(e.ausencias ?? {})])
     await doc.ref.update({ lembreteEnviado: true })
     await notificar(
-      (cena.participantes ?? []).filter((u: string) => !ausentes.has(u)),
+      publicoDoEnsaio(cena, e).filter(u => !ausentes.has(u)),
       { titulo: 'Ensaio daqui a pouco', corpo: descricaoEnsaio(cena.nome, e), link: `/cenas/${e.cenaId}/ensaios/${doc.id}`, tipo: 'ensaio' },
     )
   }
@@ -415,7 +429,7 @@ export const lembretesDoDia = onSchedule({ schedule: 'every 5 minutes', timeZone
         const cena = await getCena(e.cenaId)
         if (!cena || cena.ativo === false) return null
         const link = `/cenas/${e.cenaId}/ensaios/${doc.id}`
-        return { e, oQue: 'ensaio', participantes: cena.participantes ?? [], nome: cena.nome, descricao: descricaoEnsaio(cena.nome, e), link }
+        return { e, oQue: 'ensaio', participantes: publicoDoEnsaio(cena, e), nome: cena.nome, descricao: descricaoEnsaio(cena.nome, e), link }
       },
     })
   }

@@ -8,7 +8,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers } from '@/services/firebase/auth'
 import { subscribeToCenas } from '@/services/firebase/cenas'
-import { subscribeToAllEnsaios } from '@/services/firebase/ensaios'
+import { subscribeToAllEnsaios, subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { DEFAULT_SETTINGS } from '@/services/firebase/settings'
@@ -49,7 +49,9 @@ function capitalize(s: string) {
 }
 
 /**
- * Calendário geral dos ensaios (só admin), em visão semanal ou mensal. Mostra os ensaios
+ * Calendário dos ensaios, em visão semanal ou mensal — aberto pra todos: admin vê todas as cenas;
+ * os demais, só as cenas em que estão (a regra de `ensaios` só libera essas). Aqui não se gerencia
+ * nada: confirmar/editar/cancelar fica na página do ensaio, que só mostra isso pra admin/líder. Mostra os ensaios
  * confirmados (e os cancelados, riscados) e — de hoje em diante — os "previstos": dias da agenda
  * de cada cena ativa que ainda não têm ensaio confirmado nem cancelado naquela data. Tocar em
  * qualquer ensaio abre a página dele — um previsto abre pela data (ainda sem documento).
@@ -69,8 +71,26 @@ export function Calendario() {
     // Cenas inativas saem do calendário inteiro — nem os ensaios já marcados delas aparecem.
     return subscribeToCenas(currentUser.role, currentUser.uid, lista => setCenas(lista.filter(c => c.ativo)))
   }, [currentUser])
-  useEffect(() => subscribeToAllEnsaios(setEnsaios), [])
-  useEffect(() => subscribeToAllInscricoes(setInscricoes), [])
+  const isAdmin = currentUser?.role === 'admin'
+  const cenaIdsKey = (cenas ?? []).map(c => c.id).sort().join(',')
+  useEffect(() => {
+    if (isAdmin) return subscribeToAllEnsaios(setEnsaios)
+    if (cenas === null) return
+    // Uma assinatura por cena — a regra de `ensaios` só libera leitura filtrando por `cenaId`.
+    const ids = cenaIdsKey ? cenaIdsKey.split(',') : []
+    if (!ids.length) return setEnsaios([])
+    const porCena: Record<string, Ensaio[]> = {}
+    const unsubs = ids.map(cenaId =>
+      subscribeToEnsaiosDaCena(cenaId, lista => {
+        porCena[cenaId] = lista
+        if (ids.every(id => porCena[id])) setEnsaios(ids.flatMap(id => porCena[id]))
+      }),
+    )
+    return () => unsubs.forEach(u => u())
+  }, [isAdmin, cenaIdsKey, cenas === null])
+  // Inscrições (apelidos) só admin/líder podem listar; os demais ficam com o nome do perfil.
+  const podeListarInscricoes = currentUser?.role === 'admin' || currentUser?.role === 'lider'
+  useEffect(() => (podeListarInscricoes ? subscribeToAllInscricoes(setInscricoes) : undefined), [podeListarInscricoes])
   useEffect(() => {
     getUsers().then(list => setUsers(Object.fromEntries(list.map(u => [u.uid, u]))))
   }, [])

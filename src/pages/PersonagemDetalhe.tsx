@@ -199,10 +199,15 @@ export function PersonagemDetalhe() {
   const todayKey = toDateKey(new Date())
   const ensaiosPassados = useMemo(() => {
     if (!ensaios) return []
-    return ensaios
-      .filter(e => !e.canceledByUid && e.data <= todayKey)
-      .sort((a, b) => b.data.localeCompare(a.data) || b.horario.localeCompare(a.horario))
-  }, [ensaios, todayKey])
+    const uid = personagem?.participanteUid
+    return (
+      ensaios
+        // Ensaio só dos obrigatórios em que esse personagem não estava: não conta como falta.
+        .filter(e => !e.canceledByUid && e.data <= todayKey)
+        .filter(e => !e.obrigatorios?.length || e.obrigatorios.includes(personagem?.id ?? '') || (!!uid && !!e.presencas?.includes(uid)))
+        .sort((a, b) => b.data.localeCompare(a.data) || b.horario.localeCompare(a.horario))
+    )
+  }, [ensaios, todayKey, personagem?.id, personagem?.participanteUid])
 
   return (
     <div className="space-y-4">

@@ -46,6 +46,7 @@ import { DIAS_ORDER } from '@/lib/dias'
 import { cn } from '@/lib/utils'
 import { formatDateTime, whatsappLink } from '@/lib/formatters'
 import { CRONOMETRO_ZERADO, segundosDoCronometro } from '@/lib/cronometro'
+import { elencoDoEnsaio } from '@/lib/ensaioPublico'
 import { ensaioStatus } from '@/lib/ensaioStatus'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
@@ -127,6 +128,8 @@ export function EnsaioAoVivo() {
     (currentUser.role === 'admin' || cena.liderUid === currentUser.uid || !!cena.assistentes?.includes(currentUser.uid))
 
   const elenco = useMemo(() => (cena?.personagens ?? []).filter(p => p.participanteUid), [cena?.personagens])
+  /** Quem é chamado pra esse ensaio: com obrigatórios marcados, só eles (ver `elencoDoEnsaio`). */
+  const elencoChamado = useMemo(() => elencoDoEnsaio(cena?.personagens ?? [], ensaio?.obrigatorios), [cena?.personagens, ensaio?.obrigatorios])
 
   // Motivos de ausência gravados no formato antigo (no próprio ensaio, legíveis por todo o elenco)
   // vão pra subcoleção privada assim que admin/líder abre a página.
@@ -226,7 +229,7 @@ export function EnsaioAoVivo() {
     if (!cena || !currentUser || !dataParam) return
     const { obrigatorios, ...flags } = info
     const novoId = await createEnsaio(cena.id, dataParam, info.horario, currentUser.uid, obrigatorios, flags)
-    await aplicarIndisponibilidades(novoId, uidsIndisponiveis(cena, dataParam, inscricoesByUid)).catch(() => {})
+    await aplicarIndisponibilidades(novoId, uidsIndisponiveis(cena, dataParam, inscricoesByUid, undefined, obrigatorios)).catch(() => {})
     navigate(`/cenas/${cena.id}/ensaios/${novoId}`, { replace: true })
   }
 
@@ -249,7 +252,7 @@ export function EnsaioAoVivo() {
   async function handleReconfirmar(info: EnsaioInfo) {
     if (!ensaio || !currentUser) return
     await reconfirmarEnsaio(ensaio.id, currentUser.uid, info)
-    if (cena) await aplicarIndisponibilidades(ensaio.id, uidsIndisponiveis(cena, ensaio.data, inscricoesByUid)).catch(() => {})
+    if (cena) await aplicarIndisponibilidades(ensaio.id, uidsIndisponiveis(cena, ensaio.data, inscricoesByUid, undefined, info.obrigatorios)).catch(() => {})
   }
 
   /** Voltar leva pra tela anterior; se a página foi aberta direto (sem histórico no app), pra cena. */
@@ -286,7 +289,7 @@ export function EnsaioAoVivo() {
 
   // Menor de idade sem telefone próprio: fala com o responsável.
   const telefoneDe = (uid: string) => inscricoesByUid[uid]?.telefone || inscricoesByUid[uid]?.responsavel?.telefone || undefined
-  const presencaProps = { elenco, users, nameFor, onToggle: togglePresenca, podeVerMotivo: canManageAgenda, telefoneDe, atorDe }
+  const presencaProps = { elenco: elencoChamado, users, nameFor, onToggle: togglePresenca, podeVerMotivo: canManageAgenda, telefoneDe, atorDe }
 
   return (
     <div className="space-y-4">
@@ -420,7 +423,7 @@ export function EnsaioAoVivo() {
 
           <MusicasCard cena={cena} ensaio={{ id: ensaio.id, data: ensaio.data }} />
 
-          <CheckinCard ensaio={ensaio} elenco={elenco} checkinLimiteHoras={checkinLimiteHoras} />
+          <CheckinCard ensaio={ensaio} elenco={elencoChamado} checkinLimiteHoras={checkinLimiteHoras} />
 
           <PresencaCard
             {...presencaProps}
@@ -923,12 +926,18 @@ function EditarEnsaioDialog({
   const [obrigatorios, setObrigatorios] = useState<string[]>(ensaio?.obrigatorios ?? [])
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [canceling, setCanceling] = useState(false)
-  // Só horário e local geram aviso de "Ensaio alterado" — aí aparece a opção de notificar ou não.
+  // Horário, local e obrigatórios geram aviso ("Ensaio alterado", "Você foi chamado", "Você não
+  // precisa ir") — aí aparece a opção de notificar ou não.
   const [notificar, setNotificar] = useState(true)
+  const obrigatoriosMudaram =
+    !!ensaio && JSON.stringify([...obrigatorios].sort()) !== JSON.stringify([...(ensaio.obrigatorios ?? [])].sort())
   // Confirmar sempre avisa o elenco ("Ensaio confirmado"/"reconfirmado"), sem essa opção.
-  const mudaAviso = !confirmando && !!ensaio && (horario !== ensaio.horario || local.trim() !== (ensaio.local ?? '').trim())
+  const mudaAviso =
+    !confirmando && !!ensaio && (horario !== ensaio.horario || local.trim() !== (ensaio.local ?? '').trim() || obrigatoriosMudaram)
   const [extraUid, setExtraUid] = useState('')
-  const elencoUids = new Set(elenco.map(p => p.participanteUid as string))
+  // A lista de presença segue os obrigatórios do rascunho: marcou obrigatórios, só eles ficam no elenco.
+  const elencoChamado = elencoDoEnsaio(elenco, obrigatorios)
+  const elencoUids = new Set(elencoChamado.map(p => p.participanteUid as string))
   const extras = presencas.filter(uid => !elencoUids.has(uid))
   const disponiveisExtra = pessoas.filter(p => !elencoUids.has(p.uid) && !presencas.includes(p.uid))
   const [saving, setSaving] = useState(false)
@@ -1100,11 +1109,11 @@ function EditarEnsaioDialog({
               Presença ({presencas.filter(uid => elencoUids.has(uid)).length}/{elencoUids.size}
               {extras.length > 0 && ` + ${extras.length}`})
             </p>
-            {elenco.length === 0 ? (
+            {elencoChamado.length === 0 ? (
               <p className="text-xs text-muted-foreground">Nenhum personagem com participante vinculado.</p>
             ) : (
               <div className="space-y-1">
-                {elenco.map(p => {
+                {elencoChamado.map(p => {
                   const uid = p.participanteUid as string
                   const presente = presencas.includes(uid)
                   return (
@@ -1135,7 +1144,7 @@ function EditarEnsaioDialog({
               </div>
             )}
             <div className="mt-3 border-t border-gray-100 pt-3">
-              <p className="mb-1.5 text-xs font-medium text-muted-foreground">Também presentes (fora do elenco)</p>
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">Também presentes (fora dos chamados pro ensaio)</p>
               {extras.length > 0 && (
                 <div className="mb-2 space-y-1">
                   {extras.map(uid => (

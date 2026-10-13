@@ -47,6 +47,7 @@ import { DIAS_ORDER, diasDisponiveis, sortDias } from '@/lib/dias'
 import { formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { cn } from '@/lib/utils'
+import { uidsDoEnsaio } from '@/lib/ensaioPublico'
 import { PessoaSelect, nomeComApelido, pessoaOpcao } from '@/components/ui/PessoaSelect'
 
 /** Próximo ensaio confirmado dessa cena (qualquer data futura, sem paginação). */
@@ -74,7 +75,8 @@ function ProximoEnsaio({ cena }: { cena: Cena }) {
   if (!ensaios) return null
   if (!proximo) return <p className="text-xs text-gray-400">Nenhum ensaio confirmado.</p>
 
-  const elencoCount = cena.personagens.filter(p => p.participanteUid).length
+  // Com obrigatórios marcados, conta só eles.
+  const elencoCount = uidsDoEnsaio(cena.personagens, proximo).size
 
   return (
     <div className="flex items-center gap-1.5 text-xs text-gray-600">
@@ -100,6 +102,8 @@ function ProximoEnsaioChip({ cena }: { cena: Cena }) {
   if (!ensaios || !proximo) return null
 
   const jaConfirmou = !!currentUser && !!proximo.presencas?.includes(currentUser.uid)
+  // Quem não é chamado (ensaio só dos obrigatórios) não tem check-in pendente.
+  const chamado = !!currentUser && uidsDoEnsaio(cena.personagens, proximo).has(currentUser.uid)
 
   return (
     <Badge variant="outline" className="w-fit max-w-full gap-1.5 border-gray-200 bg-gray-50 text-[11px] font-normal text-gray-600">
@@ -110,11 +114,11 @@ function ProximoEnsaioChip({ cena }: { cena: Cena }) {
         <span title="Check-in realizado" className="shrink-0">
           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
         </span>
-      ) : (
+      ) : chamado ? (
         <span title="Aguardando check-in" className="shrink-0">
           <Clock className="h-3.5 w-3.5 text-amber-500" />
         </span>
-      )}
+      ) : null}
     </Badge>
   )
 }

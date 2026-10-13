@@ -245,17 +245,52 @@ export const ensaioCriado = onDocumentCreated('ensaios/{id}', async event => {
   )
 })
 
+/** Mesmos obrigatórios (sem ligar pra ordem)? */
+function mesmosObrigatorios(a: DocumentData, b: DocumentData): boolean {
+  const x = [...((a.obrigatorios as string[] | undefined) ?? [])].sort()
+  const y = [...((b.obrigatorios as string[] | undefined) ?? [])].sort()
+  return x.length === y.length && x.every((v, i) => v === y[i])
+}
+
+/**
+ * Quem deixou de ser chamado pro ensaio (mudaram os obrigatórios) perde a resposta que tinha dado:
+ * sai de `presencas`/`ausentes` e o motivo/ressalva privados são apagados — senão apareceria em
+ * "Também presentes". Só pra ensaio ainda por acontecer (não mexe no registro de um que já foi).
+ */
+async function limparRespostasDeQuemSaiu(ensaioId: string, sairam: string[], depois: DocumentData): Promise<void> {
+  if (!sairam.length || depois.finalizadoAt || depois.data < agoraEmSaoPaulo().hoje) return
+  const respondeu = new Set<string>([...(depois.presencas ?? []), ...(depois.ausentes ?? [])])
+  const alvo = sairam.filter(u => respondeu.has(u))
+  if (!alvo.length) return
+  const ref = db.collection('ensaios').doc(ensaioId)
+  const batch = db.batch()
+  batch.update(ref, { presencas: FieldValue.arrayRemove(...alvo), ausentes: FieldValue.arrayRemove(...alvo) })
+  for (const uid of alvo) {
+    batch.delete(ref.collection('ausencias').doc(uid))
+    batch.delete(ref.collection('ressalvas').doc(uid))
+  }
+  await batch.commit()
+}
+
 export const ensaioAlterado = onDocumentUpdated('ensaios/{id}', async event => {
   const antes = event.data?.before.data()
   const depois = event.data?.after.data()
   if (!antes || !depois) return
+  const cena = await getCena(depois.cenaId)
+  // Mudaram os obrigatórios: quem entrou passa a ser chamado, quem saiu deixa de ser.
+  const publicoAntes = cena ? new Set(publicoDoEnsaio(cena, antes)) : new Set<string>()
+  const publicoDepois = cena ? new Set(publicoDoEnsaio(cena, depois)) : new Set<string>()
+  const obrigatoriosMudaram = !mesmosObrigatorios(antes, depois)
+  const entraram = obrigatoriosMudaram ? [...publicoDepois].filter(u => !publicoAntes.has(u)) : []
+  const sairam = obrigatoriosMudaram ? [...publicoAntes].filter(u => !publicoDepois.has(u)) : []
+  if (!depois.canceledByUid) await limparRespostasDeQuemSaiu(event.params.id, sairam, depois)
+
   // Quem alterou/cancelou escolheu não notificar (`notificar: false` no mesmo update): o elenco vê
   // só pelo app. Apaga o campo pra próxima mudança voltar ao padrão (esse update não gera aviso).
   if (depois.notificar === false) {
     await event.data!.after.ref.update({ notificar: FieldValue.delete() })
     return
   }
-  const cena = await getCena(depois.cenaId)
   if (!cena || cena.ativo === false) return
   const link = `/cenas/${depois.cenaId}/ensaios/${event.params.id}`
   const participantes = publicoDoEnsaio(cena, depois)
@@ -270,9 +305,20 @@ export const ensaioAlterado = onDocumentUpdated('ensaios/{id}', async event => {
   }
   if (depois.canceledByUid) return
   await avisarDesistencias(event.params.id, cena, antes, depois, link)
+  // Ensaio que já foi (ou foi finalizado): mexer nos obrigatórios é só acerto do registro, sem aviso.
+  const aindaVai = !depois.finalizadoAt && depois.data >= agoraEmSaoPaulo().hoje
+  const corpo = descricaoEnsaio(cena.nome, depois)
+  if (aindaVai && entraram.length) {
+    await notificar(entraram, { titulo: 'Você foi chamado para o ensaio', corpo, link, tipo: 'ensaio' }, depois.atualizadoPorUid)
+  }
+  if (aindaVai && sairam.length) {
+    await notificar(sairam, { titulo: 'Você não precisa ir ao ensaio', corpo, link, tipo: 'ensaio' }, depois.atualizadoPorUid)
+  }
   const mudou = antes.data !== depois.data || antes.horario !== depois.horario || (antes.local ?? '') !== (depois.local ?? '')
   if (mudou) {
-    await notificar(participantes, { titulo: 'Ensaio alterado', corpo: descricaoEnsaio(cena.nome, depois), link, tipo: 'ensaio' }, depois.atualizadoPorUid)
+    // Quem acabou de entrar já recebeu o "chamado" com os dados novos.
+    const ficaram = participantes.filter(u => !entraram.includes(u))
+    await notificar(ficaram, { titulo: 'Ensaio alterado', corpo, link, tipo: 'ensaio' }, depois.atualizadoPorUid)
   }
 })
 

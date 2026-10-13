@@ -20,7 +20,7 @@ export function NotificarElenco({ value, onChange, className }: { value: boolean
           {value ? 'Notificar o elenco' : 'Sem notificação'}
         </span>
         <span className="block text-[11px] text-muted-foreground">
-          {value ? 'Todos da cena recebem o aviso.' : 'Ninguém recebe aviso — a mudança aparece só no app.'}
+          {value ? 'Quem é afetado pela mudança recebe o aviso.' : 'Ninguém recebe aviso — a mudança aparece só no app.'}
         </span>
       </span>
       <span className={cn('relative h-5 w-9 shrink-0 rounded-full transition-colors', value ? 'bg-primary' : 'bg-gray-300')}>

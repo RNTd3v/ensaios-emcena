@@ -16,6 +16,7 @@ import {
 import { formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { formatDuracao, formatHoraCompacta } from '@/lib/cenaHorario'
 import { cn } from '@/lib/utils'
+import { uidsDoEnsaio } from '@/lib/ensaioPublico'
 import type { AnotacaoCena, AnotacaoVisibilidade, Cena, Ensaio } from '@/types'
 
 interface Props {
@@ -63,7 +64,6 @@ export function DiarioCenaCard({ cena, registros, todayKey, currentUid, isAdmin,
 
   if (!itens.length && !lideranca) return null
 
-  const elencoCount = cena.personagens.filter(p => p.participanteUid).length
   const podeEditar = (a: AnotacaoCena) => isAdmin || cena.liderUid === currentUid || (lideranca && a.autorUid === currentUid)
 
   return (
@@ -119,7 +119,7 @@ export function DiarioCenaCard({ cena, registros, todayKey, currentUid, isAdmin,
                     <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                       {item.ensaio.duracaoSegundos !== undefined && <span>{formatDuracao(item.ensaio.duracaoSegundos)}</span>}
                       <span>
-                        {item.ensaio.presencas?.length ?? 0}/{elencoCount}
+                        {item.ensaio.presencas?.length ?? 0}/{uidsDoEnsaio(cena.personagens, item.ensaio).size}
                       </span>
                     </div>
                     <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />

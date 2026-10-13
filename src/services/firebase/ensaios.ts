@@ -1,5 +1,6 @@
 import { addDoc, arrayRemove, arrayUnion, collection, deleteField, doc, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { db } from './config'
+import { uidsDoEnsaio } from '@/lib/ensaioPublico'
 import type { AusenciaMotivo, Cena, CronometroEnsaio, Ensaio, Inscricao, RessalvaPresenca } from '@/types'
 
 function toIso(value: unknown): string | undefined {
@@ -232,10 +233,13 @@ export function uidsIndisponiveis(
   cena: Pick<Cena, 'personagens'>,
   data: string,
   inscricoesByUid: Record<string, Pick<Inscricao, 'indisponibilidade'> | undefined>,
-  ensaio?: Pick<Ensaio, 'presencas' | 'ausentes' | 'ausencias'>,
+  ensaio?: Pick<Ensaio, 'presencas' | 'ausentes' | 'ausencias' | 'obrigatorios'>,
+  /** Obrigatórios do ensaio quando ele ainda não existe/está sendo reconfirmado (senão, os do `ensaio`). */
+  obrigatorios: string[] | undefined = ensaio?.obrigatorios,
 ): string[] {
   const respondeu = new Set([...(ensaio?.presencas ?? []), ...(ensaio ? uidsAusentes(ensaio) : [])])
-  const elenco = new Set(cena.personagens.map(p => p.participanteUid).filter((u): u is string => !!u))
+  // Só quem é chamado pro ensaio (com obrigatórios, só eles).
+  const elenco = uidsDoEnsaio(cena.personagens, { obrigatorios })
   return [...elenco].filter(uid => !respondeu.has(uid) && !!inscricoesByUid[uid]?.indisponibilidade?.includes(data))
 }
 

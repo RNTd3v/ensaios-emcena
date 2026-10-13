@@ -84,6 +84,7 @@ import { cn } from '@/lib/utils'
 import { PessoaSelect, nomeComApelido, pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { ContatoPessoaDialog } from '@/components/cena/ContatoPessoaDialog'
 import { DiarioCenaCard } from '@/components/cena/DiarioCenaCard'
+import { uidsDoEnsaio } from '@/lib/ensaioPublico'
 import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 interface Occurrence {
@@ -652,7 +653,7 @@ export function CenaDetalhe() {
           const existing = ensaiosByDate[o.dateKey]
           // Depois de criar/reconfirmar (que zera as respostas), quem marcou a data como
           // indisponível na inscrição já entra como "não vai".
-          const indisponiveis = uidsIndisponiveis(cena, o.dateKey, inscricoesByUid)
+          const indisponiveis = uidsIndisponiveis(cena, o.dateKey, inscricoesByUid, undefined, detail.obrigatorios)
           // Reconfirma e grava as infos num update só — o aviso sai uma vez, já pros obrigatórios certos.
           return existing
             ? reconfirmarEnsaio(existing.id, currentUser.uid, { ...detail, local: existing.local ?? '' }).then(() =>
@@ -829,7 +830,9 @@ export function CenaDetalhe() {
                     // resposta da própria pessoa (vou / não vou / falta confirmar).
                     const jaConfirmou = !!currentUser && !!e.presencas?.includes(currentUser.uid)
                     const naoVai = !!currentUser && uidsAusentes(e).includes(currentUser.uid)
-                    const podeConfirmar = !!myPersonagem && !jaConfirmou && canCheckin(e.data, e.horario, checkinLimiteHoras)
+                    // Com obrigatórios marcados, só eles confirmam presença.
+                    const chamado = !!currentUser && uidsDoEnsaio(cena.personagens, e).has(currentUser.uid)
+                    const podeConfirmar = !!myPersonagem && chamado && !jaConfirmou && canCheckin(e.data, e.horario, checkinLimiteHoras)
                     return (
                       <div key={e.id} className="flex items-center gap-1">
                         <button
@@ -853,6 +856,8 @@ export function CenaDetalhe() {
                             <span className="shrink-0 text-xs font-medium text-red-500">Não vou</span>
                           ) : podeConfirmar ? (
                             <span className="shrink-0 text-xs font-medium text-primary">Confirmar</span>
+                          ) : myPersonagem && !chamado ? (
+                            <span className="shrink-0 text-xs text-muted-foreground">Só obrigatórios</span>
                           ) : null}
                         </button>
                         {e.data === todayKey && (

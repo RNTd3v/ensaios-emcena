@@ -16,6 +16,7 @@ import { subscribeToLocais } from '@/services/firebase/locais'
 import { formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { formatDuracao, formatHoraCompacta } from '@/lib/cenaHorario'
 import { segundosDoCronometro } from '@/lib/cronometro'
+import { uidsDoEnsaio } from '@/lib/ensaioPublico'
 import { ensaioStatus } from '@/lib/ensaioStatus'
 import { localIcon } from '@/lib/localIcons'
 import type { Cena, Ensaio, Inscricao, LocalEnsaio } from '@/types'
@@ -27,6 +28,7 @@ import type { Cena, Ensaio, Inscricao, LocalEnsaio } from '@/types'
  * com a resposta dela ali mesmo ("Vou" / "Não vou" com motivo) e atalho pra página do ensaio.
  * Ensaio de hoje que já começou e não foi finalizado ganha um card "Ensaio acontecendo" (como o
  * "Orando agora"), com quem está presente e, pra quem confirmou, o "não vou conseguir ir".
+ * Ensaio com obrigatórios marcados só aparece pra quem é obrigatório.
  * Não renderiza nada pra quem não tem personagem. Ensaio no mesmo dia de um treinamento da pessoa
  * fica de fora — o treinamento tem prioridade e aparece no ProximoTreinamentoCard.
  */
@@ -81,6 +83,8 @@ export function ProximoEnsaioCard({
     for (const cena of minhasCenas) {
       for (const e of ensaiosPorCena[cena.id] ?? []) {
         if (e.canceledByUid || e.data < todayKey || diasDeTreinamento.has(e.data)) continue
+        // Com obrigatórios marcados, o ensaio é só deles (vale pra criança também: obrigatória, aparece).
+        if (!uidsDoEnsaio(cena.personagens, e).has(uid)) continue
         if (e.data === todayKey) doDia.push({ ensaio: e, cena })
         if (!e.finalizadoAt) futuros.push({ ensaio: e, cena })
       }
@@ -270,7 +274,7 @@ function CronometroAoVivo({ ensaio }: { ensaio: Ensaio }) {
 /** Fotos de quem está com presença marcada no ensaio (do elenco da cena). */
 function PresentesAgora({ ensaio, cena }: { ensaio: Ensaio; cena: Cena }) {
   const users = useUsersMap()
-  const elenco = new Set(cena.personagens.map(p => p.participanteUid).filter(Boolean))
+  const elenco = uidsDoEnsaio(cena.personagens, ensaio)
   const presentes = (ensaio.presencas ?? []).filter(uid => elenco.has(uid))
   if (!presentes.length) return <p className="text-xs text-muted-foreground">Ninguém com presença marcada ainda.</p>
   const MAX = 8

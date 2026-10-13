@@ -707,14 +707,7 @@ function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, p
                 <>
                   <Avatar photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-8 w-8 shrink-0 text-xs" />
                   <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-1.5 font-medium">
-                      <span className="truncate">{p.nome}</span>
-                      {ensaio.obrigatorios?.includes(p.id) && (
-                        <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                          obrigatório
-                        </span>
-                      )}
-                    </p>
+                    <p className="truncate font-medium">{p.nome}</p>
                     <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
                       <span className="truncate">{atorDe(uid)}</span>
                       {telefone && <MessageCircle className="h-3 w-3 shrink-0 text-emerald-600" />}

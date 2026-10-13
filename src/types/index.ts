@@ -354,6 +354,8 @@ export interface Ensaio {
   cronometro?: CronometroEnsaio
   finalizadoByUid?: string
   finalizadoAt?: string
+  /** Finalizado sozinho na madrugada seguinte, porque ninguém finalizou pela tela ao vivo. */
+  finalizadoAuto?: boolean
 }
 
 export interface CronometroEnsaio {

@@ -90,6 +90,9 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem, ti
   const podeConfirmar = canCheckin(ensaio.data, ensaio.horario, checkinLimiteHoras)
   const daInscricao = minhaAusencia?.origem === 'inscricao' || ausencia?.motivo === MOTIVO_INDISPONIBILIDADE
   const comecou = ensaioJaComecou(ensaio)
+  // Ensaio em andamento: quem tinha confirmado ainda pode avisar que não vai conseguir (a liderança
+  // da cena é notificada). Quem mostra o componente já esconde ensaios finalizados.
+  const desistenciaDuranteEnsaio = comecou && tipo === 'ensaio'
 
   async function run(fn: () => Promise<void>) {
     setSaving(true)
@@ -150,7 +153,11 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem, ti
         <Textarea
           value={motivo}
           onChange={e => setMotivo(e.target.value)}
-          placeholder="Conte o motivo (ex.: trabalho, viagem, doença...)"
+          placeholder={
+            desistenciaDuranteEnsaio
+              ? 'O que aconteceu? O líder e os assistentes da cena serão avisados.'
+              : 'Conte o motivo (ex.: trabalho, viagem, doença...)'
+          }
           autoFocus
         />
         {error && <p className="text-xs text-red-600">{error}</p>}
@@ -192,6 +199,12 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem, ti
             <MessageSquareText className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span className="whitespace-pre-wrap">{ressalva.texto}</span>
           </p>
+        )}
+        {desistenciaDuranteEnsaio && (
+          <Button variant="outline" size="sm" className="w-full gap-1.5 text-red-600" onClick={abrirMotivo}>
+            <MessageSquareX className="h-4 w-4" />
+            {paraQuem ? `Avisar que ${paraQuem} não vai conseguir ir` : 'Avisar que não vou conseguir ir'}
+          </Button>
         )}
         {subscribeMinhaRessalva && !comecou && (
           <button type="button" onClick={abrirRessalva} className="text-xs font-medium text-primary underline-offset-2 hover:underline">

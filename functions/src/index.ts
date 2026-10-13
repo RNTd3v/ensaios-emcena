@@ -269,9 +269,59 @@ export const ensaioAlterado = onDocumentUpdated('ensaios/{id}', async event => {
     return
   }
   if (depois.canceledByUid) return
+  await avisarDesistencias(event.params.id, cena, antes, depois, link)
   const mudou = antes.data !== depois.data || antes.horario !== depois.horario || (antes.local ?? '') !== (depois.local ?? '')
   if (mudou) {
     await notificar(participantes, { titulo: 'Ensaio alterado', corpo: descricaoEnsaio(cena.nome, depois), link, tipo: 'ensaio' }, depois.atualizadoPorUid)
+  }
+})
+
+/**
+ * Quem tinha confirmado presença e, no dia do ensaio (inclusive durante), avisou que não vai: o
+ * líder e os assistentes da cena recebem um aviso com o motivo (que fica na subcoleção privada
+ * `ausencias`, gravada no mesmo batch).
+ */
+async function avisarDesistencias(ensaioId: string, cena: DocumentData, antes: DocumentData, depois: DocumentData, link: string) {
+  if (depois.finalizadoAt || depois.data !== agoraEmSaoPaulo().hoje) return
+  const confirmadosAntes = new Set<string>(antes.presencas ?? [])
+  const ausentesAntes = new Set<string>(antes.ausentes ?? [])
+  const desistiram = ((depois.ausentes as string[] | undefined) ?? []).filter(u => !ausentesAntes.has(u) && confirmadosAntes.has(u))
+  const lideranca = [cena.liderUid, ...((cena.assistentes as string[] | undefined) ?? [])]
+  for (const uid of desistiram) {
+    const [pessoa, ausencia] = await Promise.all([
+      db.collection('users').doc(uid).get(),
+      db.collection('ensaios').doc(ensaioId).collection('ausencias').doc(uid).get(),
+    ])
+    const dados = pessoa.data()
+    const nome = dados?.apelido || dados?.nomeCompleto || dados?.displayName || 'Alguém'
+    const motivo = (ausencia.data()?.motivo as string | undefined)?.trim()
+    await notificar(
+      lideranca,
+      { titulo: `${nome} não vai conseguir ir ao ensaio`, corpo: `${cena.nome}${motivo ? ` — ${motivo}` : ''}`, link, tipo: 'ensaio' },
+      uid,
+    )
+  }
+}
+
+/**
+ * Ensaio esquecido sem finalizar: às 3h (fuso de São Paulo) finaliza os de ontem que ninguém
+ * finalizou pela tela ao vivo (`finalizadoAuto`). A duração só entra se o cronômetro ficou
+ * pausado — se ainda estava correndo, não dá pra saber quando o ensaio acabou.
+ */
+export const finalizarEnsaiosEsquecidos = onSchedule({ schedule: '0 3 * * *', timeZone: FUSO }, async () => {
+  const ontem = diasDepois(agoraEmSaoPaulo().hoje, -1)
+  const snap = await db.collection('ensaios').where('data', '==', ontem).get()
+  for (const doc of snap.docs) {
+    const e = doc.data()
+    if (e.canceledByUid || e.finalizadoAt) continue
+    const atualizacao: Record<string, unknown> = {
+      finalizadoAt: FieldValue.serverTimestamp(),
+      finalizadoAuto: true,
+      cronometro: FieldValue.delete(),
+    }
+    const c = e.cronometro
+    if (c && c.inicioMs === null && c.acumuladoSeg > 0) atualizacao.duracaoSegundos = c.acumuladoSeg
+    await doc.ref.update(atualizacao)
   }
 })
 

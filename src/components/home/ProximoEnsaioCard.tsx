@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarClock, ChevronRight, Clapperboard, MapPin } from 'lucide-react'
+import { CalendarClock, ChevronRight, Clapperboard, Clock, MapPin } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
-import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
+import { RespostaPresenca, ensaioJaComecou } from '@/components/ensaio/RespostaPresenca'
+import { Avatar } from '@/components/ui/Avatar'
+import { useAgora, useUsersMap } from '@/components/oracao/OrandoAgora'
 import { PreparoInfo } from '@/components/ensaio/PreparoEnsaio'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useProximosTreinamentos } from '@/hooks/useTreinamentos'
@@ -12,7 +14,8 @@ import { aplicarIndisponibilidades, uidsIndisponiveis } from '@/services/firebas
 import { getInscricao } from '@/services/firebase/inscricoes'
 import { subscribeToLocais } from '@/services/firebase/locais'
 import { formatRelativeDia, toDateKey } from '@/lib/agenda'
-import { formatHoraCompacta } from '@/lib/cenaHorario'
+import { formatDuracao, formatHoraCompacta } from '@/lib/cenaHorario'
+import { segundosDoCronometro } from '@/lib/cronometro'
 import { ensaioStatus } from '@/lib/ensaioStatus'
 import { localIcon } from '@/lib/localIcons'
 import type { Cena, Ensaio, Inscricao, LocalEnsaio } from '@/types'
@@ -22,6 +25,8 @@ import type { Cena, Ensaio, Inscricao, LocalEnsaio } from '@/types'
  * os ensaios de hoje dessa pessoa (todos, inclusive os já finalizados) e o próximo ensaio ainda não
  * finalizado — que só ganha card próprio se não for de hoje (aí já está no card do dia). Cada um
  * com a resposta dela ali mesmo ("Vou" / "Não vou" com motivo) e atalho pra página do ensaio.
+ * Ensaio de hoje que já começou e não foi finalizado ganha um card "Ensaio acontecendo" (como o
+ * "Orando agora"), com quem está presente e, pra quem confirmou, o "não vou conseguir ir".
  * Não renderiza nada pra quem não tem personagem. Ensaio no mesmo dia de um treinamento da pessoa
  * fica de fora — o treinamento tem prioridade e aparece no ProximoTreinamentoCard.
  */
@@ -39,6 +44,8 @@ export function ProximoEnsaioCard({
   const { cenas, minhasCenas, ensaiosPorCena } = useEnsaiosDasMinhasCenas(uid, dependenteDe)
   const [locais, setLocais] = useState<LocalEnsaio[]>([])
   const { settings } = useSettingsStore()
+  // Re-renderiza a cada 30s pra o ensaio virar "acontecendo" na hora em que começa.
+  useAgora()
 
   useEffect(() => subscribeToLocais(setLocais), [])
 
@@ -108,6 +115,8 @@ export function ProximoEnsaioCard({
   }
 
   const checkinLimiteHoras = settings.checkinLimiteHoras ?? 2
+  const acontecendo = doDia.filter(({ ensaio }) => !ensaio.finalizadoAt && ensaioJaComecou(ensaio))
+  const restantesDoDia = doDia.filter(item => !acontecendo.includes(item))
   const bloco = ({ ensaio, cena }: { ensaio: Ensaio; cena: Cena }) => (
     <EnsaioBloco
       key={ensaio.id}
@@ -123,17 +132,36 @@ export function ProximoEnsaioCard({
 
   return (
     <>
-      {doDia.length > 0 && (
+      {acontecendo.map(item => (
+        <Card key={item.ensaio.id} className="border-2 border-emerald-500">
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                </span>
+                {dependenteDe ? `Ensaio de ${nome ?? 'dependente'} acontecendo` : 'Ensaio acontecendo'}
+              </p>
+              <CronometroAoVivo ensaio={item.ensaio} />
+            </div>
+            <PresentesAgora ensaio={item.ensaio} cena={item.cena} />
+            {bloco(item)}
+          </CardContent>
+        </Card>
+      ))}
+
+      {restantesDoDia.length > 0 && (
         <Card className="border-2 border-primary">
           <CardContent className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">
               {dependenteDe
-                ? `${doDia.length > 1 ? 'Ensaios' : 'Ensaio'} de hoje de ${nome ?? 'dependente'}`
-                : doDia.length > 1
+                ? `${restantesDoDia.length > 1 ? 'Ensaios' : 'Ensaio'} de hoje de ${nome ?? 'dependente'}`
+                : restantesDoDia.length > 1
                   ? 'Seus ensaios de hoje'
                   : 'Seu ensaio de hoje'}
             </p>
-            {doDia.map((item, i) => (
+            {restantesDoDia.map((item, i) => (
               <div key={item.ensaio.id} className={i > 0 ? 'border-t-2 border-gray-100 pt-3' : undefined}>
                 {bloco(item)}
               </div>
@@ -222,6 +250,49 @@ function EnsaioBloco({
         Abrir ensaio
         <ChevronRight className="h-4 w-4" />
       </Link>
+    </div>
+  )
+}
+
+/** Tempo do cronômetro da tela ao vivo, andando a cada segundo — só aparece se alguém iniciou. */
+function CronometroAoVivo({ ensaio }: { ensaio: Ensaio }) {
+  const correndo = ensaio.cronometro?.inicioMs != null
+  useAgora(correndo ? 1000 : 60_000)
+  if (!ensaio.cronometro || segundosDoCronometro(ensaio.cronometro) === 0) return null
+  return (
+    <span className="flex items-center gap-1 font-mono text-sm font-semibold tabular-nums text-emerald-700">
+      <Clock className="h-3.5 w-3.5" />
+      {formatDuracao(segundosDoCronometro(ensaio.cronometro))}
+    </span>
+  )
+}
+
+/** Fotos de quem está com presença marcada no ensaio (do elenco da cena). */
+function PresentesAgora({ ensaio, cena }: { ensaio: Ensaio; cena: Cena }) {
+  const users = useUsersMap()
+  const elenco = new Set(cena.personagens.map(p => p.participanteUid).filter(Boolean))
+  const presentes = (ensaio.presencas ?? []).filter(uid => elenco.has(uid))
+  if (!presentes.length) return <p className="text-xs text-muted-foreground">Ninguém com presença marcada ainda.</p>
+  const MAX = 8
+  const nomeDe = (uid: string) => users[uid]?.apelido || users[uid]?.displayName?.split(' ')[0] || ''
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs text-muted-foreground">
+        {presentes.length} {presentes.length === 1 ? 'presente' : 'presentes'} de {elenco.size}
+      </p>
+      <div className="flex flex-wrap gap-2.5">
+        {presentes.slice(0, MAX).map(uid => (
+          <div key={uid} className="flex w-11 flex-col items-center gap-0.5 text-center">
+            <Avatar photoURL={users[uid]?.photoURL} name={nomeDe(uid)} className="h-9 w-9 text-xs ring-2 ring-emerald-400 ring-offset-1" />
+            <span className="w-full truncate text-[10px] text-gray-700">{nomeDe(uid)}</span>
+          </div>
+        ))}
+        {presentes.length > MAX && (
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-600">
+            +{presentes.length - MAX}
+          </span>
+        )}
+      </div>
     </div>
   )
 }

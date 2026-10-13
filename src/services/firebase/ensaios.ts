@@ -320,6 +320,7 @@ export async function salvarRegistroEnsaio(
     anotacoes: data.anotacoes?.trim() || deleteField(),
     duracaoSegundos: data.duracaoSegundos,
     cronometro: deleteField(),
+    finalizadoAuto: deleteField(),
     finalizadoByUid,
     finalizadoAt: serverTimestamp(),
   })

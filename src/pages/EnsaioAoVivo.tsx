@@ -45,6 +45,7 @@ import { formatDuracao, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorar
 import { DIAS_ORDER } from '@/lib/dias'
 import { cn } from '@/lib/utils'
 import { formatDateTime, whatsappLink } from '@/lib/formatters'
+import { CRONOMETRO_ZERADO, segundosDoCronometro } from '@/lib/cronometro'
 import { ensaioStatus } from '@/lib/ensaioStatus'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
@@ -500,13 +501,6 @@ export function EnsaioAoVivo() {
 }
 
 /** Data por extenso + status + flags (geral / com figurino) do ensaio. */
-const CRONOMETRO_ZERADO: CronometroEnsaio = { acumuladoSeg: 0, inicioMs: null }
-
-function segundosDoCronometro(c: CronometroEnsaio) {
-  const correndo = c.inicioMs === null ? 0 : Math.max(0, Math.floor((Date.now() - c.inicioMs) / 1000))
-  return c.acumuladoSeg + correndo
-}
-
 function InfoEnsaio({ ensaio }: { ensaio: Ensaio }) {
   return (
     <Card>
@@ -860,6 +854,8 @@ function RegistroEnsaio({ ensaio, nameFor, users }: RegistroEnsaioProps) {
               <p className="whitespace-pre-wrap text-sm text-gray-700">{ensaio.anotacoes || 'Nenhuma anotação registrada.'}</p>
               {ensaio.finalizadoByUid ? (
                 <p className="text-[11px] text-muted-foreground">Última atualização por {nameFor(ensaio.finalizadoByUid)}</p>
+              ) : ensaio.finalizadoAuto ? (
+                <p className="text-[11px] text-muted-foreground">Finalizado automaticamente no dia seguinte — ninguém finalizou pela tela ao vivo.</p>
               ) : (
                 <p className="text-[11px] text-muted-foreground">Esse ensaio não foi finalizado pela tela ao vivo.</p>
               )}

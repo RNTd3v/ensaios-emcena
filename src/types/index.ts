@@ -285,6 +285,16 @@ export interface Cena {
 }
 
 /** Motivo de uma ausência (`ensaios/{id}/ausencias/{uid}`) — só admin, líder da cena e a própria pessoa leem. */
+/**
+ * Ressalva de quem confirmou presença ("vou, mas chego atrasado"), em `ensaios/{id}/ressalvas/{uid}`.
+ * Privada como o motivo de ausência: só a pessoa (ou responsável), a liderança da cena e admins leem.
+ */
+export interface RessalvaPresenca {
+  uid: string
+  texto: string
+  registradaEm: string
+}
+
 export interface AusenciaMotivo {
   uid: string
   motivo: string
@@ -658,6 +668,11 @@ export interface RoteiroArquivo {
   atualizadoEm: string
 }
 
+export interface MaterialEstudoLink {
+  titulo: string
+  url: string
+}
+
 export interface AppSettings {
   eventName: string
   posterImageUrl?: string
@@ -669,6 +684,8 @@ export interface AppSettings {
   apresentacaoHorarios?: string
   /** PDFs do roteiro (Configurações). Nenhum = a Home mostra "Em breve". */
   roteiros?: Partial<Record<RoteiroTipo, RoteiroArquivo>>
+  /** Links de material de estudo (ex.: pastas do Drive), mostrados na Home abaixo do roteiro. */
+  materialEstudo?: MaterialEstudoLink[]
   /** Relógio de oração visível pra todos (menu, página, card da Home). Desligado = só admin. */
   oracaoLiberada?: boolean
   callToActionText?: string

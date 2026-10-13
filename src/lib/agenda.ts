@@ -57,16 +57,17 @@ export function formatRelativeDia(dateKey: string, todayKey: string): string {
   return date.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })
 }
 
+/** Quantos dias antes do ensaio o check-in de presença abre (0 = só no dia). */
+export const CHECKIN_ABRE_DIAS_ANTES = 2
+
 /**
- * Se o check-in de presença pra um ensaio está liberado agora: só no dia do ensaio, e só até
- * `limiteHoras` antes do horário (ex.: ensaio 19h, limite 2h -> check-in fecha às 17h).
+ * Se o check-in de presença pra um ensaio está liberado agora: a partir de `CHECKIN_ABRE_DIAS_ANTES`
+ * dias antes, e só até `limiteHoras` antes do horário (ex.: ensaio 19h, limite 2h -> fecha às 17h).
  */
 export function canCheckin(ensaioData: string, ensaioHorario: string, limiteHoras: number): boolean {
   const now = new Date()
-  if (ensaioData !== toDateKey(now)) return false
-  const [h, m] = ensaioHorario.split(':').map(Number)
-  const inicio = new Date(now)
-  inicio.setHours(h, m, 0, 0)
+  const inicio = new Date(`${ensaioData}T${ensaioHorario}:00`)
+  if (toDateKey(now) < toDateKey(addDays(inicio, -CHECKIN_ABRE_DIAS_ANTES))) return false
   const fechaEm = new Date(inicio.getTime() - limiteHoras * 60 * 60 * 1000)
   return now <= fechaEm
 }

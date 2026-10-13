@@ -82,7 +82,7 @@ import { DIAS_ORDER, diasDisponiveis, sortDias } from '@/lib/dias'
 import { formatDuracao, formatTempoTotal, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { addDays, canCheckin, DIA_TO_WEEKDAY, formatRelativeDia, toDateKey, weekDates } from '@/lib/agenda'
 import { cn } from '@/lib/utils'
-import { PessoaSelect, pessoaOpcao } from '@/components/ui/PessoaSelect'
+import { PessoaSelect, nomeComApelido, pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { ContatoPessoaDialog } from '@/components/cena/ContatoPessoaDialog'
 import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
@@ -234,6 +234,11 @@ export function CenaDetalhe() {
 
   function nameFor(uid: string) {
     return inscricoesByUid[uid]?.apelido || inscricoesByUid[uid]?.nomeCompleto || users[uid]?.displayName || 'Sem nome'
+  }
+
+  /** Quem faz o personagem: nome completo e, entre parênteses, o apelido. */
+  function atorDe(uid: string) {
+    return nomeComApelido(pessoaOpcao(uid, users[uid], inscricoesByUid[uid]))
   }
 
   const participantesOpcoes = (cena?.participantes ?? []).map(uid => pessoaOpcao(uid, users[uid], inscricoesByUid[uid]))
@@ -1079,7 +1084,7 @@ export function CenaDetalhe() {
                             </p>
                             {p.participanteUid && (
                               <p className="text-xs text-gray-500 truncate">
-                                {p.participanteUid === currentUser?.uid ? 'Você' : nameFor(p.participanteUid)}
+                                {p.participanteUid === currentUser?.uid ? 'Você' : atorDe(p.participanteUid)}
                               </p>
                             )}
                           </div>
@@ -1483,7 +1488,7 @@ export function CenaDetalhe() {
                         <div className="min-w-0 flex-1">
                           <p className="truncate">{o.nome}</p>
                           {o.participanteUid && (
-                            <p className="truncate text-[11px] text-muted-foreground">{nameFor(o.participanteUid)}</p>
+                            <p className="truncate text-[11px] text-muted-foreground">{atorDe(o.participanteUid)}</p>
                           )}
                         </div>
                       </button>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Camera, ChevronRight, ExternalLink, ScrollText } from 'lucide-react'
+import { BookOpen, Camera, ChevronRight, ExternalLink, ScrollText } from 'lucide-react'
 import { urlDoArquivo } from '@/services/firebase/storage'
 import { ROTEIRO_TIPOS } from '@/lib/roteiro'
 import { Avatar } from '@/components/ui/Avatar'
@@ -54,6 +54,7 @@ export function Home() {
   const firstName = user?.displayName?.trim().split(' ')[0]
   const versiculo = useVersiculoSorteado()
   const roteiros = useSettingsStore(s => s.settings.roteiros)
+  const materialEstudo = useSettingsStore(s => s.settings.materialEstudo)
   const oracaoVisivel = useOracaoVisivel()
   // Filhos inscritos pela pessoa: um card de próximo ensaio pra cada, com a resposta por ele.
   const [dependentes, setDependentes] = useState<Inscricao[]>([])
@@ -112,7 +113,30 @@ export function Home() {
       <FinanceiroCards />
 
       <RoteiroCard roteiros={roteiros} />
+
+      <MaterialEstudoCard links={materialEstudo} />
     </div>
+  )
+}
+
+/** Links de material de estudo (Configurações) — abrem o Drive numa aba nova. Sem nenhum, não aparece. */
+function MaterialEstudoCard({ links }: { links?: AppSettings['materialEstudo'] }) {
+  if (!links?.length) return null
+  return (
+    <Card>
+      <CardContent className="space-y-1">
+        <p className="pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Material de estudo</p>
+        {links.map((link, i) => (
+          <a key={i} href={link.url} target="_blank" rel="noreferrer" className="flex items-center gap-3 py-1">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <BookOpen className="h-4 w-4" />
+            </span>
+            <p className="min-w-0 flex-1 text-sm font-semibold text-gray-900">{link.titulo}</p>
+            <ExternalLink className="h-4 w-4 shrink-0 text-gray-400" />
+          </a>
+        ))}
+      </CardContent>
+    </Card>
   )
 }
 

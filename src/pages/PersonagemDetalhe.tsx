@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/Spinner'
 import { Textarea } from '@/components/ui/Textarea'
+import { nomeComApelido, pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers } from '@/services/firebase/auth'
 import { subscribeToCena, alterarCenaPersonagens } from '@/services/firebase/cenas'
@@ -55,6 +56,11 @@ export function PersonagemDetalhe() {
 
   function nameFor(uid: string) {
     return inscricoesByUid[uid]?.apelido || inscricoesByUid[uid]?.nomeCompleto || users[uid]?.displayName || 'Sem nome'
+  }
+
+  /** Quem faz o personagem: nome completo e, entre parênteses, o apelido. */
+  function atorDe(uid: string) {
+    return nomeComApelido(pessoaOpcao(uid, users[uid], inscricoesByUid[uid]))
   }
 
   const personagem = cena?.personagens.find(p => p.id === personagemId)
@@ -234,10 +240,7 @@ export function PersonagemDetalhe() {
               {personagem.participanteUid && (
                 <div className="flex shrink-0 items-center gap-2">
                   <div className="max-w-[130px] text-right">
-                    <p className="truncate text-xs font-medium">{atorInscricao?.apelido || nameFor(personagem.participanteUid)}</p>
-                    {atorInscricao?.apelido && atorInscricao?.nomeCompleto && (
-                      <p className="truncate text-[11px] text-muted-foreground">({atorInscricao.nomeCompleto})</p>
-                    )}
+                    <p className="line-clamp-2 text-xs font-medium">{atorDe(personagem.participanteUid)}</p>
                   </div>
                   {atorInscricao?.telefone && (
                     <a

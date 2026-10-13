@@ -522,6 +522,21 @@ service cloud.firestore {
           || gerenciaEnsaios(cenaDoEnsaio())
           || (isAuthenticated() && uid.matches('dep_.*') && responsavelDe(uid) && uid in cenaDoEnsaio().participantes);
       }
+
+      // Ressalva de quem confirmou ("vou, mas chego atrasado"): mesma privacidade do motivo de ausência.
+      match /ressalvas/{uid} {
+        function cenaDoEnsaio() {
+          return get(/databases/$(database)/documents/cenas/$(get(/databases/$(database)/documents/ensaios/$(id)).data.cenaId)).data;
+        }
+        allow read: if isAdmin()
+          || (isAuthenticated() && request.auth.uid == uid)
+          || gerenciaEnsaios(cenaDoEnsaio())
+          || (isAuthenticated() && uid.matches('dep_.*') && responsavelDe(uid));
+        allow write: if isAdmin()
+          || (isAuthenticated() && request.auth.uid == uid && request.auth.uid in cenaDoEnsaio().participantes)
+          || gerenciaEnsaios(cenaDoEnsaio())
+          || (isAuthenticated() && uid.matches('dep_.*') && responsavelDe(uid) && uid in cenaDoEnsaio().participantes);
+      }
     }
 
     // Treinamentos: qualquer autenticado lê (o público — elenco/pessoas escolhidas — é filtrado no app), só admin

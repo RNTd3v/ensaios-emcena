@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Check, FileText, Loader2, Paperclip } from 'lucide-react'
+import { ArrowLeft, Check, FileText, Loader2, Paperclip, Plus, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { removerRoteiro, saveSettings, uploadRoteiro } from '@/services/firebase/settings'
+import { removerRoteiro, saveSettings, saveSettingsParcial, uploadRoteiro } from '@/services/firebase/settings'
 import { urlDoArquivo } from '@/services/firebase/storage'
 import { ROTEIRO_TIPOS } from '@/lib/roteiro'
+import { CHECKIN_ABRE_DIAS_ANTES } from '@/lib/agenda'
 import { useSettingsStore } from '@/stores/settingsStore'
-import type { AppSettings, RoteiroArquivo, RoteiroTipo } from '@/types'
+import type { AppSettings, MaterialEstudoLink, RoteiroArquivo, RoteiroTipo } from '@/types'
 import { PessoaSelect, pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { PhoneInput } from '@/components/ui/PhoneInput'
 import { useUsersMap } from '@/components/oracao/OrandoAgora'
@@ -39,8 +40,8 @@ export function AdminConfig() {
   async function onSubmit(data: Omit<AppSettings, 'updatedAt'>) {
     setSaving(true)
     try {
-      // Os PDFs do roteiro são gravados na hora, pelo próprio card — não reescreve com o valor do form.
-      const { roteiros: _roteiros, ...resto } = data
+      // Os PDFs do roteiro e o material de estudo são gravados pelos próprios cards — não reescreve com o valor do form.
+      const { roteiros: _roteiros, materialEstudo: _materialEstudo, ...resto } = data
       await saveSettings(resto)
       await refresh()
       setSaved(true)
@@ -64,6 +65,8 @@ export function AdminConfig() {
       </div>
 
       <RoteirosCard roteiros={settings.roteiros} onChange={refresh} />
+
+      <MaterialEstudoCard links={settings.materialEstudo} onChange={refresh} />
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <Card>
@@ -190,7 +193,7 @@ export function AdminConfig() {
                 {...register('checkinLimiteHoras', { valueAsNumber: true })}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                O elenco só pode confirmar presença no dia do ensaio, até esse tanto de horas antes do horário.
+                O elenco pode confirmar presença a partir de {CHECKIN_ABRE_DIAS_ANTES} dias antes do ensaio, até esse tanto de horas antes do horário.
               </p>
             </div>
           </CardContent>
@@ -282,6 +285,88 @@ function RoteirosCard({ roteiros, onChange }: { roteiros?: AppSettings['roteiros
         ))}
         {erro && <p className="text-sm text-red-600">{erro}</p>}
         <p className="text-xs text-muted-foreground">PDF, até 15 MB. Todo mundo logado vê na Home; sem nenhum, aparece "Em breve".</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Links de material de estudo (Drive etc.): edita a lista e grava pelo próprio botão do card. */
+function MaterialEstudoCard({ links, onChange }: { links?: MaterialEstudoLink[]; onChange: () => Promise<void> }) {
+  const [lista, setLista] = useState<MaterialEstudoLink[]>(links ?? [])
+  const [salvando, setSalvando] = useState(false)
+  const [salvo, setSalvo] = useState(false)
+  const [erro, setErro] = useState('')
+
+  useEffect(() => {
+    setLista(links ?? [])
+  }, [links])
+
+  function mudar(i: number, campo: keyof MaterialEstudoLink, valor: string) {
+    setLista(l => l.map((item, j) => (j === i ? { ...item, [campo]: valor } : item)))
+  }
+
+  async function salvar() {
+    const limpa = lista.map(l => ({ titulo: l.titulo.trim(), url: l.url.trim() })).filter(l => l.titulo || l.url)
+    if (limpa.some(l => !l.titulo)) return setErro('Dê um título pra cada link.')
+    if (limpa.some(l => !/^https?:\/\//i.test(l.url))) return setErro('Cada link precisa começar com https://')
+    setErro('')
+    setSalvando(true)
+    try {
+      await saveSettingsParcial({ materialEstudo: limpa })
+      await onChange()
+      setSalvo(true)
+      setTimeout(() => setSalvo(false), 2000)
+    } catch (err) {
+      console.error('[material de estudo]', err)
+      setErro('Não deu pra salvar. Tente de novo.')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Material de estudo</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {lista.map((item, i) => (
+          <div key={i} className="space-y-2 rounded-lg border border-gray-200 px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              <Input placeholder="Título (ex.: Músicas)" value={item.titulo} onChange={e => mudar(i, 'titulo', e.target.value)} />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 text-red-600"
+                onClick={() => setLista(l => l.filter((_, j) => j !== i))}
+                title="Remover"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+            <Input
+              type="url"
+              inputMode="url"
+              placeholder="https://drive.google.com/..."
+              value={item.url}
+              onChange={e => mudar(i, 'url', e.target.value)}
+            />
+          </div>
+        ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-1" onClick={() => setLista(l => [...l, { titulo: '', url: '' }])}>
+            <Plus className="h-3.5 w-3.5" />
+            Adicionar link
+          </Button>
+          <Button size="sm" className="gap-1" onClick={salvar} disabled={salvando}>
+            {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : salvo ? <Check className="h-3.5 w-3.5" /> : null}
+            {salvo ? 'Salvo' : 'Salvar links'}
+          </Button>
+        </div>
+        {erro && <p className="text-sm text-red-600">{erro}</p>}
+        <p className="text-xs text-muted-foreground">
+          Aparecem na Home, abaixo do roteiro, pra todo mundo logado. Compartilhe a pasta do Drive como "Qualquer pessoa com o link".
+        </p>
       </CardContent>
     </Card>
   )

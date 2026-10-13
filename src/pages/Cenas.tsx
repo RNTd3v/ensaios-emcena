@@ -47,7 +47,7 @@ import { DIAS_ORDER, diasDisponiveis, sortDias } from '@/lib/dias'
 import { formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { cn } from '@/lib/utils'
-import { PessoaSelect, pessoaOpcao } from '@/components/ui/PessoaSelect'
+import { PessoaSelect, nomeComApelido, pessoaOpcao } from '@/components/ui/PessoaSelect'
 
 /** Próximo ensaio confirmado dessa cena (qualquer data futura, sem paginação). */
 function useProximoEnsaio(cena: Cena) {
@@ -233,6 +233,11 @@ export function Cenas() {
 
   function nameFor(uid: string) {
     return inscricoesByUid[uid]?.apelido || inscricoesByUid[uid]?.nomeCompleto || users[uid]?.displayName || 'Sem nome'
+  }
+
+  /** Quem faz o personagem: nome completo e, entre parênteses, o apelido. */
+  function atorDe(uid: string) {
+    return nomeComApelido(pessoaOpcao(uid, users[uid], inscricoesByUid[uid]))
   }
 
   function toggleDiaFilterList(dia: DiaSemana) {
@@ -913,7 +918,7 @@ export function Cenas() {
                         <div className="min-w-0 flex-1">
                           <p className="truncate">{o.nome}</p>
                           {o.participanteUid && (
-                            <p className="truncate text-[11px] text-muted-foreground">{nameFor(o.participanteUid)}</p>
+                            <p className="truncate text-[11px] text-muted-foreground">{atorDe(o.participanteUid)}</p>
                           )}
                         </div>
                       </button>

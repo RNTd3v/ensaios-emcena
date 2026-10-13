@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarX, Check, MessageSquareX, X } from 'lucide-react'
+import { CalendarX, Check, MessageSquareText, MessageSquareX, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/Spinner'
 import { Textarea } from '@/components/ui/Textarea'
@@ -9,6 +9,7 @@ import {
   desfazerAusencia,
   registrarAusencia,
   subscribeToMinhaAusencia,
+  subscribeToMinhaRessalva,
   uidsAusentes,
 } from '@/services/firebase/ensaios'
 import {
@@ -17,8 +18,8 @@ import {
   registrarAusenciaTreinamento,
   subscribeToMinhaAusenciaTreinamento,
 } from '@/services/firebase/treinamentos'
-import { canCheckin } from '@/lib/agenda'
-import type { AusenciaMotivo, Ensaio } from '@/types'
+import { CHECKIN_ABRE_DIAS_ANTES, canCheckin } from '@/lib/agenda'
+import type { AusenciaMotivo, Ensaio, RessalvaPresenca } from '@/types'
 
 /** Se o horário de início do ensaio já passou. */
 export function ensaioJaComecou(ensaio: Pick<Ensaio, 'data' | 'horario'>): boolean {
@@ -27,12 +28,20 @@ export function ensaioJaComecou(ensaio: Pick<Ensaio, 'data' | 'horario'>): boole
 
 /** Onde a resposta é gravada: no ensaio ou numa sessão de treinamento (mesmo esquema). */
 const ACOES = {
-  ensaio: { confirmar: confirmarPresenca, ausencia: registrarAusencia, desfazer: desfazerAusencia, minhaAusencia: subscribeToMinhaAusencia },
+  ensaio: {
+    confirmar: confirmarPresenca,
+    ausencia: registrarAusencia,
+    desfazer: desfazerAusencia,
+    minhaAusencia: subscribeToMinhaAusencia,
+    minhaRessalva: subscribeToMinhaRessalva,
+  },
   treinamento: {
     confirmar: confirmarPresencaTreinamento,
     ausencia: registrarAusenciaTreinamento,
     desfazer: desfazerAusenciaTreinamento,
     minhaAusencia: subscribeToMinhaAusenciaTreinamento,
+    // Treinamento ainda não tem ressalva ("vou, mas chego atrasado").
+    minhaRessalva: undefined,
   },
 }
 
@@ -47,16 +56,19 @@ interface Props {
 }
 
 /**
- * A resposta da própria pessoa pra um ensaio: "Vou" (check-in, só na janela de `canCheckin`) ou
+ * A resposta da própria pessoa pra um ensaio: "Vou" (check-in, só na janela de `canCheckin`), com
+ * uma ressalva opcional ("vou, mas chego atrasado" — só ensaio), ou
  * "Não vou" com o motivo (a qualquer momento antes do ensaio começar). Dá pra trocar de resposta
  * enquanto o ensaio não começou: quem avisou que não vai e mudou de ideia fora da janela do check-in
  * volta a ficar sem resposta, e confirma quando a janela abrir. Se o "não vou" veio da indisponibilidade da inscrição, a pessoa
  * pode mudar de ideia e confirmar a qualquer momento antes do ensaio, sem esperar a janela do check-in.
  */
 export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem, tipo = 'ensaio' }: Props) {
-  const { confirmar, ausencia: registrar, desfazer, minhaAusencia: subscribeMinhaAusencia } = ACOES[tipo]
+  const { confirmar, ausencia: registrar, desfazer, minhaAusencia: subscribeMinhaAusencia, minhaRessalva: subscribeMinhaRessalva } = ACOES[tipo]
   const [escrevendoMotivo, setEscrevendoMotivo] = useState(false)
   const [motivo, setMotivo] = useState('')
+  const [escrevendoRessalva, setEscrevendoRessalva] = useState(false)
+  const [textoRessalva, setTextoRessalva] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -68,6 +80,11 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem, ti
   }, [ensaio.id, uid, ausente, subscribeMinhaAusencia])
 
   const confirmado = !!ensaio.presencas?.includes(uid)
+  const [ressalva, setRessalva] = useState<RessalvaPresenca | null>(null)
+  useEffect(() => {
+    if (!confirmado || !subscribeMinhaRessalva) return setRessalva(null)
+    return subscribeMinhaRessalva(ensaio.id, uid, setRessalva)
+  }, [ensaio.id, uid, confirmado, subscribeMinhaRessalva])
   // Motivo privado (subcoleção), com fallback pro legado ainda não migrado.
   const ausencia = ausente ? { motivo: minhaAusencia?.motivo ?? ensaio.ausencias?.[uid]?.motivo ?? '' } : undefined
   const podeConfirmar = canCheckin(ensaio.data, ensaio.horario, checkinLimiteHoras)
@@ -80,6 +97,7 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem, ti
     try {
       await fn()
       setEscrevendoMotivo(false)
+      setEscrevendoRessalva(false)
     } catch {
       setError('Não foi possível salvar. Tente de novo.')
     } finally {
@@ -90,6 +108,40 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem, ti
   function abrirMotivo() {
     setMotivo(ausencia?.motivo ?? '')
     setEscrevendoMotivo(true)
+  }
+
+  function abrirRessalva() {
+    setTextoRessalva(ressalva?.texto ?? '')
+    setEscrevendoRessalva(true)
+  }
+
+  if (escrevendoRessalva) {
+    return (
+      <div className="space-y-2">
+        <Textarea
+          value={textoRessalva}
+          onChange={e => setTextoRessalva(e.target.value)}
+          placeholder="Ex.: vou, mas chego uns 30 min atrasado"
+          autoFocus
+        />
+        <p className="text-[10px] text-muted-foreground">A ressalva só aparece pra você, pra liderança da cena e pros admins.</p>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="flex-1" onClick={() => setEscrevendoRessalva(false)} disabled={saving}>
+            Voltar
+          </Button>
+          <Button
+            size="sm"
+            className="flex-1 gap-1.5"
+            onClick={() => run(() => confirmarPresenca(ensaio.id, uid, textoRessalva))}
+            disabled={saving || (!confirmado && !textoRessalva.trim())}
+          >
+            {saving ? <Spinner size="sm" className="border-white/40 border-t-white" /> : <Check className="h-4 w-4" />}
+            {confirmado ? 'Salvar' : 'Confirmar presença'}
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   if (escrevendoMotivo) {
@@ -123,14 +175,27 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem, ti
 
   if (confirmado) {
     return (
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1 text-sm font-medium text-emerald-700">
-          <Check className="h-4 w-4" />
-          Presença confirmada
-        </span>
-        {!comecou && (
-          <button type="button" onClick={abrirMotivo} className="text-xs text-muted-foreground underline-offset-2 hover:underline">
-            Não vou mais
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1 text-sm font-medium text-emerald-700">
+            <Check className="h-4 w-4" />
+            Presença confirmada
+          </span>
+          {!comecou && (
+            <button type="button" onClick={abrirMotivo} className="text-xs text-muted-foreground underline-offset-2 hover:underline">
+              Não vou mais
+            </button>
+          )}
+        </div>
+        {ressalva && (
+          <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <MessageSquareText className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span className="whitespace-pre-wrap">{ressalva.texto}</span>
+          </p>
+        )}
+        {subscribeMinhaRessalva && !comecou && (
+          <button type="button" onClick={abrirRessalva} className="text-xs font-medium text-primary underline-offset-2 hover:underline">
+            {ressalva ? 'Editar ressalva' : 'Adicionar uma ressalva (ex.: vou chegar atrasado)'}
           </button>
         )}
       </div>
@@ -210,9 +275,19 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem, ti
           Vou
         </Button>
       </div>
+      {podeConfirmar && subscribeMinhaRessalva && (
+        <button
+          type="button"
+          onClick={abrirRessalva}
+          disabled={saving}
+          className="block w-full text-center text-xs font-medium text-primary underline-offset-2 hover:underline"
+        >
+          Vou, mas com uma ressalva (ex.: vou chegar atrasado)
+        </button>
+      )}
       {!podeConfirmar && (
         <p className="text-center text-[11px] text-muted-foreground">
-          A confirmação abre no dia do {tipo}, até {checkinLimiteHoras}h antes do horário.
+          A confirmação abre {CHECKIN_ABRE_DIAS_ANTES} dias antes do {tipo}, até {checkinLimiteHoras}h antes do horário.
         </p>
       )}
       {error && <p className="text-xs text-red-600">{error}</p>}

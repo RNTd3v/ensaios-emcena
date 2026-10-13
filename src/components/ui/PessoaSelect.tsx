@@ -19,6 +19,11 @@ export interface PessoaOpcao {
  * Monta a opção de uma pessoa a partir do que a tela tiver: a inscrição (só admin/líder leem) tem
  * prioridade; sem ela, usa a cópia pública de nome/apelido do perfil.
  */
+/** "Nome Completo (Apelido)" — jeito padrão de mostrar quem faz um personagem. */
+export function nomeComApelido(pessoa: Pick<PessoaOpcao, 'nome' | 'apelido'>): string {
+  return pessoa.apelido ? `${pessoa.nome} (${pessoa.apelido})` : pessoa.nome
+}
+
 export function pessoaOpcao(
   uid: string,
   user: Pick<AppUser, 'displayName' | 'photoURL' | 'nomeCompleto' | 'apelido'> | undefined,

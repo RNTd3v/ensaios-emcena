@@ -318,6 +318,12 @@ function agoraEmSaoPaulo(): { hoje: string; minutos: number } {
   return { hoje: `${partes.year}-${partes.month}-${partes.day}`, minutos: Number(partes.hour) * 60 + Number(partes.minute) }
 }
 
+/** `data` (YYYY-MM-DD) mais `dias` dias. */
+function diasDepois(data: string, dias: number): string {
+  const [a, m, d] = data.split('-').map(Number)
+  return new Date(Date.UTC(a, m - 1, d + dias)).toISOString().slice(0, 10)
+}
+
 /** 1020 -> "17h", 1050 -> "17h30". */
 function horaDeMinutos(total: number): string {
   const h = Math.floor(total / 60)
@@ -326,6 +332,15 @@ function horaDeMinutos(total: number): string {
 }
 
 const AVISO_DO_DIA_MIN = 8 * 60
+/**
+ * Dias antes em que sai, às 8h, um lembrete de confirmação pra quem ainda não respondeu. Acompanha
+ * a janela do check-in no app (`CHECKIN_ABRE_DIAS_ANTES` em src/lib/agenda.ts): abre 2 dias antes.
+ */
+const AVISOS_ANTECIPADOS_DIAS = [2, 1]
+function tituloAntecipado(diasAntes: number, oQue: 'ensaio' | 'treinamento'): string {
+  if (diasAntes === 1) return `${oQue === 'ensaio' ? 'Ensaio' : 'Treinamento'} amanhã — confirme sua presença`
+  return `Já dá pra confirmar presença no ${oQue}`
+}
 /** Antes disso não sai lembrete de confirmação (ensaio cedo fecha a confirmação de madrugada). */
 const SILENCIO_ATE_MIN = 7 * 60
 /** Minutos antes de a confirmação fechar em que quem não respondeu é lembrado. */
@@ -349,11 +364,12 @@ interface Ocorrencia {
 }
 
 /**
- * O que sai agora pra uma ocorrência de hoje (ver `lembretesDoDia`): o que marcar no doc e as
- * notificações a enviar.
+ * O que sai agora pra uma ocorrência de hoje ou dos próximos dias (ver `lembretesDoDia`): o que
+ * marcar no doc e as notificações a enviar. `diasAntes` = quantos dias faltam (0 = hoje).
  */
 function lembretesDaOcorrencia(
   { e, oQue, participantes, nome, descricao, link }: Ocorrencia,
+  diasAntes: number,
   inicio: number,
   minutos: number,
   limiteHoras: number,
@@ -364,6 +380,22 @@ function lembretesDaOcorrencia(
   const chave = `${e.data} ${e.horario}`
   const atualizacao: Record<string, unknown> = {}
   const envios: [string[], Notificacao][] = []
+
+  // Dias antes: um lembrete de confirmação às 8h, só pra quem ainda não respondeu.
+  if (diasAntes > 0) {
+    const anteriores = e.avisosAntecipados?.chave === chave ? ((e.avisosAntecipados.dias as number[]) ?? []) : []
+    if (
+      AVISOS_ANTECIPADOS_DIAS.includes(diasAntes) &&
+      !anteriores.includes(diasAntes) &&
+      minutos >= AVISO_DO_DIA_MIN &&
+      minutos < AVISO_DO_DIA_MIN + 60
+    ) {
+      atualizacao.avisosAntecipados = { chave, dias: [...anteriores, diasAntes] }
+      const pendentes = participantes.filter(u => !presentes.has(u) && !ausentes.has(u))
+      if (pendentes.length) envios.push([pendentes, { titulo: tituloAntecipado(diasAntes, oQue), corpo: descricao, link, tipo }])
+    }
+    return { atualizacao, envios }
+  }
 
   // Aviso do dia: só na janela das 8h (se for criado depois, o aviso de criação já avisa).
   if (e.avisoDoDiaEnviado !== chave && minutos >= AVISO_DO_DIA_MIN && minutos < AVISO_DO_DIA_MIN + 60) {
@@ -400,19 +432,24 @@ function lembretesDaOcorrencia(
 }
 
 /**
- * Roda a cada 5 min (fuso de São Paulo), pros ensaios e sessões de treinamento de hoje:
- * - às 8h, "Hoje tem ensaio/treinamento" pro público (menos quem já avisou que não vai);
+ * Roda a cada 5 min (fuso de São Paulo), pros ensaios e sessões de treinamento de hoje e dos
+ * próximos 2 dias:
+ * - 2 dias antes e na véspera, às 8h, um lembrete de confirmação só pra quem ainda não respondeu
+ *   (a confirmação abre 2 dias antes);
+ * - às 8h do dia, "Hoje tem ensaio/treinamento" pro público (menos quem já avisou que não vai);
  * - 2h, 1h, 30 e 10 min antes de a confirmação fechar (`checkinLimiteHoras` antes do início), um
  *   lembrete só pra quem ainda não respondeu (nem "vou" nem "não vou").
- * O que já saiu fica marcado no doc (`avisoDoDiaEnviado`, `lembretesConfirmacao`) — atrelado a
+ * O que já saiu fica marcado no doc (`avisosAntecipados`, `avisoDoDiaEnviado`, `lembretesConfirmacao`) — atrelado a
  * data+horário, então se mudar de horário os lembretes recomeçam. Se a função atrasar ou o
  * ensaio for criado em cima da hora, manda só o lembrete mais próximo, sem rajada.
  */
 export const lembretesDoDia = onSchedule({ schedule: 'every 5 minutes', timeZone: FUSO }, async () => {
   const { hoje, minutos } = agoraEmSaoPaulo()
+  const offsets = [0, ...AVISOS_ANTECIPADOS_DIAS]
+  const datas = offsets.map(n => diasDepois(hoje, n))
   const [ensaios, sessoes] = await Promise.all([
-    db.collection('ensaios').where('data', '==', hoje).get(),
-    db.collection('treinamentoSessoes').where('data', '==', hoje).get(),
+    db.collection('ensaios').where('data', 'in', datas).get(),
+    db.collection('treinamentoSessoes').where('data', 'in', datas).get(),
   ])
   if (ensaios.empty && sessoes.empty) return
   const config = (await db.collection('settings').doc('config').get()).data()
@@ -457,14 +494,15 @@ export const lembretesDoDia = onSchedule({ schedule: 'every 5 minutes', timeZone
     const [h, m] = String(e.horario ?? '').split(':').map(Number)
     if (Number.isNaN(h)) continue
     const inicio = h * 60 + (m || 0)
-    if (minutos >= inicio) continue
+    const diasAntes = offsets[datas.indexOf(e.data)]
+    if (diasAntes === 0 && minutos >= inicio) continue
     // O que marcar não depende do público: sem nada devido agora, nem carrega a cena/treinamento
     // (o público de um treinamento "todos" são todos os usuários — leitura cara a cada 5 min).
     const vazio: Ocorrencia = { e, oQue: 'ensaio', participantes: [], nome: '', descricao: '', link: '' }
-    if (!Object.keys(lembretesDaOcorrencia(vazio, inicio, minutos, limiteHoras).atualizacao).length) continue
+    if (!Object.keys(lembretesDaOcorrencia(vazio, diasAntes, inicio, minutos, limiteHoras).atualizacao).length) continue
     const ocorrencia = await carregar()
     if (!ocorrencia) continue
-    const { atualizacao, envios } = lembretesDaOcorrencia(ocorrencia, inicio, minutos, limiteHoras)
+    const { atualizacao, envios } = lembretesDaOcorrencia(ocorrencia, diasAntes, inicio, minutos, limiteHoras)
     if (!Object.keys(atualizacao).length) continue
     // Marca antes de enviar (como o lembreteEnsaio): se o envio falhar no meio, não repete.
     await ref.update(atualizacao)

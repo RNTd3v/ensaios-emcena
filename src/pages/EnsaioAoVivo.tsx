@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, CheckCircle2, Clock, ExternalLink, Info, Plus, MapPin, NotebookPen, Pause, Pencil, Play, RotateCcw, Shirt, SlidersHorizontal, Star, Users, X, XCircle, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Check, CheckCircle2, Clock, ExternalLink, Info, Plus, MapPin, MessageCircle, NotebookPen, Pause, Pencil, Play, RotateCcw, Shirt, SlidersHorizontal, Star, Users, X, XCircle, RefreshCw } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { NotificarElenco } from '@/components/ensaio/NotificarElenco'
 import { PreparoCampos, PreparoInfo, type Preparo } from '@/components/ensaio/PreparoEnsaio'
@@ -28,6 +28,7 @@ import {
   updateEnsaioCronometro,
   migrarAusenciasLegadas,
   subscribeToAusencias,
+  subscribeToRessalvas,
   subscribeToMinhaAusencia,
   uidsAusentes,
   uidsIndisponiveis,
@@ -38,18 +39,18 @@ import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { mapsLink, subscribeToLocais } from '@/services/firebase/locais'
 import { localIcon } from '@/lib/localIcons'
-import type { AppUser, AusenciaMotivo, Cena, CronometroEnsaio, Ensaio, Inscricao, LocalEnsaio, Personagem } from '@/types'
+import type { AppUser, AusenciaMotivo, Cena, CronometroEnsaio, Ensaio, Inscricao, LocalEnsaio, Personagem, RessalvaPresenca } from '@/types'
 import { DIA_TO_WEEKDAY, formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { formatDuracao, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { DIAS_ORDER } from '@/lib/dias'
 import { cn } from '@/lib/utils'
-import { formatDateTime } from '@/lib/formatters'
+import { formatDateTime, whatsappLink } from '@/lib/formatters'
 import { ensaioStatus } from '@/lib/ensaioStatus'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
 import { subscribeToDependentes } from '@/services/firebase/dependentes'
 import { MusicasCard } from '@/components/midia/MusicasCard'
-import { PessoaSelect, pessoaOpcao, type PessoaOpcao } from '@/components/ui/PessoaSelect'
+import { PessoaSelect, nomeComApelido, pessoaOpcao, type PessoaOpcao } from '@/components/ui/PessoaSelect'
 import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 /**
@@ -94,6 +95,11 @@ export function EnsaioAoVivo() {
   const inscricoesByUid = useMemo(() => Object.fromEntries((inscricoes ?? []).map(i => [i.uid, i])), [inscricoes])
   function nameFor(uid: string) {
     return inscricoesByUid[uid]?.apelido || inscricoesByUid[uid]?.nomeCompleto || users[uid]?.displayName || 'Sem nome'
+  }
+
+  /** Quem faz o personagem: nome completo e, entre parênteses, o apelido. */
+  function atorDe(uid: string) {
+    return nomeComApelido(pessoaOpcao(uid, users[uid], inscricoesByUid[uid]))
   }
 
   const todayKey = toDateKey(new Date())
@@ -277,7 +283,9 @@ export function EnsaioAoVivo() {
     )
   }
 
-  const presencaProps = { elenco, users, nameFor, onToggle: togglePresenca, podeVerMotivo: canManageAgenda }
+  // Menor de idade sem telefone próprio: fala com o responsável.
+  const telefoneDe = (uid: string) => inscricoesByUid[uid]?.telefone || inscricoesByUid[uid]?.responsavel?.telefone || undefined
+  const presencaProps = { elenco, users, nameFor, onToggle: togglePresenca, podeVerMotivo: canManageAgenda, telefoneDe, atorDe }
 
   return (
     <div className="space-y-4">
@@ -469,6 +477,7 @@ export function EnsaioAoVivo() {
           elenco={elenco}
           pessoas={pessoas}
           nameFor={nameFor}
+          atorDe={atorDe}
         />
       )}
 
@@ -483,6 +492,7 @@ export function EnsaioAoVivo() {
           elenco={elenco}
           pessoas={pessoas}
           nameFor={nameFor}
+          atorDe={atorDe}
         />
       )}
     </div>
@@ -631,6 +641,10 @@ interface PresencaCardProps {
   podeAlterar: (uid: string) => boolean
   /** Admin/líder veem o motivo de quem avisou que não vai; os demais só veem que a pessoa não vai. */
   podeVerMotivo?: boolean
+  /** Telefone pra abrir o WhatsApp — só existe pra quem lê as inscrições (admin/líder). */
+  telefoneDe: (uid: string) => string | undefined
+  /** "Nome Completo (Apelido)" de quem faz o personagem. */
+  atorDe: (uid: string) => string
 }
 
 /**
@@ -658,10 +672,15 @@ function useMotivosAusencia(ensaio: Ensaio, podeVerTodos: boolean, currentUid: s
   }
 }
 
-function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, podeVerMotivo }: PresencaCardProps) {
+function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, podeVerMotivo, telefoneDe, atorDe }: PresencaCardProps) {
   const currentUid = useAuthStore(s => s.user?.uid)
   const ausentes = uidsAusentes(ensaio)
   const motivoDe = useMotivosAusencia(ensaio, !!podeVerMotivo, currentUid)
+  const [ressalvas, setRessalvas] = useState<Record<string, RessalvaPresenca>>({})
+  useEffect(() => {
+    if (!podeVerMotivo) return setRessalvas({})
+    return subscribeToRessalvas(ensaio.id, setRessalvas)
+  }, [ensaio.id, podeVerMotivo])
   const elencoUids = new Set(elenco.map(p => p.participanteUid as string))
   const presentesElenco = (ensaio.presencas ?? []).filter(uid => elencoUids.has(uid)).length
   /** Quem esteve presente sem ser do elenco da cena (adicionado pelo modal de edição). */
@@ -686,17 +705,9 @@ function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, p
             {elenco.map(p => {
               const uid = p.participanteUid as string
               const presente = !!ensaio.presencas?.includes(uid)
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  disabled={!podeAlterar(uid)}
-                  onClick={() => onToggle(uid)}
-                  className={cn(
-                    'flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm disabled:cursor-default',
-                    presente ? 'bg-emerald-50' : 'hover:bg-gray-50',
-                  )}
-                >
+              const telefone = telefoneDe(uid)
+              const pessoa = (
+                <>
                   <Avatar photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-8 w-8 shrink-0 text-xs" />
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-1.5 font-medium">
@@ -707,26 +718,74 @@ function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, p
                         </span>
                       )}
                     </p>
-                    <p className="truncate text-xs text-muted-foreground">{nameFor(uid)}</p>
+                    <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                      <span className="truncate">{atorDe(uid)}</span>
+                      {telefone && <MessageCircle className="h-3 w-3 shrink-0 text-emerald-600" />}
+                    </p>
                     {!presente && ausentes.includes(uid) && (
                       <p className="whitespace-pre-wrap text-xs text-red-600">
                         Não vai{motivoDe(uid) ? `: ${motivoDe(uid)}` : ''}
                       </p>
                     )}
-                  </div>
-                  <span
-                    className={cn(
-                      'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
-                      presente
-                        ? 'border-emerald-500 bg-emerald-500 text-white'
-                        : ausentes.includes(uid)
-                          ? 'border-red-400 bg-red-50 text-red-500'
-                          : 'border-gray-300',
+                    {!ausentes.includes(uid) && ressalvas[uid] && (
+                      <p className="whitespace-pre-wrap text-xs text-amber-700">Ressalva: {ressalvas[uid].texto}</p>
                     )}
+                  </div>
+                </>
+              )
+              const marca = (
+                <span
+                  className={cn(
+                    'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
+                    presente
+                      ? 'border-emerald-500 bg-emerald-500 text-white'
+                      : ausentes.includes(uid)
+                        ? 'border-red-400 bg-red-50 text-red-500'
+                        : 'border-gray-300',
+                  )}
+                >
+                  {presente ? <Check className="h-3 w-3" /> : ausentes.includes(uid) && <X className="h-3 w-3" />}
+                </span>
+              )
+              const fundo = presente ? 'bg-emerald-50' : 'hover:bg-gray-50'
+
+              // Sem telefone (quem não lê as inscrições): a linha inteira marca presença, como antes.
+              if (!telefone) {
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    disabled={!podeAlterar(uid)}
+                    onClick={() => onToggle(uid)}
+                    className={cn('flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm disabled:cursor-default', fundo)}
                   >
-                    {presente ? <Check className="h-3 w-3" /> : ausentes.includes(uid) && <X className="h-3 w-3" />}
-                  </span>
-                </button>
+                    {pessoa}
+                    {marca}
+                  </button>
+                )
+              }
+
+              // Com telefone: tocar na pessoa abre o WhatsApp; a bolinha marca presença.
+              return (
+                <div key={p.id} className={cn('flex w-full items-center gap-1 rounded-lg pl-2 text-sm', fundo)}>
+                  <a
+                    href={whatsappLink(telefone)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left"
+                  >
+                    {pessoa}
+                  </a>
+                  <button
+                    type="button"
+                    disabled={!podeAlterar(uid)}
+                    onClick={() => onToggle(uid)}
+                    title={presente ? 'Desmarcar presença' : 'Marcar presença'}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center disabled:cursor-default"
+                  >
+                    {marca}
+                  </button>
+                </div>
               )
             })}
           </div>
@@ -735,17 +794,24 @@ function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, p
           <div className="border-t border-gray-100 pt-2">
             <p className="mb-1 text-xs font-medium text-muted-foreground">Também presentes</p>
             <div className="space-y-1">
-              {extras.map(uid => (
-                <PessoaLinha
-                  key={uid}
-                  pessoa={pessoaOpcao(uid, users[uid])}
-                  className="rounded-lg bg-emerald-50 px-2 py-1.5"
-                >
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-emerald-500 bg-emerald-500 text-white">
-                    <Check className="h-3 w-3" />
-                  </span>
-                </PessoaLinha>
-              ))}
+              {extras.map(uid => {
+                const telefone = telefoneDe(uid)
+                const linha = (
+                  <PessoaLinha pessoa={pessoaOpcao(uid, users[uid])} className="rounded-lg bg-emerald-50 px-2 py-1.5">
+                    {telefone && <MessageCircle className="h-3.5 w-3.5 shrink-0 text-emerald-600" />}
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-emerald-500 bg-emerald-500 text-white">
+                      <Check className="h-3 w-3" />
+                    </span>
+                  </PessoaLinha>
+                )
+                return telefone ? (
+                  <a key={uid} href={whatsappLink(telefone)} target="_blank" rel="noreferrer" className="block">
+                    {linha}
+                  </a>
+                ) : (
+                  <div key={uid}>{linha}</div>
+                )
+              })}
             </div>
           </div>
         )}
@@ -824,6 +890,7 @@ interface EditarEnsaioDialogProps {
   elenco: Personagem[]
   pessoas: PessoaOpcao[]
   nameFor: (uid: string) => string
+  atorDe: (uid: string) => string
 }
 
 /**
@@ -842,6 +909,7 @@ function EditarEnsaioDialog({
   elenco,
   pessoas,
   nameFor,
+  atorDe,
 }: EditarEnsaioDialogProps) {
   const currentUser = useAuthStore(s => s.user)
   const confirmando = !!onConfirmar
@@ -1055,7 +1123,7 @@ function EditarEnsaioDialog({
                     >
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium">{p.nome}</p>
-                        <p className="truncate text-xs text-muted-foreground">{nameFor(uid)}</p>
+                        <p className="truncate text-xs text-muted-foreground">{atorDe(uid)}</p>
                       </div>
                       <span
                         className={cn(

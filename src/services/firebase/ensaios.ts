@@ -1,6 +1,6 @@
 import { addDoc, arrayRemove, arrayUnion, collection, deleteField, doc, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { db } from './config'
-import type { AusenciaMotivo, Cena, CronometroEnsaio, Ensaio, Inscricao } from '@/types'
+import type { AusenciaMotivo, Cena, CronometroEnsaio, Ensaio, Inscricao, RessalvaPresenca } from '@/types'
 
 function toIso(value: unknown): string | undefined {
   return (value as { toDate?: () => Date })?.toDate?.().toISOString()
@@ -151,11 +151,16 @@ function ausenciaRef(ensaioId: string, uid: string) {
   return doc(db, 'ensaios', ensaioId, 'ausencias', uid)
 }
 
+function ressalvaRef(ensaioId: string, uid: string) {
+  return doc(db, 'ensaios', ensaioId, 'ressalvas', uid)
+}
+
 /**
  * Confirma a presença de `uid` nesse ensaio — e desfaz uma ausência avisada antes (tira de
- * `ausentes`, apaga o motivo privado e a chave legada em `ausencias`).
+ * `ausentes`, apaga o motivo privado e a chave legada em `ausencias`). `ressalva`: texto grava
+ * ("vou, mas chego atrasado"), vazio apaga, omitido não mexe (ex.: liderança marcando presença).
  */
-export async function confirmarPresenca(id: string, uid: string): Promise<void> {
+export async function confirmarPresenca(id: string, uid: string, ressalva?: string): Promise<void> {
   const batch = writeBatch(db)
   batch.update(doc(db, 'ensaios', id), {
     presencas: arrayUnion(uid),
@@ -163,6 +168,10 @@ export async function confirmarPresenca(id: string, uid: string): Promise<void> 
     [`ausencias.${uid}`]: deleteField(),
   })
   batch.delete(ausenciaRef(id, uid))
+  if (ressalva !== undefined) {
+    if (ressalva.trim()) batch.set(ressalvaRef(id, uid), { uid, texto: ressalva.trim(), registradaEm: new Date().toISOString() })
+    else batch.delete(ressalvaRef(id, uid))
+  }
   await batch.commit()
 }
 
@@ -178,6 +187,7 @@ export async function registrarAusencia(id: string, uid: string, motivo: string)
     [`ausencias.${uid}`]: deleteField(),
   })
   batch.set(ausenciaRef(id, uid), { uid, motivo: motivo.trim(), registradaEm: new Date().toISOString() })
+  batch.delete(ressalvaRef(id, uid))
   await batch.commit()
 }
 
@@ -235,6 +245,23 @@ export function subscribeToMinhaAusencia(ensaioId: string, uid: string, callback
     ausenciaRef(ensaioId, uid),
     snap => callback(snap.exists() ? (snap.data() as AusenciaMotivo) : null),
     () => callback(null),
+  )
+}
+
+export function subscribeToMinhaRessalva(ensaioId: string, uid: string, callback: (r: RessalvaPresenca | null) => void) {
+  return onSnapshot(
+    ressalvaRef(ensaioId, uid),
+    snap => callback(snap.exists() ? (snap.data() as RessalvaPresenca) : null),
+    () => callback(null),
+  )
+}
+
+/** Todas as ressalvas de presença do ensaio, por uid — só admin/liderança da cena têm leitura. */
+export function subscribeToRessalvas(ensaioId: string, callback: (porUid: Record<string, RessalvaPresenca>) => void) {
+  return onSnapshot(
+    collection(db, 'ensaios', ensaioId, 'ressalvas'),
+    snap => callback(Object.fromEntries(snap.docs.map(d => [d.id, d.data() as RessalvaPresenca]))),
+    () => callback({}),
   )
 }
 

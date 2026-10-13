@@ -1,6 +1,6 @@
 import { addDoc, arrayRemove, arrayUnion, collection, deleteField, doc, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { db } from './config'
-import type { AusenciaMotivo, Cena, Ensaio, Inscricao } from '@/types'
+import type { AusenciaMotivo, Cena, CronometroEnsaio, Ensaio, Inscricao } from '@/types'
 
 function toIso(value: unknown): string | undefined {
   return (value as { toDate?: () => Date })?.toDate?.().toISOString()
@@ -292,9 +292,15 @@ export async function salvarRegistroEnsaio(
   await updateDoc(doc(db, 'ensaios', id), {
     anotacoes: data.anotacoes?.trim() || deleteField(),
     duracaoSegundos: data.duracaoSegundos,
+    cronometro: deleteField(),
     finalizadoByUid,
     finalizadoAt: serverTimestamp(),
   })
+}
+
+/** Iniciar/pausar/zerar o cronômetro da tela ao vivo — o tempo é calculado a partir disso em cada aparelho. */
+export async function updateEnsaioCronometro(id: string, cronometro: CronometroEnsaio): Promise<void> {
+  await updateDoc(doc(db, 'ensaios', id), { cronometro })
 }
 
 /** Todos os ensaios (confirmados e cancelados) de uma cena, em tempo real — sem paginação. */

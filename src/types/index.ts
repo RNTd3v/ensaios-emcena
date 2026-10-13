@@ -337,8 +337,18 @@ export interface Ensaio {
    */
   anotacoes?: string
   duracaoSegundos?: number
+  /**
+   * Cronômetro da tela ao vivo enquanto o ensaio não é finalizado: segundos já contados antes da
+   * corrida atual e, se estiver correndo, o instante (ms) em que ela começou. Apagado ao finalizar.
+   */
+  cronometro?: CronometroEnsaio
   finalizadoByUid?: string
   finalizadoAt?: string
+}
+
+export interface CronometroEnsaio {
+  acumuladoSeg: number
+  inicioMs: number | null
 }
 
 /**

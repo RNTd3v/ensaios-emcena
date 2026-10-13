@@ -25,6 +25,7 @@ import {
   salvarRegistroEnsaio,
   subscribeToEnsaiosDaCena,
   updateEnsaioAnotacoes,
+  updateEnsaioCronometro,
   migrarAusenciasLegadas,
   subscribeToAusencias,
   subscribeToMinhaAusencia,
@@ -37,7 +38,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { mapsLink, subscribeToLocais } from '@/services/firebase/locais'
 import { localIcon } from '@/lib/localIcons'
-import type { AppUser, AusenciaMotivo, Cena, Ensaio, Inscricao, LocalEnsaio, Personagem } from '@/types'
+import type { AppUser, AusenciaMotivo, Cena, CronometroEnsaio, Ensaio, Inscricao, LocalEnsaio, Personagem } from '@/types'
 import { DIA_TO_WEEKDAY, formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { formatDuracao, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { DIAS_ORDER } from '@/lib/dias'
@@ -147,17 +148,36 @@ export function EnsaioAoVivo() {
         : 'futuro'
 
   // ---------- Cronômetro ----------
-  const [segundos, setSegundos] = useState(0)
-  const [rodando, setRodando] = useState(false)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Conta pelo relógio (início + acumulado), não por tiques: com a tela apagada o celular congela
+  // a página e o setInterval para. Fica no próprio ensaio, então aparece igual em todos os aparelhos
+  // e sobrevive se o sistema descartar a aba.
+  const cronometro = ensaio?.cronometro ?? CRONOMETRO_ZERADO
+  const [, setTique] = useState(0)
+  const rodando = cronometro.inicioMs !== null
+  const segundos = segundosDoCronometro(cronometro)
 
   useEffect(() => {
     if (!rodando) return
-    intervalRef.current = setInterval(() => setSegundos(s => s + 1), 1000)
+    const atualizar = () => setTique(t => t + 1)
+    const interval = setInterval(atualizar, 1000)
+    document.addEventListener('visibilitychange', atualizar)
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', atualizar)
     }
   }, [rodando])
+
+  function mudarCronometro(novo: CronometroEnsaio) {
+    if (ensaio) updateEnsaioCronometro(ensaio.id, novo).catch(() => {})
+  }
+
+  function alternarCronometro() {
+    mudarCronometro(
+      rodando
+        ? { acumuladoSeg: segundos, inicioMs: null }
+        : { acumuladoSeg: cronometro.acumuladoSeg, inicioMs: Date.now() },
+    )
+  }
 
   // ---------- Anotações ao vivo (autosave) ----------
   const [anotacoes, setAnotacoes] = useState('')
@@ -212,7 +232,6 @@ export function EnsaioAoVivo() {
     setFinalizando(true)
     try {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-      setRodando(false)
       await salvarRegistroEnsaio(ensaio.id, { anotacoes, duracaoSegundos: segundos }, currentUser.uid)
       if (!ensaioId) navigate(`/cenas/${cenaId}/ensaios/${ensaio.id}`, { replace: true })
     } finally {
@@ -372,17 +391,14 @@ export function EnsaioAoVivo() {
                 </div>
                 <p className="font-mono text-4xl font-semibold tabular-nums text-gray-900">{formatDuracao(segundos)}</p>
                 <div className="flex w-full gap-2">
-                  <Button size="sm" className="flex-1 gap-1.5" onClick={() => setRodando(v => !v)}>
+                  <Button size="sm" className="flex-1 gap-1.5" onClick={alternarCronometro}>
                     {rodando ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     {rodando ? 'Pausar' : segundos > 0 ? 'Retomar' : 'Iniciar'}
                   </Button>
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => {
-                      setRodando(false)
-                      setSegundos(0)
-                    }}
+                    onClick={() => mudarCronometro(CRONOMETRO_ZERADO)}
                     title="Zerar"
                     className="h-10 w-10"
                   >
@@ -474,6 +490,13 @@ export function EnsaioAoVivo() {
 }
 
 /** Data por extenso + status + flags (geral / com figurino) do ensaio. */
+const CRONOMETRO_ZERADO: CronometroEnsaio = { acumuladoSeg: 0, inicioMs: null }
+
+function segundosDoCronometro(c: CronometroEnsaio) {
+  const correndo = c.inicioMs === null ? 0 : Math.max(0, Math.floor((Date.now() - c.inicioMs) / 1000))
+  return c.acumuladoSeg + correndo
+}
+
 function InfoEnsaio({ ensaio }: { ensaio: Ensaio }) {
   return (
     <Card>

@@ -122,6 +122,32 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Diário da cena: anotações avulsas (fora de ensaio). A liderança (admin, líder, assistentes)
+    // escreve e lê todas; o elenco (e responsáveis de crianças da cena) só as marcadas `elenco` —
+    // o app consulta filtrando por `visibilidade`. Edita/apaga quem escreveu, o líder ou admin.
+    match /cenas/{cenaId}/anotacoes/{id} {
+      function cenaDaAnotacao() {
+        return get(/databases/$(database)/documents/cenas/$(cenaId)).data;
+      }
+      allow read: if isAdmin()
+        || gerenciaEnsaios(cenaDaAnotacao())
+        || (resource.data.visibilidade == 'elenco'
+            && isAuthenticated()
+            && (request.auth.uid in cenaDaAnotacao().participantes
+                || request.auth.uid in cenaDaAnotacao().get('responsaveisDependentes', [])));
+      allow create: if (isAdmin() || gerenciaEnsaios(cenaDaAnotacao()))
+        && request.resource.data.autorUid == request.auth.uid
+        && request.resource.data.visibilidade in ['lideranca', 'elenco'];
+      allow update: if (isAdmin()
+          || (isAuthenticated() && resource.data.autorUid == request.auth.uid && gerenciaEnsaios(cenaDaAnotacao()))
+          || (isAuthenticated() && cenaDaAnotacao().get('liderUid', '') == request.auth.uid))
+        && request.resource.data.autorUid == resource.data.autorUid
+        && request.resource.data.visibilidade in ['lideranca', 'elenco'];
+      allow delete: if isAdmin()
+        || (isAuthenticated() && resource.data.autorUid == request.auth.uid && gerenciaEnsaios(cenaDaAnotacao()))
+        || (isAuthenticated() && cenaDaAnotacao().get('liderUid', '') == request.auth.uid);
+    }
+
     // Histórico das mudanças de personagens da cena — gravado só pela Cloud Function
     // `cenaHistoricoPersonagens`; só admin lê.
     match /cenas/{cenaId}/historicoPersonagens/{id} {

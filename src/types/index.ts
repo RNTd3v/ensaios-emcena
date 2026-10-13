@@ -354,7 +354,10 @@ export interface Ensaio {
   cronometro?: CronometroEnsaio
   finalizadoByUid?: string
   finalizadoAt?: string
-  /** Finalizado sozinho na madrugada seguinte, porque ninguém finalizou pela tela ao vivo. */
+  /**
+   * Finalizado sozinho na madrugada seguinte (função `finalizarEnsaiosEsquecidos`, já desativada) —
+   * fica pros ensaios que ela chegou a finalizar.
+   */
   finalizadoAuto?: boolean
 }
 
@@ -600,7 +603,7 @@ export interface Notificacao {
   corpo: string
   /** Rota dentro do app pra onde a notificação leva. */
   link?: string | null
-  tipo: 'ensaio' | 'treinamento' | 'figurino' | 'tarefa' | 'aviso' | 'reporte'
+  tipo: 'ensaio' | 'treinamento' | 'figurino' | 'tarefa' | 'aviso' | 'reporte' | 'oracao'
   lida: boolean
   lidaEm?: string
   createdAt: string
@@ -668,6 +671,23 @@ export interface RoteiroArquivo {
   path: string
   nome: string
   atualizadoEm: string
+}
+
+/** Quem vê uma anotação do diário da cena. */
+export type AnotacaoVisibilidade = 'lideranca' | 'elenco'
+
+/**
+ * Anotação avulsa no diário da cena (`cenas/{cenaId}/anotacoes/{id}`), fora de um ensaio — escrita
+ * pela liderança (líder, assistentes, admin). `lideranca` = só eles leem; `elenco` = a cena toda.
+ */
+export interface AnotacaoCena {
+  id: string
+  titulo?: string
+  texto: string
+  visibilidade: AnotacaoVisibilidade
+  autorUid: string
+  createdAt: string
+  updatedAt?: string
 }
 
 export interface MaterialEstudoLink {

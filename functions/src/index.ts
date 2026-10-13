@@ -22,7 +22,7 @@ const db = getFirestore()
 const APP_URL = 'https://ensaios-emcena.web.app'
 const FUSO = 'America/Sao_Paulo'
 
-type Tipo = 'ensaio' | 'treinamento' | 'figurino' | 'tarefa' | 'aviso' | 'reporte'
+type Tipo = 'ensaio' | 'treinamento' | 'figurino' | 'tarefa' | 'aviso' | 'reporte' | 'oracao'
 
 interface Notificacao {
   titulo: string
@@ -304,28 +304,6 @@ async function avisarDesistencias(ensaioId: string, cena: DocumentData, antes: D
 }
 
 /**
- * Ensaio esquecido sem finalizar: às 3h (fuso de São Paulo) finaliza os de ontem que ninguém
- * finalizou pela tela ao vivo (`finalizadoAuto`). A duração só entra se o cronômetro ficou
- * pausado — se ainda estava correndo, não dá pra saber quando o ensaio acabou.
- */
-export const finalizarEnsaiosEsquecidos = onSchedule({ schedule: '0 3 * * *', timeZone: FUSO }, async () => {
-  const ontem = diasDepois(agoraEmSaoPaulo().hoje, -1)
-  const snap = await db.collection('ensaios').where('data', '==', ontem).get()
-  for (const doc of snap.docs) {
-    const e = doc.data()
-    if (e.canceledByUid || e.finalizadoAt) continue
-    const atualizacao: Record<string, unknown> = {
-      finalizadoAt: FieldValue.serverTimestamp(),
-      finalizadoAuto: true,
-      cronometro: FieldValue.delete(),
-    }
-    const c = e.cronometro
-    if (c && c.inicioMs === null && c.acumuladoSeg > 0) atualizacao.duracaoSegundos = c.acumuladoSeg
-    await doc.ref.update(atualizacao)
-  }
-})
-
-/**
  * Lembrete ~2h antes de cada ensaio confirmado de hoje (roda a cada 15 min, no fuso de São Paulo).
  * Marca `lembreteEnviado` pra não repetir. Quem avisou que não vai não recebe.
  */
@@ -495,6 +473,8 @@ function lembretesDaOcorrencia(
  */
 export const lembretesDoDia = onSchedule({ schedule: 'every 5 minutes', timeZone: FUSO }, async () => {
   const { hoje, minutos } = agoraEmSaoPaulo()
+  // Na mesma tarefa agendada (e não numa nova) pra não sair da cota gratuita do Cloud Scheduler.
+  await lembretesOracao(hoje, minutos)
   const offsets = [0, ...AVISOS_ANTECIPADOS_DIAS]
   const datas = offsets.map(n => diasDepois(hoje, n))
   const [ensaios, sessoes] = await Promise.all([
@@ -559,6 +539,55 @@ export const lembretesDoDia = onSchedule({ schedule: 'every 5 minutes', timeZone
     for (const [uids, n] of envios) await notificar(uids, n)
   }
 })
+
+// ---------- Relógio de oração ----------
+
+/** Minutos antes do horário de oração em que a pessoa é lembrada. */
+const LEMBRETE_ORACAO_MIN = 10
+
+/** 390 -> "06:30" (como o `inicio` gravado em `horariosOracao`). */
+function hhmm(total: number): string {
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+}
+
+/**
+ * Lembrete pessoal ~10 min antes do horário de oração, nos dias da semana que a pessoa marcou —
+ * só com o relógio liberado (`oracaoLiberada`). Busca só os horários que começam na janela (consulta
+ * por faixa de `inicio`, não a coleção toda) e marca `lembreteEnviado` ("data inicio") pra não repetir.
+ * Perto da meia-noite a janela continua no dia seguinte.
+ */
+async function lembretesOracao(hoje: string, minutos: number): Promise<void> {
+  const fim = minutos + LEMBRETE_ORACAO_MIN
+  const faixas = [{ data: hoje, de: hhmm(minutos), ate: hhmm(Math.min(fim, 1439)) }]
+  if (fim > 1439) faixas.push({ data: diasDepois(hoje, 1), de: '', ate: hhmm(fim - 1440) })
+
+  const candidatos: { ref: FirebaseFirestore.DocumentReference; h: DocumentData; chave: string }[] = []
+  for (const { data, de, ate } of faixas) {
+    const [a, m, d] = data.split('-').map(Number)
+    const diaSemana = new Date(Date.UTC(a, m - 1, d)).getUTCDay()
+    const snap = await db.collection('horariosOracao').where('inicio', '>', de).where('inicio', '<=', ate).get()
+    for (const doc of snap.docs) {
+      const h = doc.data()
+      const chave = `${data} ${h.inicio}`
+      if (!(h.dias as number[] | undefined)?.includes(diaSemana) || h.lembreteEnviado === chave) continue
+      candidatos.push({ ref: doc.ref, h, chave })
+    }
+  }
+  if (!candidatos.length) return
+  const config = (await db.collection('settings').doc('config').get()).data()
+  if (!config?.oracaoLiberada) return
+
+  for (const { ref, h, chave } of candidatos) {
+    await ref.update({ lembreteEnviado: chave })
+    const [hh, mm] = String(h.inicio).split(':').map(Number)
+    await notificar([h.uid ?? ref.id], {
+      titulo: `Seu horário de oração começa às ${horaDeMinutos(hh * 60 + mm)}`,
+      corpo: `Daqui a pouco, por ${h.duracaoMin} min. Toque pra ver os pedidos de oração.`,
+      link: '/oracao',
+      tipo: 'oracao',
+    })
+  }
+}
 
 // ---------- Treinamentos ----------
 

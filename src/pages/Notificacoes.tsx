@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Bell, BellRing, Bug, CalendarClock, CheckCheck, GraduationCap, ListChecks, Megaphone, Send, Shirt, UserCheck, UsersRound } from 'lucide-react'
+import { ArrowLeft, Bell, BellRing, Bug, CalendarClock, CheckCheck, GraduationCap, HandHeart, ListChecks, Megaphone, Send, Shirt, UserCheck, UsersRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
@@ -36,6 +36,7 @@ const ICONE: Record<Notificacao['tipo'], typeof Bell> = {
   tarefa: ListChecks,
   aviso: Megaphone,
   reporte: Bug,
+  oracao: HandHeart,
 }
 
 function quandoRelativo(iso: string): string {

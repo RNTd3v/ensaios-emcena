@@ -12,7 +12,6 @@ import {
   ExternalLink,
   Info,
   HandHelping,
-  NotebookPen,
   Pencil,
   Pin,
   Play,
@@ -79,11 +78,12 @@ import {
   type Personagem,
 } from '@/types'
 import { DIAS_ORDER, diasDisponiveis, sortDias } from '@/lib/dias'
-import { formatDuracao, formatTempoTotal, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
+import { formatTempoTotal, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { addDays, canCheckin, DIA_TO_WEEKDAY, formatRelativeDia, toDateKey, weekDates } from '@/lib/agenda'
 import { cn } from '@/lib/utils'
 import { PessoaSelect, nomeComApelido, pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { ContatoPessoaDialog } from '@/components/cena/ContatoPessoaDialog'
+import { DiarioCenaCard } from '@/components/cena/DiarioCenaCard'
 import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 interface Occurrence {
@@ -175,7 +175,6 @@ export function CenaDetalhe() {
   const [participanteError, setParticipanteError] = useState('')
   const personagemNomeInputRef = useRef<HTMLInputElement>(null)
 
-  const [anotacoesOpen, setAnotacoesOpen] = useState(false)
 
 
 
@@ -299,7 +298,7 @@ export function CenaDetalhe() {
     return contagem
   }, [cena])
 
-  /** Ensaios finalizados pela tela "Iniciar ensaio" — os registros exibidos no card Anotações. */
+  /** Ensaios finalizados pela tela "Iniciar ensaio" — os registros exibidos no Diário da cena. */
   const registros = useMemo(
     () => (ensaios ?? []).filter(e => e.finalizadoAt).sort((a, b) => b.data.localeCompare(a.data) || b.horario.localeCompare(a.horario)),
     [ensaios],
@@ -1148,54 +1147,16 @@ export function CenaDetalhe() {
             </Card>
           )}
 
-          {registros.length > 0 && (
-            <Card>
-              <CardContent>
-                <div className={cn('flex items-center gap-2', anotacoesOpen && 'pb-2.5 border-b border-gray-100')}>
-                  <button
-                    type="button"
-                    onClick={() => setAnotacoesOpen(v => !v)}
-                    className="flex flex-1 items-center gap-1.5 text-left text-base font-semibold"
-                  >
-                    <ChevronDown className={cn('h-4 w-4 text-gray-400 transition-transform', !anotacoesOpen && '-rotate-90')} />
-                    Anotações
-                  </button>
-                  <span className="text-xs text-muted-foreground">{registros.length}</span>
-                </div>
-
-                {anotacoesOpen && (
-                  <div className="space-y-1 pt-2">
-                    {registros.map(e => {
-                      const elencoCount = cena.personagens.filter(p => p.participanteUid).length
-                      return (
-                        <button
-                          key={e.id}
-                          type="button"
-                          onClick={() => navigate(`/cenas/${cena.id}/ensaios/${e.id}`)}
-                          className="flex w-full items-center gap-2.5 rounded-lg px-1 py-1.5 text-left text-sm hover:bg-gray-50"
-                        >
-                          <NotebookPen className="h-4 w-4 shrink-0 text-primary" />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate font-medium">
-                              {formatRelativeDia(e.data, todayKey)} · {formatHoraCompacta(e.horario)}
-                            </p>
-                            {e.anotacoes && <p className="truncate text-xs text-gray-500">{e.anotacoes}</p>}
-                          </div>
-                          <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                            {e.duracaoSegundos !== undefined && <span>{formatDuracao(e.duracaoSegundos)}</span>}
-                            <span>
-                              {e.presencas?.length ?? 0}/{elencoCount}
-                            </span>
-                          </div>
-                          <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+          <DiarioCenaCard
+            cena={cena}
+            registros={registros}
+            todayKey={todayKey}
+            currentUid={currentUser?.uid}
+            isAdmin={isAdmin}
+            lideranca={canManageAgenda}
+            nameFor={nameFor}
+            onAbrirEnsaio={ensaioId => navigate(`/cenas/${cena.id}/ensaios/${ensaioId}`)}
+          />
 
           {/* Só com ensaio confirmado (e não cancelado) pra hoje — sem isso não tem o que iniciar. */}
           {temEnsaioHoje && (

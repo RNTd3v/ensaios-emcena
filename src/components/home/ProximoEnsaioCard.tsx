@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarClock, ChevronRight, Clapperboard, Clock, MapPin } from 'lucide-react'
+import { CalendarClock, CheckCheck, ChevronRight, Clapperboard, Clock, MapPin } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/Spinner'
 import { Card, CardContent } from '@/components/ui/card'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { RespostaPresenca, ensaioJaComecou } from '@/components/ensaio/RespostaPresenca'
@@ -10,10 +12,10 @@ import { PreparoInfo } from '@/components/ensaio/PreparoEnsaio'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useProximosTreinamentos } from '@/hooks/useTreinamentos'
 import { useEnsaiosDasMinhasCenas } from '@/hooks/useEnsaiosDasMinhasCenas'
-import { aplicarIndisponibilidades, uidsIndisponiveis } from '@/services/firebase/ensaios'
+import { aplicarIndisponibilidades, confirmarPresenca, uidsAusentes, uidsIndisponiveis } from '@/services/firebase/ensaios'
 import { getInscricao } from '@/services/firebase/inscricoes'
 import { subscribeToLocais } from '@/services/firebase/locais'
-import { formatRelativeDia, toDateKey } from '@/lib/agenda'
+import { canCheckin, formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { formatDuracao, formatHoraCompacta } from '@/lib/cenaHorario'
 import { segundosDoCronometro } from '@/lib/cronometro'
 import { uidsDoEnsaio } from '@/lib/ensaioPublico'
@@ -21,29 +23,40 @@ import { ensaioStatus } from '@/lib/ensaioStatus'
 import { localIcon } from '@/lib/localIcons'
 import type { Cena, Ensaio, Inscricao, LocalEnsaio } from '@/types'
 
+/** Alguém da casa que pode ter ensaio: a própria pessoa (sem `nome`) ou um filho. */
+export interface PessoaDaCasa {
+  uid: string
+  /** Só pros filhos — a própria pessoa aparece como "Você". */
+  nome?: string
+}
+
+type Item = { ensaio: Ensaio; cena: Cena }
+
+/** O que cada pessoa da casa tem pela frente; `null` enquanto as cenas carregam. */
+type EnsaiosDaPessoa = { temCena: boolean; doDia: Item[]; futuros: Item[] } | null
+
+const porDataHora = (a: Item, b: Item) =>
+  a.ensaio.data.localeCompare(b.ensaio.data) || a.ensaio.horario.localeCompare(b.ensaio.horario)
+
+/** "Ana", "Ana e Beto", "Ana, Beto e Caio". */
+function juntarNomes(nomes: string[]): string {
+  return nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}` : (nomes[0] ?? '')
+}
+
 /**
- * Cards em destaque na Home pra quem é do elenco (tem personagem vinculado em alguma cena ativa):
- * os ensaios de hoje dessa pessoa (todos, inclusive os já finalizados) e o próximo ensaio ainda não
- * finalizado — que só ganha card próprio se não for de hoje (aí já está no card do dia). Cada um
- * com a resposta dela ali mesmo ("Vou" / "Não vou" com motivo) e atalho pra página do ensaio.
+ * Cards em destaque na Home pra quem é do elenco (tem personagem vinculado em alguma cena ativa) e
+ * pros filhos dela: os ensaios de hoje (todos, inclusive os já finalizados) e o próximo ensaio ainda
+ * não finalizado de cada um — que só ganha card próprio se não for de hoje (aí já está no card do
+ * dia). Quando a pessoa e os filhos (ou vários filhos) estão no mesmo ensaio, é um card só, com a
+ * resposta de cada um ali mesmo ("Vou" / "Não vou" com motivo) e um "Todos vão".
  * Ensaio de hoje que já começou e não foi finalizado ganha um card "Ensaio acontecendo" (como o
  * "Orando agora"), com quem está presente e, pra quem confirmou, o "não vou conseguir ir".
  * Ensaio com obrigatórios marcados só aparece pra quem é obrigatório.
  * Não renderiza nada pra quem não tem personagem. Ensaio no mesmo dia de um treinamento da pessoa
  * fica de fora — o treinamento tem prioridade e aparece no ProximoTreinamentoCard.
  */
-export function ProximoEnsaioCard({
-  uid,
-  dependenteDe,
-  nome,
-}: {
-  /** De quem é o ensaio (a própria pessoa, ou um filho). */
-  uid: string
-  /** Modo dependente: `uid` é um filho e quem está vendo (responsável) responde por ele. */
-  dependenteDe?: string
-  nome?: string
-}) {
-  const { cenas, minhasCenas, ensaiosPorCena } = useEnsaiosDasMinhasCenas(uid, dependenteDe)
+export function ProximoEnsaioCard({ uid, dependentes }: { uid: string; dependentes: PessoaDaCasa[] }) {
+  const [porPessoa, setPorPessoa] = useState<Record<string, EnsaiosDaPessoa>>({})
   const [locais, setLocais] = useState<LocalEnsaio[]>([])
   const { settings } = useSettingsStore()
   // Re-renderiza a cada 30s pra o ensaio virar "acontecendo" na hora em que começa.
@@ -51,6 +64,158 @@ export function ProximoEnsaioCard({
 
   useEffect(() => subscribeToLocais(setLocais), [])
 
+  const reportar = useCallback((quem: string, ensaios: EnsaiosDaPessoa) => {
+    setPorPessoa(prev => ({ ...prev, [quem]: ensaios }))
+  }, [])
+
+  const pessoas = useMemo<PessoaDaCasa[]>(() => [{ uid }, ...dependentes], [uid, dependentes])
+  const todayKey = toDateKey(new Date())
+
+  // Junta os ensaios de todo mundo por id: cada ensaio com as pessoas da casa que estão nele.
+  const { acontecendo, restantesDoDia, proximos, meuVazio } = useMemo(() => {
+    const quemVai = new Map<string, PessoaDaCasa[]>()
+    const itemPorId = new Map<string, Item>()
+    for (const pessoa of pessoas) {
+      const dela = porPessoa[pessoa.uid]
+      for (const item of [...(dela?.doDia ?? []), ...(dela?.futuros ?? [])]) {
+        const lista = quemVai.get(item.ensaio.id) ?? []
+        if (!lista.includes(pessoa)) lista.push(pessoa)
+        quemVai.set(item.ensaio.id, lista)
+        if (!itemPorId.has(item.ensaio.id)) itemPorId.set(item.ensaio.id, item)
+      }
+    }
+    const comPessoas = (ids: Iterable<string>) =>
+      [...new Set(ids)].map(id => ({ ...itemPorId.get(id)!, pessoas: quemVai.get(id)! })).sort(porDataHora)
+
+    const doDia = comPessoas(pessoas.flatMap(p => (porPessoa[p.uid]?.doDia ?? []).map(i => i.ensaio.id)))
+    const acontecendo = doDia.filter(({ ensaio }) => !ensaio.finalizadoAt && ensaioJaComecou(ensaio))
+    const proximos = comPessoas(
+      pessoas.flatMap(p => {
+        const proximo = porPessoa[p.uid]?.futuros[0]
+        // Se o próximo é de hoje, ele já está no card do dia.
+        return proximo && proximo.ensaio.data !== todayKey ? [proximo.ensaio.id] : []
+      }),
+    )
+    const meus = porPessoa[uid]
+    return {
+      acontecendo,
+      restantesDoDia: doDia.filter(item => !acontecendo.includes(item)),
+      proximos,
+      meuVazio: !!meus?.temCena && !meus.doDia.length && !meus.futuros.length,
+    }
+  }, [pessoas, porPessoa, todayKey, uid])
+
+  const checkinLimiteHoras = settings.checkinLimiteHoras ?? 2
+  const nomesDe = (lista: PessoaDaCasa[]) => juntarNomes(lista.map(p => p.nome ?? 'você'))
+  const soEu = (lista: PessoaDaCasa[]) => lista.every(p => p.uid === uid)
+  const semMim = (lista: PessoaDaCasa[]) => lista.every(p => p.uid !== uid)
+  const bloco = ({ ensaio, cena, pessoas }: Item & { pessoas: PessoaDaCasa[] }) => (
+    <EnsaioBloco
+      key={ensaio.id}
+      ensaio={ensaio}
+      cena={cena}
+      pessoas={pessoas}
+      uid={uid}
+      locais={locais}
+      todayKey={todayKey}
+      checkinLimiteHoras={checkinLimiteHoras}
+    />
+  )
+  const pessoasDoDia = [...new Set(restantesDoDia.flatMap(i => i.pessoas))]
+
+  return (
+    <>
+      {pessoas.map(p => (
+        <ColetarEnsaios key={p.uid} uid={p.uid} dependenteDe={p.uid === uid ? undefined : uid} onChange={reportar} />
+      ))}
+
+      {meuVazio && (
+        <Link to="/cenas" className="block">
+          <Card>
+            <CardContent className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <CalendarClock className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-gray-900">Nenhum ensaio confirmado</p>
+                <p className="text-xs text-muted-foreground">Veja a agenda das suas cenas.</p>
+              </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+
+      {acontecendo.map(item => (
+        <Card key={item.ensaio.id} className="border-2 border-emerald-500">
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                </span>
+                {semMim(item.pessoas) ? `Ensaio de ${nomesDe(item.pessoas)} acontecendo` : 'Ensaio acontecendo'}
+              </p>
+              <CronometroAoVivo ensaio={item.ensaio} />
+            </div>
+            <PresentesAgora ensaio={item.ensaio} cena={item.cena} />
+            {bloco(item)}
+          </CardContent>
+        </Card>
+      ))}
+
+      {restantesDoDia.length > 0 && (
+        <Card className="border-2 border-primary">
+          <CardContent className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+              {soEu(pessoasDoDia)
+                ? restantesDoDia.length > 1
+                  ? 'Seus ensaios de hoje'
+                  : 'Seu ensaio de hoje'
+                : `${restantesDoDia.length > 1 ? 'Ensaios' : 'Ensaio'} de hoje${semMim(pessoasDoDia) ? ` de ${nomesDe(pessoasDoDia)}` : ''}`}
+            </p>
+            {restantesDoDia.map((item, i) => (
+              <div key={item.ensaio.id} className={i > 0 ? 'border-t-2 border-gray-100 pt-3' : undefined}>
+                {bloco(item)}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {proximos.map(item => (
+        <Card key={item.ensaio.id} className="border-2 border-primary">
+          <CardContent className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+              {soEu(item.pessoas)
+                ? 'Seu próximo ensaio'
+                : semMim(item.pessoas)
+                  ? `Próximo ensaio de ${nomesDe(item.pessoas)}`
+                  : 'Próximo ensaio'}
+            </p>
+            {bloco(item)}
+          </CardContent>
+        </Card>
+      ))}
+    </>
+  )
+}
+
+/**
+ * Sem tela: acompanha os ensaios de uma pessoa da casa (cenas, treinamentos, indisponibilidades da
+ * inscrição) e avisa o card, que junta os de todo mundo. Modo dependente: `uid` é um filho de `dependenteDe`.
+ */
+function ColetarEnsaios({
+  uid,
+  dependenteDe,
+  onChange,
+}: {
+  uid: string
+  dependenteDe?: string
+  onChange: (uid: string, ensaios: EnsaiosDaPessoa) => void
+}) {
+  const { cenas, minhasCenas, ensaiosPorCena } = useEnsaiosDasMinhasCenas(uid, dependenteDe)
   const todayKey = toDateKey(new Date())
 
   // Datas marcadas como indisponíveis na inscrição viram "não vou" nos próximos ensaios que a
@@ -72,14 +237,15 @@ export function ProximoEnsaioCard({
     }
   }, [minhaInscricao, minhasCenas, ensaiosPorCena, todayKey, uid])
 
-  // Só renderiza pra quem é do elenco, então os treinamentos "só elenco" valem.
+  // Só conta pra quem é do elenco, então os treinamentos "só elenco" valem.
   const treinamentos = useProximosTreinamentos(uid, true)
   const diasDeTreinamento = useMemo(() => new Set(treinamentos.map(t => t.sessao.data)), [treinamentos])
 
-  // Ensaios de hoje da pessoa (inclusive os já finalizados) e o próximo ainda não finalizado.
-  const { doDia, proximo } = useMemo(() => {
-    const doDia: { ensaio: Ensaio; cena: Cena }[] = []
-    const futuros: { ensaio: Ensaio; cena: Cena }[] = []
+  // Ensaios de hoje da pessoa (inclusive os já finalizados) e os próximos ainda não finalizados.
+  const ensaios = useMemo<EnsaiosDaPessoa>(() => {
+    if (!cenas) return null
+    const doDia: Item[] = []
+    const futuros: Item[] = []
     for (const cena of minhasCenas) {
       for (const e of ensaiosPorCena[cena.id] ?? []) {
         if (e.canceledByUid || e.data < todayKey || diasDeTreinamento.has(e.data)) continue
@@ -89,131 +255,47 @@ export function ProximoEnsaioCard({
         if (!e.finalizadoAt) futuros.push({ ensaio: e, cena })
       }
     }
-    const porDataHora = (a: { ensaio: Ensaio }, b: { ensaio: Ensaio }) =>
-      a.ensaio.data.localeCompare(b.ensaio.data) || a.ensaio.horario.localeCompare(b.ensaio.horario)
-    return { doDia: doDia.sort(porDataHora), proximo: futuros.sort(porDataHora)[0] }
-  }, [minhasCenas, ensaiosPorCena, todayKey, diasDeTreinamento])
+    return { temCena: minhasCenas.length > 0, doDia: doDia.sort(porDataHora), futuros: futuros.sort(porDataHora) }
+  }, [cenas, minhasCenas, ensaiosPorCena, todayKey, diasDeTreinamento, uid])
 
-  if (!cenas || minhasCenas.length === 0) return null
+  useEffect(() => onChange(uid, ensaios), [onChange, uid, ensaios])
+  useEffect(() => () => onChange(uid, null), [onChange, uid])
 
-  // Filho sem ensaio hoje nem confirmado: não ocupa espaço na Home.
-  if (!proximo && !doDia.length && dependenteDe) return null
-
-  if (!proximo && !doDia.length) {
-    return (
-      <Link to="/cenas" className="block">
-        <Card>
-          <CardContent className="flex items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <CalendarClock className="h-5 w-5" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-gray-900">Nenhum ensaio confirmado</p>
-              <p className="text-xs text-muted-foreground">Veja a agenda das suas cenas.</p>
-            </div>
-            <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
-          </CardContent>
-        </Card>
-      </Link>
-    )
-  }
-
-  const checkinLimiteHoras = settings.checkinLimiteHoras ?? 2
-  const acontecendo = doDia.filter(({ ensaio }) => !ensaio.finalizadoAt && ensaioJaComecou(ensaio))
-  const restantesDoDia = doDia.filter(item => !acontecendo.includes(item))
-  const bloco = ({ ensaio, cena }: { ensaio: Ensaio; cena: Cena }) => (
-    <EnsaioBloco
-      key={ensaio.id}
-      ensaio={ensaio}
-      cena={cena}
-      uid={uid}
-      locais={locais}
-      todayKey={todayKey}
-      checkinLimiteHoras={checkinLimiteHoras}
-      paraQuem={dependenteDe ? nome : undefined}
-    />
-  )
-
-  return (
-    <>
-      {acontecendo.map(item => (
-        <Card key={item.ensaio.id} className="border-2 border-emerald-500">
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                </span>
-                {dependenteDe ? `Ensaio de ${nome ?? 'dependente'} acontecendo` : 'Ensaio acontecendo'}
-              </p>
-              <CronometroAoVivo ensaio={item.ensaio} />
-            </div>
-            <PresentesAgora ensaio={item.ensaio} cena={item.cena} />
-            {bloco(item)}
-          </CardContent>
-        </Card>
-      ))}
-
-      {restantesDoDia.length > 0 && (
-        <Card className="border-2 border-primary">
-          <CardContent className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-              {dependenteDe
-                ? `${restantesDoDia.length > 1 ? 'Ensaios' : 'Ensaio'} de hoje de ${nome ?? 'dependente'}`
-                : restantesDoDia.length > 1
-                  ? 'Seus ensaios de hoje'
-                  : 'Seu ensaio de hoje'}
-            </p>
-            {restantesDoDia.map((item, i) => (
-              <div key={item.ensaio.id} className={i > 0 ? 'border-t-2 border-gray-100 pt-3' : undefined}>
-                {bloco(item)}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Se o próximo é de hoje, ele já está no card do dia. */}
-      {proximo && proximo.ensaio.data !== todayKey && (
-        <Card className="border-2 border-primary">
-          <CardContent className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-              {dependenteDe ? `Próximo ensaio de ${nome ?? 'dependente'}` : 'Seu próximo ensaio'}
-            </p>
-            {bloco(proximo)}
-          </CardContent>
-        </Card>
-      )}
-    </>
-  )
+  return null
 }
 
-/** Um ensaio dentro do card: quando, cena, personagens, local, preparo, resposta e atalho. */
+/**
+ * Um ensaio dentro do card: quando, cena, local, preparo, a resposta de cada pessoa da casa que está
+ * nele (com "Todos vão" quando são várias) e atalho.
+ */
 function EnsaioBloco({
   ensaio,
   cena,
+  pessoas,
   uid,
   locais,
   todayKey,
   checkinLimiteHoras,
-  paraQuem,
 }: {
   ensaio: Ensaio
   cena: Cena
+  pessoas: PessoaDaCasa[]
+  /** Quem está vendo. */
   uid: string
   locais: LocalEnsaio[]
   todayKey: string
   checkinLimiteHoras: number
-  paraQuem?: string
 }) {
-  const meusPersonagens = cena.personagens.filter(p => p.participanteUid === uid).map(p => p.nome)
+  const personagensDe = (quem: string) => cena.personagens.filter(p => p.participanteUid === quem).map(p => p.nome)
+  // Só a própria pessoa: do jeito de sempre, sem nome. Com filhos, cada um com o nome e a resposta.
+  const soEu = pessoas.length === 1 && pessoas[0].uid === uid
   const localCadastrado = ensaio.local
     ? locais.find(l => l.nome.trim().toLowerCase() === ensaio.local!.trim().toLowerCase())
     : undefined
   const LocalIcon = localCadastrado ? localIcon(localCadastrado.icone) : MapPin
 
   const ensaioUrl = `/cenas/${cena.id}/ensaios/${ensaio.id}`
+  const meusPersonagens = soEu ? personagensDe(uid) : []
 
   return (
     <div className="space-y-3">
@@ -241,11 +323,30 @@ function EnsaioBloco({
       </Link>
 
       {/* Ensaio já finalizado não pede mais resposta. */}
-      {!ensaio.finalizadoAt && (
-        <div className="border-t border-gray-100 pt-3">
-          <RespostaPresenca ensaio={ensaio} uid={uid} checkinLimiteHoras={checkinLimiteHoras} paraQuem={paraQuem} />
-        </div>
-      )}
+      {!ensaio.finalizadoAt &&
+        (soEu ? (
+          <div className="border-t border-gray-100 pt-3">
+            <RespostaPresenca ensaio={ensaio} uid={uid} checkinLimiteHoras={checkinLimiteHoras} />
+          </div>
+        ) : (
+          <>
+            <TodosVao ensaio={ensaio} pessoas={pessoas} checkinLimiteHoras={checkinLimiteHoras} />
+            {pessoas.map(p => {
+              const personagens = personagensDe(p.uid)
+              return (
+                <div key={p.uid} className="space-y-2 border-t border-gray-100 pt-3">
+                  <p className="truncate text-sm font-semibold text-gray-900">
+                    {p.nome ?? 'Você'}
+                    {personagens.length > 0 && (
+                      <span className="font-normal text-muted-foreground"> · como {personagens.join(', ')}</span>
+                    )}
+                  </p>
+                  <RespostaPresenca ensaio={ensaio} uid={p.uid} checkinLimiteHoras={checkinLimiteHoras} paraQuem={p.nome} />
+                </div>
+              )
+            })}
+          </>
+        ))}
 
       <Link
         to={ensaioUrl}
@@ -254,6 +355,46 @@ function EnsaioBloco({
         Abrir ensaio
         <ChevronRight className="h-4 w-4" />
       </Link>
+    </div>
+  )
+}
+
+/** Confirma de uma vez todo mundo da casa que ainda não respondeu — só com 2+ sem resposta e o check-in aberto. */
+function TodosVao({
+  ensaio,
+  pessoas,
+  checkinLimiteHoras,
+}: {
+  ensaio: Ensaio
+  pessoas: PessoaDaCasa[]
+  checkinLimiteHoras: number
+}) {
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const ausentes = uidsAusentes(ensaio)
+  const semResposta = pessoas.filter(p => !ensaio.presencas?.includes(p.uid) && !ausentes.includes(p.uid))
+  if (semResposta.length < 2 || ensaioJaComecou(ensaio) || !canCheckin(ensaio.data, ensaio.horario, checkinLimiteHoras))
+    return null
+
+  async function confirmarTodos() {
+    setSaving(true)
+    setError('')
+    try {
+      await Promise.all(semResposta.map(p => confirmarPresenca(ensaio.id, p.uid)))
+    } catch {
+      setError('Não foi possível salvar. Tente de novo.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-1 border-t border-gray-100 pt-3">
+      <Button size="sm" className="w-full gap-1.5" onClick={confirmarTodos} disabled={saving}>
+        {saving ? <Spinner size="sm" className="border-white/40 border-t-white" /> : <CheckCheck className="h-4 w-4" />}
+        Todos vão
+      </Button>
+      {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BookOpen, Camera, ChevronRight, ExternalLink, ScrollText } from 'lucide-react'
 import { urlDoArquivo } from '@/services/firebase/storage'
 import { ROTEIRO_TIPOS } from '@/lib/roteiro'
@@ -56,8 +56,9 @@ export function Home() {
   const roteiros = useSettingsStore(s => s.settings.roteiros)
   const materialEstudo = useSettingsStore(s => s.settings.materialEstudo)
   const oracaoVisivel = useOracaoVisivel()
-  // Filhos inscritos pela pessoa: um card de próximo ensaio pra cada, com a resposta por ele.
+  // Filhos inscritos pela pessoa: o responsável responde por eles nos cards de treinamento e ensaio.
   const [dependentes, setDependentes] = useState<Inscricao[]>([])
+  const dependentesDaCasa = useMemo(() => dependentes.map(d => ({ uid: d.uid, nome: d.apelido || d.nomeCompleto })), [dependentes])
   const [fotoOpen, setFotoOpen] = useState(false)
   useEffect(() => {
     if (!user) return
@@ -96,9 +97,8 @@ export function Home() {
           <ProximoTreinamentoCard key={d.uid} uid={d.uid} dependenteDe={user.uid} nome={d.apelido || d.nomeCompleto} />
         ))}
 
-      {user && <ProximoEnsaioCard uid={user.uid} />}
-      {user &&
-        dependentes.map(d => <ProximoEnsaioCard key={d.uid} uid={d.uid} dependenteDe={user.uid} nome={d.apelido || d.nomeCompleto} />)}
+      {/* Um card por ensaio: quando a pessoa e os filhos estão no mesmo, respondem juntos. */}
+      {user && <ProximoEnsaioCard uid={user.uid} dependentes={dependentesDaCasa} />}
 
       {user && <MeusPersonagensCard uid={user.uid} />}
 

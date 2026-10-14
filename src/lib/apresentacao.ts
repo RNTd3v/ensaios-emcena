@@ -69,7 +69,7 @@ export const FUNCOES_APRESENTACAO: FuncaoApresentacao[] = [
       'Fazer a inscrição, informar disponibilidade e em que quer ajudar',
       'Confirmar presença, avisar que não vai e mudar de ideia',
       'Trocar a própria foto',
-      'Enviar foto do figurino do seu personagem',
+      'Enviar foto sua caracterizada como o personagem (pelas referências da equipe de figurino)',
       'Anotar nas músicas das suas cenas',
       'Ver Home, músicas, figurinos e metas',
     ],

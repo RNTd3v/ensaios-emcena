@@ -360,11 +360,29 @@ export function PersonagemDetalhe() {
                   Ficha técnica — figurino
                 </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {podeEnviarFigurino
-                  ? 'Mande fotos do seu figurino. Elas passam pela aprovação do líder da cena.'
-                  : 'Fotos do figurino desse personagem.'}
-              </p>
+              {podeEnviarFigurino ? (
+                // Aqui vai só a foto da pessoa já caracterizada — ideias de figurino são com a equipe de figurino.
+                <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <div className="space-y-1">
+                    <p>
+                      Envie <strong>só fotos suas já caracterizado(a)</strong> como o personagem, montadas a partir das referências que a
+                      equipe de figurino colocou na cena.
+                    </p>
+                    <p>
+                      Não envie ideias ou sugestões de figurino por aqui — isso fica com a equipe de figurino. As fotos passam pela
+                      aprovação do líder da cena.
+                    </p>
+                    {cena && (
+                      <Link to={`/cenas/${cena.id}`} className="inline-block font-medium underline underline-offset-2">
+                        Ver as referências na cena
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Fotos do personagem caracterizado.</p>
+              )}
 
               {prazoFigurino && (
                 <div

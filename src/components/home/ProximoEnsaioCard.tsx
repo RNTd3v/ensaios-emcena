@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarClock, CheckCheck, ChevronRight, Clapperboard, Clock, MapPin } from 'lucide-react'
+import { CalendarClock, CalendarDays, Check, CheckCheck, ChevronRight, CircleHelp, Clapperboard, Clock, MapPin, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/Spinner'
 import { Card, CardContent } from '@/components/ui/card'
@@ -15,12 +15,13 @@ import { useEnsaiosDasMinhasCenas } from '@/hooks/useEnsaiosDasMinhasCenas'
 import { aplicarIndisponibilidades, confirmarPresenca, uidsAusentes, uidsIndisponiveis } from '@/services/firebase/ensaios'
 import { getInscricao } from '@/services/firebase/inscricoes'
 import { subscribeToLocais } from '@/services/firebase/locais'
-import { canCheckin, formatRelativeDia, toDateKey } from '@/lib/agenda'
+import { addDays, canCheckin, formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { formatDuracao, formatHoraCompacta } from '@/lib/cenaHorario'
 import { segundosDoCronometro } from '@/lib/cronometro'
 import { uidsDoEnsaio } from '@/lib/ensaioPublico'
 import { ensaioStatus } from '@/lib/ensaioStatus'
 import { localIcon } from '@/lib/localIcons'
+import { cn } from '@/lib/utils'
 import type { Cena, Ensaio, Inscricao, LocalEnsaio } from '@/types'
 
 /** Alguém da casa que pode ter ensaio: a própria pessoa (sem `nome`) ou um filho. */
@@ -33,7 +34,7 @@ export interface PessoaDaCasa {
 type Item = { ensaio: Ensaio; cena: Cena }
 
 /** O que cada pessoa da casa tem pela frente; `null` enquanto as cenas carregam. */
-type EnsaiosDaPessoa = { temCena: boolean; doDia: Item[]; futuros: Item[] } | null
+type EnsaiosDaPessoa = { temCena: boolean; doDia: Item[]; futuros: Item[]; realizados: Item[] } | null
 
 const porDataHora = (a: Item, b: Item) =>
   a.ensaio.data.localeCompare(b.ensaio.data) || a.ensaio.horario.localeCompare(b.ensaio.horario)
@@ -47,8 +48,9 @@ function juntarNomes(nomes: string[]): string {
  * Cards em destaque na Home pra quem é do elenco (tem personagem vinculado em alguma cena ativa) e
  * pros filhos dela: os ensaios de hoje (todos, inclusive os já finalizados) e o próximo ensaio ainda
  * não finalizado de cada um — que só ganha card próprio se não for de hoje (aí já está no card do
- * dia). Quando a pessoa e os filhos (ou vários filhos) estão no mesmo ensaio, é um card só, com a
- * resposta de cada um ali mesmo ("Vou" / "Não vou" com motivo) e um "Todos vão".
+ * dia) — e o resto dos próximos 7 dias numa lista compacta ("Mais nesta semana"). Quando a pessoa
+ * e os filhos (ou vários filhos) estão no mesmo ensaio, é um card só, com a resposta de cada um ali
+ * mesmo ("Vou" / "Não vou" com motivo) e um "Todos vão".
  * Ensaio de hoje que já começou e não foi finalizado ganha um card "Ensaio acontecendo" (como o
  * "Orando agora"), com quem está presente e, pra quem confirmou, o "não vou conseguir ir".
  * Ensaio com obrigatórios marcados só aparece pra quem é obrigatório.
@@ -72,12 +74,12 @@ export function ProximoEnsaioCard({ uid, dependentes }: { uid: string; dependent
   const todayKey = toDateKey(new Date())
 
   // Junta os ensaios de todo mundo por id: cada ensaio com as pessoas da casa que estão nele.
-  const { acontecendo, restantesDoDia, proximos, meuVazio } = useMemo(() => {
+  const { acontecendo, restantesDoDia, proximos, daSemana, realizados, meuVazio } = useMemo(() => {
     const quemVai = new Map<string, PessoaDaCasa[]>()
     const itemPorId = new Map<string, Item>()
     for (const pessoa of pessoas) {
       const dela = porPessoa[pessoa.uid]
-      for (const item of [...(dela?.doDia ?? []), ...(dela?.futuros ?? [])]) {
+      for (const item of [...(dela?.doDia ?? []), ...(dela?.futuros ?? []), ...(dela?.realizados ?? [])]) {
         const lista = quemVai.get(item.ensaio.id) ?? []
         if (!lista.includes(pessoa)) lista.push(pessoa)
         quemVai.set(item.ensaio.id, lista)
@@ -96,11 +98,25 @@ export function ProximoEnsaioCard({ uid, dependentes }: { uid: string; dependent
         return proximo && proximo.ensaio.data !== todayKey ? [proximo.ensaio.id] : []
       }),
     )
+    // O resto dos próximos 7 dias (sem hoje nem os que já têm card de próximo), em linhas compactas.
+    const ateKey = toDateKey(addDays(new Date(`${todayKey}T00:00:00`), 7))
+    const jaMostrados = new Set(proximos.map(i => i.ensaio.id))
+    const daSemana = comPessoas(
+      pessoas.flatMap(p =>
+        (porPessoa[p.uid]?.futuros ?? [])
+          .filter(i => i.ensaio.data > todayKey && i.ensaio.data <= ateKey && !jaMostrados.has(i.ensaio.id))
+          .map(i => i.ensaio.id),
+      ),
+    )
+    // Do mais recente pro mais antigo.
+    const realizados = comPessoas(pessoas.flatMap(p => (porPessoa[p.uid]?.realizados ?? []).map(i => i.ensaio.id))).reverse()
     const meus = porPessoa[uid]
     return {
       acontecendo,
       restantesDoDia: doDia.filter(item => !acontecendo.includes(item)),
       proximos,
+      daSemana,
+      realizados,
       meuVazio: !!meus?.temCena && !meus.doDia.length && !meus.futuros.length,
     }
   }, [pessoas, porPessoa, todayKey, uid])
@@ -198,7 +214,102 @@ export function ProximoEnsaioCard({ uid, dependentes }: { uid: string; dependent
           </CardContent>
         </Card>
       ))}
+
+      {(daSemana.length > 0 || realizados.length > 0) && (
+        <Card>
+          <CardContent className="space-y-1">
+            <div className="flex items-center gap-2 pb-1">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <CalendarDays className="h-4 w-4" />
+              </span>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {daSemana.length ? 'Mais nesta semana' : 'Ensaios da semana'}
+              </p>
+            </div>
+            {daSemana.map((item, i) => (
+              <LinhaDaSemana key={item.ensaio.id} {...item} uid={uid} todayKey={todayKey} className={i > 0 ? 'border-t border-gray-100' : undefined} />
+            ))}
+            {realizados.length > 0 && (
+              <>
+                <p className={cn('pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground', daSemana.length > 0 && 'pt-3')}>
+                  Realizados
+                </p>
+                {realizados.map((item, i) => (
+                  <LinhaDaSemana
+                    key={item.ensaio.id}
+                    {...item}
+                    uid={uid}
+                    todayKey={todayKey}
+                    className={i > 0 ? 'border-t border-gray-100' : undefined}
+                  />
+                ))}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </>
+  )
+}
+
+/** "Amanhã", "Ontem" ou "qui 16/10". */
+function rotuloDia(dateKey: string, todayKey: string): string {
+  const relativo = formatRelativeDia(dateKey, todayKey)
+  if (relativo === 'Amanhã') return relativo
+  if (dateKey === toDateKey(addDays(new Date(`${todayKey}T00:00:00`), -1))) return 'Ontem'
+  const d = new Date(`${dateKey}T00:00:00`)
+  const semana = d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
+  return `${semana} ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`
+}
+
+/**
+ * Um ensaio da semana numa linha: quando, cena, local e a resposta de cada pessoa da casa que está
+ * nele (✓ vai, ✗ não vai, ? sem resposta). Já realizado: a presença (✓ presente, ✗ não foi).
+ * Tocar abre o ensaio, onde dá pra responder (ou ver o registro).
+ */
+function LinhaDaSemana({
+  ensaio,
+  cena,
+  pessoas,
+  uid,
+  todayKey,
+  className,
+}: Item & { pessoas: PessoaDaCasa[]; uid: string; todayKey: string; className?: string }) {
+  const ausentes = uidsAusentes(ensaio)
+  const soEu = pessoas.length === 1 && pessoas[0].uid === uid
+  const realizado = !!ensaio.finalizadoAt
+  return (
+    <Link to={`/cenas/${cena.id}/ensaios/${ensaio.id}`} className={cn('flex items-center gap-3 py-2', className)}>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-gray-900">
+          <span className="capitalize">{rotuloDia(ensaio.data, todayKey)}</span> · {formatHoraCompacta(ensaio.horario)}
+        </p>
+        <p className="truncate text-xs text-gray-700">
+          {cena.nome}
+          {ensaio.local && <span className="text-muted-foreground"> · {ensaio.local}</span>}
+        </p>
+        <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs">
+          {pessoas.map(p => {
+            const vai = !!ensaio.presencas?.includes(p.uid)
+            // No registro, quem não está em `presencas` não foi (avisando ou não).
+            const naoVai = realizado ? !vai : ausentes.includes(p.uid)
+            const Icone = vai ? Check : naoVai ? X : CircleHelp
+            const status = realizado ? (vai ? 'Presente' : 'Não foi') : vai ? 'Confirmado' : naoVai ? 'Não vai' : 'Sem resposta'
+            const nome = soEu ? status : (p.nome ?? 'Você')
+            return (
+              <span
+                key={p.uid}
+                className={cn('flex items-center gap-0.5', vai ? 'text-emerald-700' : naoVai ? 'text-red-600' : 'text-muted-foreground')}
+              >
+                <Icone className="h-3.5 w-3.5 shrink-0" />
+                {nome}
+              </span>
+            )
+          })}
+        </div>
+      </div>
+      <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
+    </Link>
   )
 }
 
@@ -241,21 +352,35 @@ function ColetarEnsaios({
   const treinamentos = useProximosTreinamentos(uid, true)
   const diasDeTreinamento = useMemo(() => new Set(treinamentos.map(t => t.sessao.data)), [treinamentos])
 
-  // Ensaios de hoje da pessoa (inclusive os já finalizados) e os próximos ainda não finalizados.
+  // Ensaios de hoje da pessoa (inclusive os já finalizados), os próximos ainda não finalizados e os
+  // realizados na última semana.
   const ensaios = useMemo<EnsaiosDaPessoa>(() => {
     if (!cenas) return null
     const doDia: Item[] = []
     const futuros: Item[] = []
+    const realizados: Item[] = []
+    const semanaPassadaKey = toDateKey(addDays(new Date(`${todayKey}T00:00:00`), -7))
     for (const cena of minhasCenas) {
       for (const e of ensaiosPorCena[cena.id] ?? []) {
-        if (e.canceledByUid || e.data < todayKey || diasDeTreinamento.has(e.data)) continue
+        if (e.canceledByUid) continue
         // Com obrigatórios marcados, o ensaio é só deles (vale pra criança também: obrigatória, aparece).
         if (!uidsDoEnsaio(cena.personagens, e).has(uid)) continue
+        // Finalizados dos últimos 7 dias (os de hoje já estão no card do dia).
+        if (e.data < todayKey) {
+          if (e.finalizadoAt && e.data >= semanaPassadaKey) realizados.push({ ensaio: e, cena })
+          continue
+        }
+        if (diasDeTreinamento.has(e.data)) continue
         if (e.data === todayKey) doDia.push({ ensaio: e, cena })
         if (!e.finalizadoAt) futuros.push({ ensaio: e, cena })
       }
     }
-    return { temCena: minhasCenas.length > 0, doDia: doDia.sort(porDataHora), futuros: futuros.sort(porDataHora) }
+    return {
+      temCena: minhasCenas.length > 0,
+      doDia: doDia.sort(porDataHora),
+      futuros: futuros.sort(porDataHora),
+      realizados: realizados.sort(porDataHora),
+    }
   }, [cenas, minhasCenas, ensaiosPorCena, todayKey, diasDeTreinamento, uid])
 
   useEffect(() => onChange(uid, ensaios), [onChange, uid, ensaios])

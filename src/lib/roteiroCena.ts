@@ -68,14 +68,32 @@ export function lerRoteiro(texto: string): BlocoRoteiro[] {
     aberto = null
   }
 
-  for (const bruta of texto.split('\n')) {
-    const linha = bruta.replace(/\s+/g, ' ').trim()
-    if (!linha || /^\d+$/.test(linha)) continue // vazia ou número de página
+  /**
+   * Parêntese/colchete no começo da linha: fecha na mesma linha ("(Para Rute) Vamos." — o resto é
+   * outra linha) ou fica aberto pras seguintes.
+   */
+  function abrir(linha: string, tipo: 'rubrica' | 'direcao') {
+    const fecha = linha[0] === '[' ? ']' : ')'
+    const fim = linha.indexOf(fecha)
+    aberto = { fecha, partes: [fim < 0 ? linha : linha.slice(0, fim + 1)], tipo }
+    if (fim < 0) return
+    fecharAberto()
+    processar(linha.slice(fim + 1).trim())
+  }
+
+  function processar(linha: string) {
+    if (!linha || /^\d+$/.test(linha)) return // vazia ou número de página
 
     if (aberto) {
-      aberto.partes.push(linha)
-      if (linha.endsWith(aberto.fecha)) fecharAberto()
-      continue
+      // Nome de quem fala nunca faz parte de rubrica: o parêntese ficou sem fechar no PDF.
+      if (!cabecalhoFala(linha)) {
+        const fim = linha.indexOf(aberto.fecha)
+        aberto.partes.push(fim < 0 ? linha : linha.slice(0, fim + 1))
+        if (fim < 0) return
+        fecharAberto()
+        return processar(linha.slice(fim + 1).trim())
+      }
+      fecharAberto()
     }
 
     const cab = cabecalhoFala(linha)
@@ -83,26 +101,22 @@ export function lerRoteiro(texto: string): BlocoRoteiro[] {
       fala = { tipo: 'fala', personagem: cab.personagem, ...(cab.modo ? { modo: cab.modo } : {}), linhas: [] }
       if (cab.resto) fala.linhas.push({ texto: cab.resto })
       blocos.push(fala)
-      continue
+      return
     }
 
     if (linha.startsWith('[')) {
       // Direção de cena encerra a fala atual.
       fala = null
-      aberto = { fecha: ']', partes: [linha], tipo: 'direcao' }
-      if (linha.endsWith(']')) fecharAberto()
-      continue
+      return abrir(linha, 'direcao')
     }
 
-    if (linha.startsWith('(')) {
-      aberto = { fecha: ')', partes: [linha], tipo: fala ? 'rubrica' : 'direcao' }
-      if (linha.endsWith(')')) fecharAberto()
-      continue
-    }
+    if (linha.startsWith('(')) return abrir(linha, fala ? 'rubrica' : 'direcao')
 
     if (fala) fala.linhas.push({ texto: linha })
     else blocos.push({ tipo: 'direcao', texto: linha })
   }
+
+  for (const bruta of texto.split('\n')) processar(bruta.replace(/\s+/g, ' ').trim())
   fecharAberto()
   // Fala sem nenhuma linha (nome no fim da página, por exemplo) não serve pra nada.
   return blocos.filter(b => b.tipo === 'direcao' || b.linhas.length > 0)

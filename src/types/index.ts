@@ -603,7 +603,7 @@ export interface Notificacao {
   corpo: string
   /** Rota dentro do app pra onde a notificação leva. */
   link?: string | null
-  tipo: 'ensaio' | 'treinamento' | 'figurino' | 'tarefa' | 'aviso' | 'reporte' | 'oracao'
+  tipo: 'ensaio' | 'treinamento' | 'figurino' | 'tarefa' | 'aviso' | 'reporte' | 'oracao' | 'diario'
   lida: boolean
   lidaEm?: string
   createdAt: string

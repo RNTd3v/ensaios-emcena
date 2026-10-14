@@ -51,11 +51,13 @@ export async function criarAnotacaoCena(cenaId: string, input: AnotacaoCenaInput
   })
 }
 
-export async function atualizarAnotacaoCena(cenaId: string, id: string, input: AnotacaoCenaInput): Promise<void> {
+/** `porUid`: quem editou — a notificação da edição não vai pra essa pessoa. */
+export async function atualizarAnotacaoCena(cenaId: string, id: string, input: AnotacaoCenaInput, porUid: string): Promise<void> {
   await updateDoc(doc(db, 'cenas', cenaId, 'anotacoes', id), {
     titulo: input.titulo.trim(),
     texto: input.texto.trim(),
     visibilidade: input.visibilidade,
+    atualizadoPorUid: porUid,
     updatedAt: serverTimestamp(),
   })
 }

@@ -216,7 +216,7 @@ function AnotacaoDialog({
   function salvar() {
     if (!currentUid) return
     const input = { titulo, texto, visibilidade }
-    run(() => (anotacao ? atualizarAnotacaoCena(cenaId, anotacao.id, input) : criarAnotacaoCena(cenaId, input, currentUid)))
+    run(() => (anotacao ? atualizarAnotacaoCena(cenaId, anotacao.id, input, currentUid) : criarAnotacaoCena(cenaId, input, currentUid)))
   }
 
   const rodape = anotacao && (

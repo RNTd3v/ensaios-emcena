@@ -22,7 +22,7 @@ const db = getFirestore()
 const APP_URL = 'https://ensaios-emcena.web.app'
 const FUSO = 'America/Sao_Paulo'
 
-type Tipo = 'ensaio' | 'treinamento' | 'figurino' | 'tarefa' | 'aviso' | 'reporte' | 'oracao'
+type Tipo = 'ensaio' | 'treinamento' | 'figurino' | 'tarefa' | 'aviso' | 'reporte' | 'oracao' | 'diario'
 
 interface Notificacao {
   titulo: string
@@ -305,6 +305,7 @@ export const ensaioAlterado = onDocumentUpdated('ensaios/{id}', async event => {
   }
   if (depois.canceledByUid) return
   await avisarDesistencias(event.params.id, cena, antes, depois, link)
+  await avisarAnotacoesDoEnsaio(cena, antes, depois, link)
   // Ensaio que já foi (ou foi finalizado): mexer nos obrigatórios é só acerto do registro, sem aviso.
   const aindaVai = !depois.finalizadoAt && depois.data >= agoraEmSaoPaulo().hoje
   const corpo = descricaoEnsaio(cena.nome, depois)
@@ -347,6 +348,33 @@ async function avisarDesistencias(ensaioId: string, cena: DocumentData, antes: D
       uid,
     )
   }
+}
+
+/**
+ * Ensaio finalizado com anotações (ou anotações do registro editadas depois): o elenco chamado e a
+ * liderança da cena recebem o texto — menos quem salvou o registro.
+ */
+async function avisarAnotacoesDoEnsaio(cena: DocumentData, antes: DocumentData, depois: DocumentData, link: string) {
+  const anotacoes = ((depois.anotacoes as string | undefined) ?? '').trim()
+  if (!depois.finalizadoAt || !anotacoes) return
+  const finalizouAgora = !antes.finalizadoAt
+  if (!finalizouAgora && anotacoes === ((antes.anotacoes as string | undefined) ?? '').trim()) return
+  await notificar(
+    [...publicoDoEnsaio(cena, depois), cena.liderUid, ...((cena.assistentes as string[] | undefined) ?? [])],
+    {
+      titulo: finalizouAgora ? `Anotações do ensaio · ${cena.nome}` : `Anotações do ensaio atualizadas · ${cena.nome}`,
+      corpo: resumoTexto(anotacoes),
+      link,
+      tipo: 'diario',
+    },
+    depois.finalizadoByUid,
+  )
+}
+
+/** Primeiros ~140 caracteres, numa linha só (corpo do push). */
+function resumoTexto(t: string): string {
+  const linha = t.replace(/\s+/g, ' ').trim()
+  return linha.length > 140 ? `${linha.slice(0, 139)}…` : linha
 }
 
 /**
@@ -822,6 +850,36 @@ export const avisoCriado = onDocumentCreated('avisos/{id}', async event => {
     a.enviadoPorUid,
   )
   await event.data?.ref.update({ enviadoPara: destinatarios.length, enviadoEm: FieldValue.serverTimestamp() })
+})
+
+// ---------- Diário da cena ----------
+
+/**
+ * Anotação avulsa no diário da cena (criada ou editada): vai pra quem pode ler — só a liderança
+ * (líder e assistentes) ou, marcada `elenco`, também o elenco da cena (crianças viram os
+ * responsáveis). Quem escreveu/editou não recebe. Edição só avisa se mudou título, texto ou quem vê.
+ */
+export const anotacaoCenaEscrita = onDocumentWritten('cenas/{cenaId}/anotacoes/{id}', async event => {
+  const antes = event.data?.before.data()
+  const depois = event.data?.after.data()
+  if (!depois) return
+  if (antes && antes.titulo === depois.titulo && antes.texto === depois.texto && antes.visibilidade === depois.visibilidade) return
+  const cena = await getCena(event.params.cenaId)
+  if (!cena || cena.ativo === false) return
+  const lideranca = [cena.liderUid, ...((cena.assistentes as string[] | undefined) ?? [])]
+  const destinatarios = depois.visibilidade === 'elenco' ? [...lideranca, ...((cena.participantes as string[] | undefined) ?? [])] : lideranca
+  const titulo = (depois.titulo as string | undefined)?.trim()
+  const texto = resumoTexto((depois.texto as string | undefined) ?? '')
+  await notificar(
+    destinatarios,
+    {
+      titulo: `${antes ? 'Diário atualizado' : 'Novo no diário'} · ${cena.nome}`,
+      corpo: titulo ? `${titulo} — ${texto}` : texto,
+      link: `/cenas/${event.params.cenaId}`,
+      tipo: 'diario',
+    },
+    antes ? (depois.atualizadoPorUid ?? depois.autorUid) : depois.autorUid,
+  )
 })
 
 // ---------- Dependentes nas cenas ----------

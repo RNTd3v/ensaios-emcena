@@ -126,7 +126,7 @@
     box-sizing: border-box;
   }
   body {
-    background-color: hsl(68 46% 75%);
+    background-color: #52467f;
     color: var(--color-foreground);
     font-family:
       'Inter',

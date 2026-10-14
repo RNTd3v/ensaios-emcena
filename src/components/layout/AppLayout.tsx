@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BellRing, Bug, Camera, User as UserIcon, CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, GraduationCap, HandHeart, Home, Music, Shirt, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
@@ -22,6 +22,7 @@ import { ReportarProblemaDialog } from '@/components/layout/ReportarProblemaDial
 import { VisaoDialog } from '@/components/layout/VisaoDialog'
 import { MinhaFotoDialog } from '@/components/layout/MinhaFotoDialog'
 import { Avatar } from '@/components/ui/Avatar'
+import { PuxarParaAtualizar } from '@/components/layout/PuxarParaAtualizar'
 
 export function AppLayout() {
   const user = useAuthStore(s => s.user)
@@ -37,6 +38,7 @@ export function AppLayout() {
   const [reportarOpen, setReportarOpen] = useState(false)
   const [visaoOpen, setVisaoOpen] = useState(false)
   const [fotoOpen, setFotoOpen] = useState(false)
+  const mainRef = useRef<HTMLElement>(null)
   const adminReal = useAuthStore(s => s.perfilReal?.role === 'admin')
   const visaoParticipante = useAuthStore(s => s.visaoParticipante)
   const { search } = useLocation()
@@ -90,7 +92,9 @@ export function AppLayout() {
         <SemConexaoBanner />
       </div>
 
-      <main className="flex-1 relative z-10 px-4 pb-4 overflow-y-auto">
+      {/* overscroll-contain: o gesto de puxar fica só com o PuxarParaAtualizar (sem o nativo junto). */}
+      <main ref={mainRef} className="flex-1 relative z-10 px-4 pb-4 overflow-y-auto overscroll-contain">
+        <PuxarParaAtualizar container={mainRef} />
         <Outlet />
       </main>
 

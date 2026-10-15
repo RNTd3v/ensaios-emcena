@@ -1,0 +1,483 @@
+import { useEffect, useMemo, useState } from 'react'
+import { ExternalLink, Pencil, Plus, ShoppingCart, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Dialog } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
+import { Spinner } from '@/components/ui/Spinner'
+import { CenaSelect } from '@/components/midia/CenaSelect'
+import { subscribeToTodasCenas } from '@/services/firebase/cenas'
+import { subscribeToCatalogoPersonagens } from '@/services/firebase/personagens'
+import {
+  createLinkCompra,
+  deleteLinkCompra,
+  subscribeToLinksCompraDaCena,
+  subscribeToLinksCompraDaEquipe,
+  subscribeToLinksCompraDoPersonagem,
+  subscribeToLinksCompraPublicos,
+  updateLinkCompra,
+} from '@/services/firebase/linksCompra'
+import { agregarPersonagens } from '@/lib/personagens'
+import { LOJAS_SUGERIDAS, lojaDaUrl } from '@/lib/lojas'
+import { formatBRL } from '@/lib/formatters'
+import { useAuthStore } from '@/stores/authStore'
+import { cn } from '@/lib/utils'
+import type { AppUser, Cena, Equipe, LinkCompra, PersonagemCatalogo } from '@/types'
+
+interface PersonagemOpcao {
+  key: string
+  nome: string
+  label: string
+}
+
+/** Domínio do link (sem "www."), mostrado quando não tem descrição. */
+function dominio(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return url
+  }
+}
+
+type Props =
+  | {
+      /** Página da equipe: todos os links dela, com cadastro e edição. */
+      equipe: Equipe
+      users: Record<string, AppUser>
+      cenaId?: never
+      personagemKey?: never
+    }
+  | {
+      /** Página da cena: só ver os links marcados pra ela (some sem nenhum). */
+      cenaId: string
+      equipe?: never
+      users?: never
+      personagemKey?: never
+    }
+  | {
+      /** Página do personagem: só ver os links marcados pra ele (some sem nenhum). */
+      personagemKey: string
+      equipe?: never
+      users?: never
+      cenaId?: never
+    }
+  | {
+      /** Página "Sugestões de compra": tudo menos o que é só da equipe. */
+      equipe?: never
+      users?: never
+      cenaId?: never
+      personagemKey?: never
+    }
+
+/** Ordem dos grupos: só da equipe, para todos, cenas, personagens. */
+const ORDEM_GRUPO = { equipe: 0, geral: 1, cena: 2, personagem: 3 } as const
+
+/**
+ * Links de sugestão de compra das equipes — de uma cena, de um personagem ou gerais. Na equipe
+ * aparecem todos (membros e admin cadastram; líder, assistentes, admin e quem cadastrou editam e
+ * excluem); na cena e no personagem, os marcados pra eles; na página de compras, tudo menos o que é
+ * só da equipe.
+ */
+export function LinksCompraCard({ equipe, users, cenaId, personagemKey }: Props) {
+  const currentUser = useAuthStore(s => s.user)
+  const uid = currentUser?.uid
+  const isAdmin = currentUser?.role === 'admin'
+  const [links, setLinks] = useState<LinkCompra[] | null>(null)
+  const [cenas, setCenas] = useState<Cena[]>([])
+  const [catalogo, setCatalogo] = useState<PersonagemCatalogo[]>([])
+  const [form, setForm] = useState<LinkCompra | 'novo' | null>(null)
+
+  const equipeId = equipe?.id
+  const pagina = !equipeId && !cenaId && !personagemKey
+  useEffect(() => {
+    if (equipeId) return subscribeToLinksCompraDaEquipe(equipeId, setLinks)
+    if (cenaId) return subscribeToLinksCompraDaCena(cenaId, setLinks)
+    if (personagemKey) return subscribeToLinksCompraDoPersonagem(personagemKey, setLinks)
+    return subscribeToLinksCompraPublicos(setLinks)
+  }, [equipeId, cenaId, personagemKey])
+
+  const podeCadastrar = !!equipe && !!uid && (isAdmin || equipe.membros.includes(uid))
+  const gerenciaEquipe = !!equipe && !!uid && (isAdmin || equipe.liderUid === uid || equipe.assistentes.includes(uid))
+  function podeEditar(l: LinkCompra) {
+    return gerenciaEquipe || (!!equipe && l.criadoPorUid === uid)
+  }
+
+  // Cenas e personagens só pra escolher no cadastro.
+  const precisaOpcoes = podeCadastrar || gerenciaEquipe
+  useEffect(() => {
+    if (!precisaOpcoes) return
+    return subscribeToTodasCenas(setCenas)
+  }, [precisaOpcoes])
+  useEffect(() => {
+    if (!precisaOpcoes) return
+    return subscribeToCatalogoPersonagens(setCatalogo)
+  }, [precisaOpcoes])
+
+  /** Admin também escolhe cenas inativas (escondidas até pedir, no CenaSelect). */
+  const cenasEscolha = useMemo(() => (isAdmin ? cenas : cenas.filter(c => c.ativo)), [cenas, isAdmin])
+
+  /** Papéis de coro repetem o nome — nesses, a pessoa entra no rótulo. */
+  const personagens = useMemo<PersonagemOpcao[]>(() => {
+    const lista = agregarPersonagens(cenasEscolha, catalogo)
+    const contagem = new Map<string, number>()
+    for (const p of lista) contagem.set(p.nome.toLowerCase(), (contagem.get(p.nome.toLowerCase()) ?? 0) + 1)
+    return lista.map(p => {
+      const repetido = (contagem.get(p.nome.toLowerCase()) ?? 0) > 1
+      const pessoa = p.participanteUid ? users?.[p.participanteUid]?.displayName : undefined
+      return { key: p.key, nome: p.nome, label: repetido && pessoa ? `${p.nome} (${pessoa})` : p.nome }
+    })
+  }, [cenasEscolha, catalogo, users])
+
+  const grupos = useMemo(() => {
+    const m = new Map<string, { chave: string; titulo: string; ordem: number; itens: LinkCompra[] }>()
+    for (const l of links ?? []) {
+      const tipo = l.alvo === 'geral' || !l.alvo ? (l.somenteEquipe ? 'equipe' : 'geral') : l.alvo
+      const chave = tipo === 'cena' ? `c:${l.cenaId ?? ''}` : tipo === 'personagem' ? `p:${l.personagemKey ?? ''}` : tipo
+      const titulo =
+        tipo === 'cena'
+          ? `Cena · ${l.cenaNome ?? 'Cena'}`
+          : tipo === 'personagem'
+            ? `Personagem · ${l.personagemNome ?? 'Personagem'}`
+            : tipo === 'equipe'
+              ? 'Só da equipe'
+              : 'Para todos'
+      if (!m.has(chave)) m.set(chave, { chave, titulo, ordem: ORDEM_GRUPO[tipo], itens: [] })
+      m.get(chave)!.itens.push(l)
+    }
+    return [...m.values()].sort((a, b) => a.ordem - b.ordem || a.titulo.localeCompare(b.titulo, 'pt-BR', { numeric: true }))
+  }, [links])
+
+  // Na cena e no personagem, sem link nenhum não mostra o card.
+  if ((cenaId || personagemKey) && !links?.length) return null
+
+  /** Fora da equipe, mostra de qual equipe é o link; na cena/personagem não agrupa. */
+  const mostrarEquipe = !equipe
+  const agrupar = !!equipe || pagina
+
+  function linha(l: LinkCompra) {
+    const titulo = l.produto || l.descricao || dominio(l.url)
+    const subtitulo = [
+      l.loja || dominio(l.url),
+      l.preco !== undefined ? formatBRL(l.preco) : undefined,
+      mostrarEquipe ? l.equipeNome : undefined,
+    ]
+      .filter(Boolean)
+      .join(' · ')
+    return (
+      <div key={l.id} className="flex items-center gap-1">
+        <a
+          href={l.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg bg-gray-50 px-2.5 py-2 text-sm hover:bg-gray-100"
+        >
+          <ExternalLink className="h-3.5 w-3.5 shrink-0 text-primary" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate">{titulo}</span>
+            <span className="block truncate text-[11px] text-muted-foreground">{subtitulo}</span>
+            {l.produto && l.descricao && <span className="block truncate text-[11px] text-muted-foreground">{l.descricao}</span>}
+          </span>
+        </a>
+        {podeEditar(l) && (
+          <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => setForm(l)} title="Editar link">
+            <Pencil className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <Card>
+        <CardContent className="space-y-2.5">
+          {!pagina && (
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 text-base font-semibold">
+                <ShoppingCart className="h-4 w-4 text-primary" />
+                Sugestões de compra
+                {!!links?.length && <span className="text-xs font-normal text-muted-foreground">({links.length})</span>}
+              </p>
+              {podeCadastrar && (
+                <Button variant="ghost" size="icon" onClick={() => setForm('novo')} title="Adicionar link">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          )}
+
+          {!links ? (
+            <Spinner size="sm" />
+          ) : !links.length ? (
+            <p className="py-1 text-xs text-muted-foreground">Sem links ainda.</p>
+          ) : agrupar ? (
+            <div className="space-y-3">
+              {grupos.map(g => (
+                <div key={g.chave} className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{g.titulo}</p>
+                  {g.itens.map(linha)}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-1">{links.map(linha)}</div>
+          )}
+        </CardContent>
+      </Card>
+
+      {form && equipe && uid && (
+        <LinkFormDialog
+          equipe={equipe}
+          cenas={cenasEscolha}
+          personagens={personagens}
+          link={form === 'novo' ? undefined : form}
+          byUid={uid}
+          onClose={() => setForm(null)}
+        />
+      )}
+    </>
+  )
+}
+
+interface FormProps {
+  equipe: Equipe
+  cenas: Cena[]
+  personagens: PersonagemOpcao[]
+  /** Editando um link já existente. */
+  link?: LinkCompra
+  byUid: string
+  onClose: () => void
+}
+
+function LinkFormDialog({ equipe, cenas, personagens, link, byUid, onClose }: FormProps) {
+  const [alvo, setAlvo] = useState<LinkCompra['alvo']>(link?.alvo ?? 'geral')
+  const [somenteEquipe, setSomenteEquipe] = useState(!!link?.somenteEquipe)
+  const [cenaId, setCenaId] = useState(link?.cenaId ?? '')
+  const [personagemKey, setPersonagemKey] = useState(link?.personagemKey ?? '')
+  const [url, setUrl] = useState(link?.url ?? '')
+  const [produto, setProduto] = useState(link?.produto ?? '')
+  const [loja, setLoja] = useState(link?.loja ?? '')
+  /** Loja preenchida pelo link — continua acompanhando o link até a pessoa mexer nela. */
+  const [lojaAuto, setLojaAuto] = useState(!link?.loja)
+  const [preco, setPreco] = useState(link?.preco !== undefined ? String(link.preco) : '')
+  const [descricao, setDescricao] = useState(link?.descricao ?? '')
+
+  function handleUrl(v: string) {
+    setUrl(v)
+    if (lojaAuto) setLoja(lojaDaUrl(v) ?? '')
+  }
+  const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [error, setError] = useState('')
+
+  const cenaForaDaLista = !!link?.cenaId && !cenas.some(c => c.id === link.cenaId)
+  const personagemForaDaLista = !!link?.personagemKey && !personagens.some(p => p.key === link.personagemKey)
+  const faltaAlvo = alvo === 'cena' ? !cenaId : alvo === 'personagem' ? !personagemKey : false
+  const podeSalvar = !faltaAlvo && !!url.trim() && !saving
+
+  async function handleSalvar() {
+    const precoNum = preco.trim() ? Number(preco.replace(',', '.')) : undefined
+    if (precoNum !== undefined && (!Number.isFinite(precoNum) || precoNum < 0)) {
+      setError('Preço inválido.')
+      return
+    }
+    setSaving(true)
+    setError('')
+    const comuns = { url, produto, loja, preco: precoNum, descricao }
+    const dados =
+      alvo === 'geral'
+        ? { ...comuns, alvo, somenteEquipe }
+        : alvo === 'cena'
+        ? {
+            ...comuns,
+            alvo,
+            cenaId,
+            cenaNome: cenas.find(c => c.id === cenaId)?.nome ?? (cenaId === link?.cenaId ? link?.cenaNome : undefined),
+          }
+        : {
+            ...comuns,
+            alvo,
+            personagemKey,
+            personagemNome:
+              personagens.find(p => p.key === personagemKey)?.nome ?? (personagemKey === link?.personagemKey ? link?.personagemNome : undefined),
+          }
+    try {
+      if (link) await updateLinkCompra(link.id, dados)
+      else await createLinkCompra(equipe, dados, byUid)
+      onClose()
+    } catch {
+      setError('Não foi possível salvar. Tente de novo.')
+      setSaving(false)
+    }
+  }
+
+  async function handleExcluir() {
+    if (!link) return
+    setSaving(true)
+    try {
+      await deleteLinkCompra(link.id)
+      onClose()
+    } catch {
+      setError('Não foi possível excluir. Tente de novo.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onClose={onClose} title={link ? 'Editar link' : 'Sugestão de compra'}>
+      <div className="space-y-4">
+        <div>
+          <Label>É de</Label>
+          <div className="mt-1 grid grid-cols-3 gap-1 rounded-lg bg-gray-100 p-1">
+            {(['cena', 'personagem', 'geral'] as const).map(a => (
+              <button
+                key={a}
+                type="button"
+                onClick={() => setAlvo(a)}
+                className={cn('rounded-md py-1.5 text-sm', alvo === a ? 'bg-white font-semibold shadow-sm' : 'text-muted-foreground')}
+                aria-pressed={alvo === a}
+              >
+                {a === 'cena' ? 'Cena' : a === 'personagem' ? 'Personagem' : 'Nenhum'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {alvo === 'geral' ? (
+          <div className="space-y-1">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={somenteEquipe}
+                onChange={e => setSomenteEquipe(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              Só da equipe
+            </label>
+            <p className="text-xs text-muted-foreground">
+              {somenteEquipe ? 'Aparece só na página da equipe.' : 'Aparece pra todos, na página Sugestões de compra.'}
+            </p>
+          </div>
+        ) : alvo === 'cena' ? (
+          <div>
+            <Label htmlFor="link-compra-cena">Cena</Label>
+            <CenaSelect
+              id="link-compra-cena"
+              value={cenaId}
+              onChange={setCenaId}
+              cenas={cenas}
+              vazio="Escolha a cena"
+              foraDaLista={cenaForaDaLista ? { value: link!.cenaId!, label: link!.cenaNome ?? 'Cena' } : undefined}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">Aparece também na página da cena e em Sugestões de compra.</p>
+          </div>
+        ) : (
+          <div>
+            <Label htmlFor="link-compra-personagem">Personagem</Label>
+            <Select id="link-compra-personagem" value={personagemKey} onChange={e => setPersonagemKey(e.target.value)}>
+              <option value="">Escolha o personagem</option>
+              {personagemForaDaLista && <option value={link!.personagemKey}>{link!.personagemNome ?? 'Personagem'}</option>}
+              {personagens.map(p => (
+                <option key={p.key} value={p.key}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
+            <p className="mt-1 text-xs text-muted-foreground">Aparece também na página do personagem e em Sugestões de compra.</p>
+          </div>
+        )}
+
+        <div>
+          <Label htmlFor="link-compra-url">Link</Label>
+          <Input
+            id="link-compra-url"
+            type="url"
+            inputMode="url"
+            autoCapitalize="none"
+            value={url}
+            onChange={e => handleUrl(e.target.value)}
+            placeholder="https://..."
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="link-compra-produto">Produto</Label>
+          <Input id="link-compra-produto" value={produto} onChange={e => setProduto(e.target.value)} placeholder="Ex.: tecido de linho cru" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label htmlFor="link-compra-loja">Loja</Label>
+            <Input
+              id="link-compra-loja"
+              list="link-compra-lojas"
+              value={loja}
+              onChange={e => {
+                setLoja(e.target.value)
+                setLojaAuto(!e.target.value)
+              }}
+              placeholder="Escolha ou digite"
+            />
+            <datalist id="link-compra-lojas">
+              {LOJAS_SUGERIDAS.map(l => (
+                <option key={l} value={l} />
+              ))}
+            </datalist>
+          </div>
+          <div>
+            <Label htmlFor="link-compra-preco">Preço (R$)</Label>
+            <Input
+              id="link-compra-preco"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step={0.01}
+              value={preco}
+              onChange={e => setPreco(e.target.value)}
+              placeholder="0,00"
+            />
+          </div>
+        </div>
+
+        <div>
+          <Label htmlFor="link-compra-descricao">Observação (opcional)</Label>
+          <Input
+            id="link-compra-descricao"
+            value={descricao}
+            onChange={e => setDescricao(e.target.value)}
+            placeholder="Ex.: tamanho M, 3 metros"
+          />
+        </div>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <Button className="w-full" onClick={handleSalvar} disabled={!podeSalvar}>
+          {saving && <Spinner size="sm" className="border-white/40 border-t-white" />}
+          Salvar
+        </Button>
+
+        {link &&
+          (confirmDelete ? (
+            <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-3">
+              <p className="text-xs text-red-700">Excluir esse link?</p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setConfirmDelete(false)} disabled={saving}>
+                  Cancelar
+                </Button>
+                <Button variant="destructive" className="flex-1" onClick={handleExcluir} disabled={saving}>
+                  Excluir
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button variant="outline" className="w-full gap-1.5 text-red-600" onClick={() => setConfirmDelete(true)}>
+              <Trash2 className="h-4 w-4" />
+              Excluir
+            </Button>
+          ))}
+      </div>
+    </Dialog>
+  )
+}

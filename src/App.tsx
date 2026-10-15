@@ -25,6 +25,7 @@ import { Equipes } from '@/pages/Equipes'
 import { EquipeDetalhe } from '@/pages/EquipeDetalhe'
 import { FigurinosPage, MusicasPage } from '@/pages/Midias'
 import { MetasGastos } from '@/pages/MetasGastos'
+import { SugestoesCompra } from '@/pages/SugestoesCompra'
 import { Notificacoes } from '@/pages/Notificacoes'
 import { AdminLocais } from '@/pages/AdminLocais'
 import { AdminVersiculos } from '@/pages/AdminVersiculos'
@@ -150,6 +151,7 @@ function App() {
           <Route path="notificacoes" element={<Notificacoes />} />
           <Route path="musicas" element={<MusicasPage />} />
           <Route path="figurinos" element={<FigurinosPage />} />
+          <Route path="compras" element={<SugestoesCompra />} />
           <Route path="cenas" element={<Cenas />} />
           <Route path="cenas/:id" element={<CenaDetalhe />} />
           <Route path="cenas/:id/iniciar-ensaio" element={<EnsaioAoVivo />} />

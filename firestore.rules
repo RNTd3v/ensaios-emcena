@@ -366,6 +366,40 @@ service cloud.firestore {
       allow delete: if gerenciaImagem();
     }
 
+    // Links de sugestão de compra das equipes (de uma cena, de um personagem ou geral): todos leem.
+    // Membros da equipe (e admin) cadastram; líder, assistentes, admin e quem cadastrou editam e excluem.
+    match /linksCompra/{id} {
+      function linkValido(d) {
+        return d.url is string
+          && d.get('preco', 0) is number
+          && (d.alvo == 'geral'
+              || (d.alvo == 'cena' && d.get('cenaId', null) is string)
+              || (d.alvo == 'personagem' && d.get('personagemKey', null) is string));
+      }
+      function equipeDoLink(equipeId) {
+        return get(/databases/$(database)/documents/equipes/$(equipeId)).data;
+      }
+      function gerenciaLink() {
+        return isAdmin()
+          || (isAuthenticated()
+              && (resource.data.criadoPorUid == request.auth.uid
+                  || equipeDoLink(resource.data.equipeId).get('liderUid', '') == request.auth.uid
+                  || request.auth.uid in equipeDoLink(resource.data.equipeId).get('assistentes', [])));
+      }
+
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+        && request.resource.data.equipeId is string
+        && linkValido(request.resource.data)
+        && request.resource.data.criadoPorUid == request.auth.uid
+        && (isAdmin() || request.auth.uid in equipeDoLink(request.resource.data.equipeId).get('membros', []));
+      allow update: if gerenciaLink()
+        && linkValido(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['alvo', 'somenteEquipe', 'cenaId', 'cenaNome', 'personagemKey', 'personagemNome', 'url', 'produto', 'loja', 'preco', 'descricao']);
+      allow delete: if gerenciaLink();
+    }
+
     // Notificações: um doc por destinatário, criado só pelas Cloud Functions (functions/). Cada um
     // lê as suas e só pode marcar como lida (ou apagar).
     match /notificacoes/{id} {

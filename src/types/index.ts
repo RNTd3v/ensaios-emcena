@@ -518,6 +518,33 @@ export interface ImagemEquipe {
   uploadedAt: string
 }
 
+/**
+ * Link de sugestão de compra de uma equipe (coleção `linksCompra`). De uma cena (aparece também na
+ * cena), de um personagem (`personagemKey` = chave de `personagemKey()`; aparece no personagem) ou
+ * geral. O geral com `somenteEquipe` só aparece na página da equipe; os demais vão pra página
+ * "Sugestões de compra".
+ */
+export interface LinkCompra {
+  id: string
+  equipeId: string
+  equipeNome: string
+  alvo: 'geral' | 'cena' | 'personagem'
+  somenteEquipe?: boolean
+  cenaId?: string
+  cenaNome?: string
+  personagemKey?: string
+  personagemNome?: string
+  url: string
+  produto?: string
+  loja?: string
+  /** Em reais. */
+  preco?: number
+  /** Observação livre (tamanho, cor, quantidade...). */
+  descricao?: string
+  criadoPorUid: string
+  criadoEm: string
+}
+
 export type TarefaStatus = 'a_fazer' | 'fazendo' | 'feito' | 'bloqueado' | 'cancelado'
 
 /**

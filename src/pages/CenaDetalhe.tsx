@@ -66,6 +66,7 @@ import { MusicasCard } from '@/components/midia/MusicasCard'
 import { FigurinosCard } from '@/components/midia/FigurinosCard'
 import { AprovacoesFigurinoCard } from '@/components/midia/AprovacoesFigurinoCard'
 import { ReferenciasEquipeCard } from '@/components/equipe/ReferenciasEquipeCard'
+import { LinksCompraCard } from '@/components/equipe/LinksCompraCard'
 import { useMigrarMidiasLegadas } from '@/hooks/useMigrarMidiasLegadas'
 import { useSettingsStore } from '@/stores/settingsStore'
 import {
@@ -1176,6 +1177,7 @@ export function CenaDetalhe() {
           <FigurinosCard cena={cena} titulo="Figurinos" recolhivel ocultarSeVazio={!canManageCena} />
 
           <ReferenciasEquipeCard cena={cena} />
+          <LinksCompraCard cenaId={cena.id} />
 
           <Card>
             <CardContent>

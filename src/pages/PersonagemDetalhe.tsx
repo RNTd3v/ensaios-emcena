@@ -24,6 +24,8 @@ import { whatsappLink } from '@/lib/formatters'
 import { FIGURINO_MAX_BYTES } from '@/lib/uploads'
 import { corsDoStorage } from '@/lib/imagem'
 import { cn } from '@/lib/utils'
+import { personagemKey } from '@/lib/personagens'
+import { LinksCompraCard } from '@/components/equipe/LinksCompraCard'
 
 const FICHA_VAZIA: PersonagemFicha = {}
 
@@ -502,6 +504,8 @@ export function PersonagemDetalhe() {
               </CardContent>
             </Card>
           )}
+
+          <LinksCompraCard personagemKey={personagemKey(personagem.nome, personagem.participanteUid)} />
         </>
       )}
 

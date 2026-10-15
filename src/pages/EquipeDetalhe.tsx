@@ -9,6 +9,7 @@ import { EquipeFormDialog } from '@/components/equipe/EquipeFormDialog'
 import { TarefasCard } from '@/components/equipe/TarefasCard'
 import { PrazoFigurinoCard } from '@/components/equipe/PrazoFigurinoCard'
 import { ReferenciasEquipeCard } from '@/components/equipe/ReferenciasEquipeCard'
+import { LinksCompraCard } from '@/components/equipe/LinksCompraCard'
 import { MusicasCard } from '@/components/midia/MusicasCard'
 import { FigurinosCard } from '@/components/midia/FigurinosCard'
 import { useUsersMap } from '@/components/oracao/OrandoAgora'
@@ -152,6 +153,8 @@ export function EquipeDetalhe() {
       )}
 
       <ReferenciasEquipeCard equipe={equipe} />
+
+      <LinksCompraCard equipe={equipe} users={users} />
 
       <Card>
         <CardContent className="space-y-3">

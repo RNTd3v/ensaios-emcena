@@ -396,7 +396,7 @@ service cloud.firestore {
       allow update: if gerenciaLink()
         && linkValido(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['alvo', 'somenteEquipe', 'cenaId', 'cenaNome', 'personagemKey', 'personagemNome', 'url', 'produto', 'loja', 'preco', 'descricao']);
+             .hasOnly(['alvo', 'somenteEquipe', 'cenaId', 'cenaNome', 'personagemKey', 'personagemNome', 'url', 'produto', 'categoria', 'genero', 'faixa', 'loja', 'preco', 'descricao']);
       allow delete: if gerenciaLink();
     }
 

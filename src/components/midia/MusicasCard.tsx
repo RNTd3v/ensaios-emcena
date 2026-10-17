@@ -33,6 +33,25 @@ import {
 type MusicaItem = Musica & { legado?: boolean }
 
 const SEPARAR_POR_CENA_KEY = 'musicas.separarPorCena'
+const ACCEPT_AUDIO = 'audio/*,.mp3,.m4a,.aac,.wav,.ogg,.oga,.opus,.flac'
+
+/** No iPhone o arquivo (app Arquivos, WhatsApp...) às vezes vem sem tipo ou como octet-stream: deduz pela extensão. */
+const TIPO_POR_EXTENSAO: Record<string, string> = {
+  mp3: 'audio/mpeg',
+  m4a: 'audio/mp4',
+  aac: 'audio/aac',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  oga: 'audio/ogg',
+  opus: 'audio/ogg',
+  flac: 'audio/flac',
+}
+
+function comTipoDeAudio(file: File): File {
+  if (file.type.startsWith('audio/')) return file
+  const tipo = TIPO_POR_EXTENSAO[file.name.split('.').pop()?.toLowerCase() ?? '']
+  return tipo ? new File([file], file.name, { type: tipo, lastModified: file.lastModified }) : file
+}
 const ABERTO_KEY = 'musicas.cardAberto'
 
 interface Props {
@@ -222,7 +241,8 @@ export function MusicasCard({ cena, gerenciar, ensaio, recolhivel, ocultarSeVazi
     setError('')
     setUploading(true)
     try {
-      for (const file of Array.from(files)) {
+      for (const original of Array.from(files)) {
+        const file = comTipoDeAudio(original)
         const erro = validar(file)
         if (erro) {
           setError(erro)
@@ -241,8 +261,9 @@ export function MusicasCard({ cena, gerenciar, ensaio, recolhivel, ocultarSeVazi
   // Troca com anotações: antes pergunta se mantém ou apaga (os momentos podem não bater mais).
   const [trocaPendente, setTrocaPendente] = useState<{ musica: Musica; file: File; anotacoes: AnotacaoMusica[] } | null>(null)
 
-  async function handleTrocar(file: File) {
+  async function handleTrocar(original: File) {
     if (!trocando || !currentUser) return
+    const file = comTipoDeAudio(original)
     const erro = validar(file)
     if (erro) {
       setTrocando(null)
@@ -388,7 +409,7 @@ export function MusicasCard({ cena, gerenciar, ensaio, recolhivel, ocultarSeVazi
       <input
         ref={inputRef}
         type="file"
-        accept="audio/*"
+        accept={ACCEPT_AUDIO}
         multiple
         className="hidden"
         onChange={e => {
@@ -399,7 +420,7 @@ export function MusicasCard({ cena, gerenciar, ensaio, recolhivel, ocultarSeVazi
       <input
         ref={trocarRef}
         type="file"
-        accept="audio/*"
+        accept={ACCEPT_AUDIO}
         className="hidden"
         onChange={e => {
           const file = e.target.files?.[0]

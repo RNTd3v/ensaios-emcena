@@ -15,7 +15,10 @@ function fromSnap(id: string, data: Record<string, unknown>): Ensaio {
     confirmedAt: toIso(data.confirmedAt) ?? new Date().toISOString(),
     canceledAt: toIso(data.canceledAt),
     createdAt: toIso(data.createdAt) ?? new Date().toISOString(),
-    finalizadoAt: toIso(data.finalizadoAt),
+    // O horário é do servidor e fica nulo no aparelho até a escrita ser confirmada; `finalizadoByUid`
+    // já chega na hora. Sem isso, com sinal ruim a tela seguia "ao vivo" com o cronômetro já apagado
+    // (00:00), e finalizar de novo gravava duração zero.
+    finalizadoAt: toIso(data.finalizadoAt) ?? (data.finalizadoByUid ? new Date().toISOString() : undefined),
   } as Ensaio
 }
 

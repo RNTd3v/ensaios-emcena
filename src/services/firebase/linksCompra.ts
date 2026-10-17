@@ -38,7 +38,7 @@ export function subscribeToLinksCompraPublicos(callback: (links: LinkCompra[]) =
 }
 
 export type LinkCompraDados = Pick<LinkCompra, 'alvo' | 'url'> &
-  Partial<Pick<LinkCompra, 'somenteEquipe' | 'cenaId' | 'cenaNome' | 'personagemKey' | 'personagemNome' | 'produto' | 'loja' | 'preco' | 'descricao'>>
+  Partial<Pick<LinkCompra, 'somenteEquipe' | 'cenaId' | 'cenaNome' | 'personagemKey' | 'personagemNome' | 'produto' | 'categoria' | 'genero' | 'faixa' | 'loja' | 'preco' | 'descricao'>>
 
 /** Sem protocolo vira https:// — o pessoal cola "loja.com/produto". */
 export function normalizarUrl(url: string): string {
@@ -57,6 +57,9 @@ function campos(dados: LinkCompraDados) {
     personagemKey: alvo === 'personagem' ? dados.personagemKey : undefined,
     personagemNome: alvo === 'personagem' ? dados.personagemNome : undefined,
     produto: dados.produto?.trim() || undefined,
+    categoria: dados.categoria || undefined,
+    genero: dados.genero || undefined,
+    faixa: dados.faixa || undefined,
     loja: dados.loja?.trim() || undefined,
     preco: dados.preco !== undefined && Number.isFinite(dados.preco) && dados.preco >= 0 ? dados.preco : undefined,
     descricao: dados.descricao?.trim() || undefined,

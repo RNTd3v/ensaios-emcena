@@ -299,7 +299,11 @@ export function EnsaioAoVivo() {
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-1">
-            <h1 className="truncate text-xl font-semibold text-white">{cena.nome}</h1>
+            <h1 className="min-w-0 truncate text-xl font-semibold text-white">
+              <Link to={`/cenas/${cena.id}`} className="hover:underline" title="Abrir a cena">
+                {cena.nome}
+              </Link>
+            </h1>
             {canManageAgenda && ensaio && !ensaio.canceledByUid && (
               <Button
                 variant="ghost"

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ExternalLink, Pencil, Plus, ShoppingCart, Trash2 } from 'lucide-react'
+import { ChevronDown, Pencil, Plus, Search, ShoppingCart, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
@@ -22,6 +22,15 @@ import {
 import { agregarPersonagens } from '@/lib/personagens'
 import { LOJAS_SUGERIDAS, lojaDaUrl } from '@/lib/lojas'
 import { formatBRL } from '@/lib/formatters'
+import {
+  CATEGORIAS_COMPRA,
+  FAIXAS_COMPRA,
+  GENEROS_COMPRA,
+  categoriaCompraIcon,
+  categoriaCompraLabel,
+  type FaixaCompra,
+  type GeneroCompra,
+} from '@/lib/categoriasCompra'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
 import type { AppUser, Cena, Equipe, LinkCompra, PersonagemCatalogo } from '@/types'
@@ -71,6 +80,22 @@ type Props =
       personagemKey?: never
     }
 
+const ABERTO_KEY = 'linksCompra.cardAberto'
+
+/** Na equipe, o filtro de categoria só aparece passando disso. */
+const LIMITE_FILTRO_EQUIPE = 8
+const SEM_CATEGORIA = '__sem'
+
+function normalizar(texto: string) {
+  return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+}
+
+const chip = (ativo: boolean) =>
+  cn(
+    'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+    ativo ? 'border-primary bg-primary/10 text-primary' : 'border-gray-300 bg-white text-gray-600',
+  )
+
 /** Ordem dos grupos: só da equipe, para todos, cenas, personagens. */
 const ORDEM_GRUPO = { equipe: 0, geral: 1, cena: 2, personagem: 3 } as const
 
@@ -88,6 +113,13 @@ export function LinksCompraCard({ equipe, users, cenaId, personagemKey }: Props)
   const [cenas, setCenas] = useState<Cena[]>([])
   const [catalogo, setCatalogo] = useState<PersonagemCatalogo[]>([])
   const [form, setForm] = useState<LinkCompra | 'novo' | null>(null)
+  const [busca, setBusca] = useState('')
+  /** '' = todas; SEM_CATEGORIA = só as sem categoria. */
+  const [filtroCategoria, setFiltroCategoria] = useState('')
+  const [filtroCena, setFiltroCena] = useState('')
+  const [filtroPersonagem, setFiltroPersonagem] = useState('')
+  const [filtroGenero, setFiltroGenero] = useState<GeneroCompra | ''>('')
+  const [filtroFaixa, setFiltroFaixa] = useState<FaixaCompra | ''>('')
 
   const equipeId = equipe?.id
   const pagina = !equipeId && !cenaId && !personagemKey
@@ -130,9 +162,82 @@ export function LinksCompraCard({ equipe, users, cenaId, personagemKey }: Props)
     })
   }, [cenasEscolha, catalogo, users])
 
+  /** Na página de compras: filtros por cena, personagem, categoria e busca. Na equipe, só categoria (com muitos links). */
+  const comFiltros = pagina
+  const comFiltroCategoria = pagina || (!!equipe && (links?.length ?? 0) > LIMITE_FILTRO_EQUIPE)
+
+  const opcoesFiltro = useMemo(() => {
+    const cenasM = new Map<string, string>()
+    const personagensM = new Map<string, string>()
+    for (const l of links ?? []) {
+      if (l.alvo === 'cena' && l.cenaId) cenasM.set(l.cenaId, l.cenaNome ?? 'Cena')
+      if (l.alvo === 'personagem' && l.personagemKey) personagensM.set(l.personagemKey, l.personagemNome ?? 'Personagem')
+    }
+    const ordenar = (m: Map<string, string>) =>
+      [...m.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR', { numeric: true }))
+    return { cenas: ordenar(cenasM), personagens: ordenar(personagensM) }
+  }, [links])
+
+  /** Tudo menos a categoria — a contagem de cada categoria sai daqui. */
+  const semFiltroCategoria = useMemo(() => {
+    const termo = normalizar(busca.trim())
+    return (links ?? []).filter(
+      l =>
+        (!filtroCena || (l.alvo === 'cena' && l.cenaId === filtroCena)) &&
+        (!filtroPersonagem || (l.alvo === 'personagem' && l.personagemKey === filtroPersonagem)) &&
+        (!filtroGenero || l.genero === filtroGenero) &&
+        (!filtroFaixa || l.faixa === filtroFaixa) &&
+        (!termo || normalizar([l.produto, l.descricao, l.loja, l.equipeNome, dominio(l.url)].filter(Boolean).join(' ')).includes(termo)),
+    )
+  }, [links, busca, filtroCena, filtroPersonagem, filtroGenero, filtroFaixa])
+
+  const contagemCategorias = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const l of semFiltroCategoria) {
+      const c = l.categoria || SEM_CATEGORIA
+      m.set(c, (m.get(c) ?? 0) + 1)
+    }
+    return m
+  }, [semFiltroCategoria])
+
+  const filtrados = useMemo(
+    () => (filtroCategoria ? semFiltroCategoria.filter(l => (l.categoria || SEM_CATEGORIA) === filtroCategoria) : semFiltroCategoria),
+    [semFiltroCategoria, filtroCategoria],
+  )
+  // Na cena o card é recolhível (como as referências); fica salvo no aparelho, começa aberto.
+  const recolhivel = !!cenaId
+  const [aberto, setAberto] = useState(() => {
+    try {
+      return localStorage.getItem(ABERTO_KEY) !== 'nao'
+    } catch {
+      return true
+    }
+  })
+  function alternarAberto() {
+    setAberto(v => {
+      try {
+        localStorage.setItem(ABERTO_KEY, v ? 'nao' : 'sim')
+      } catch {
+        // storage indisponível — segue só em memória
+      }
+      return !v
+    })
+  }
+  const fechado = recolhivel && !aberto
+
+  const filtrando = !!(busca.trim() || filtroCategoria || filtroCena || filtroPersonagem || filtroGenero || filtroFaixa)
+  function limparFiltros() {
+    setBusca('')
+    setFiltroCategoria('')
+    setFiltroCena('')
+    setFiltroPersonagem('')
+    setFiltroGenero('')
+    setFiltroFaixa('')
+  }
+
   const grupos = useMemo(() => {
     const m = new Map<string, { chave: string; titulo: string; ordem: number; itens: LinkCompra[] }>()
-    for (const l of links ?? []) {
+    for (const l of filtrados) {
       const tipo = l.alvo === 'geral' || !l.alvo ? (l.somenteEquipe ? 'equipe' : 'geral') : l.alvo
       const chave = tipo === 'cena' ? `c:${l.cenaId ?? ''}` : tipo === 'personagem' ? `p:${l.personagemKey ?? ''}` : tipo
       const titulo =
@@ -147,7 +252,7 @@ export function LinksCompraCard({ equipe, users, cenaId, personagemKey }: Props)
       m.get(chave)!.itens.push(l)
     }
     return [...m.values()].sort((a, b) => a.ordem - b.ordem || a.titulo.localeCompare(b.titulo, 'pt-BR', { numeric: true }))
-  }, [links])
+  }, [filtrados])
 
   // Na cena e no personagem, sem link nenhum não mostra o card.
   if ((cenaId || personagemKey) && !links?.length) return null
@@ -158,6 +263,8 @@ export function LinksCompraCard({ equipe, users, cenaId, personagemKey }: Props)
 
   function linha(l: LinkCompra) {
     const titulo = l.produto || l.descricao || dominio(l.url)
+    const CategoriaIcon = categoriaCompraIcon(l.categoria)
+    const publico = [GENEROS_COMPRA.find(g => g.value === l.genero), FAIXAS_COMPRA.find(f => f.value === l.faixa)].filter(p => !!p)
     const subtitulo = [
       l.loja || dominio(l.url),
       l.preco !== undefined ? formatBRL(l.preco) : undefined,
@@ -173,9 +280,21 @@ export function LinksCompraCard({ equipe, users, cenaId, personagemKey }: Props)
           rel="noopener noreferrer"
           className="flex min-w-0 flex-1 items-center gap-2 rounded-lg bg-gray-50 px-2.5 py-2 text-sm hover:bg-gray-100"
         >
-          <ExternalLink className="h-3.5 w-3.5 shrink-0 text-primary" />
+          <span
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
+            title={categoriaCompraLabel(l.categoria) ?? 'Sem categoria'}
+          >
+            <CategoriaIcon className="h-4 w-4" />
+          </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate">{titulo}</span>
+            <span className="flex items-center gap-1.5">
+              <span className="min-w-0 truncate">{titulo}</span>
+              {publico.map(p => (
+                <span key={p.value} title={p.label} aria-label={p.label} className="shrink-0 text-muted-foreground">
+                  <p.icon className="h-3.5 w-3.5" />
+                </span>
+              ))}
+            </span>
             <span className="block truncate text-[11px] text-muted-foreground">{subtitulo}</span>
             {l.produto && l.descricao && <span className="block truncate text-[11px] text-muted-foreground">{l.descricao}</span>}
           </span>
@@ -195,11 +314,23 @@ export function LinksCompraCard({ equipe, users, cenaId, personagemKey }: Props)
         <CardContent className="space-y-2.5">
           {!pagina && (
             <div className="flex items-center justify-between gap-2">
-              <p className="flex items-center gap-1.5 text-base font-semibold">
-                <ShoppingCart className="h-4 w-4 text-primary" />
-                Sugestões de compra
-                {!!links?.length && <span className="text-xs font-normal text-muted-foreground">({links.length})</span>}
-              </p>
+              {recolhivel ? (
+                <button type="button" onClick={alternarAberto} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" aria-expanded={aberto}>
+                  <ChevronDown className={cn('h-4 w-4 shrink-0 text-gray-400 transition-transform', !aberto && '-rotate-90')} />
+                  <span className="text-base font-semibold">Sugestões de compra</span>
+                  {!!links?.length && (
+                    <span className="ml-auto truncate pl-2 text-xs text-muted-foreground">
+                      {links.length} {links.length === 1 ? 'link' : 'links'}
+                    </span>
+                  )}
+                </button>
+              ) : (
+                <p className="flex items-center gap-1.5 text-base font-semibold">
+                  <ShoppingCart className="h-4 w-4 text-primary" />
+                  Sugestões de compra
+                  {!!links?.length && <span className="text-xs font-normal text-muted-foreground">({links.length})</span>}
+                </p>
+              )}
               {podeCadastrar && (
                 <Button variant="ghost" size="icon" onClick={() => setForm('novo')} title="Adicionar link">
                   <Plus className="h-4 w-4" />
@@ -208,10 +339,116 @@ export function LinksCompraCard({ equipe, users, cenaId, personagemKey }: Props)
             </div>
           )}
 
-          {!links ? (
+          {!!links?.length && comFiltros && (
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" />
+                <Input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar produto ou loja" className="pl-9" />
+              </div>
+              {(opcoesFiltro.cenas.length > 0 || opcoesFiltro.personagens.length > 0) && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Select
+                    aria-label="Filtrar por cena"
+                    value={filtroCena}
+                    onChange={e => {
+                      setFiltroCena(e.target.value)
+                      if (e.target.value) setFiltroPersonagem('')
+                    }}
+                    disabled={!opcoesFiltro.cenas.length}
+                  >
+                    <option value="">Todas as cenas</option>
+                    {opcoesFiltro.cenas.map(c => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <Select
+                    aria-label="Filtrar por personagem"
+                    value={filtroPersonagem}
+                    onChange={e => {
+                      setFiltroPersonagem(e.target.value)
+                      if (e.target.value) setFiltroCena('')
+                    }}
+                    disabled={!opcoesFiltro.personagens.length}
+                  >
+                    <option value="">Todos os personagens</option>
+                    {opcoesFiltro.personagens.map(p => (
+                      <option key={p.value} value={p.value}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!!links?.length && comFiltros && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {GENEROS_COMPRA.map(g => (
+                <button
+                  key={g.value}
+                  type="button"
+                  onClick={() => setFiltroGenero(filtroGenero === g.value ? '' : g.value)}
+                  className={chip(filtroGenero === g.value)}
+                  aria-pressed={filtroGenero === g.value}
+                >
+                  <g.icon className="h-3.5 w-3.5" />
+                  {g.label}
+                </button>
+              ))}
+              <span className="mx-0.5 h-4 w-px bg-gray-200" />
+              {FAIXAS_COMPRA.map(f => (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => setFiltroFaixa(filtroFaixa === f.value ? '' : f.value)}
+                  className={chip(filtroFaixa === f.value)}
+                  aria-pressed={filtroFaixa === f.value}
+                >
+                  <f.icon className="h-3.5 w-3.5" />
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {!!links?.length && comFiltroCategoria && (
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" onClick={() => setFiltroCategoria('')} className={chip(!filtroCategoria)} aria-pressed={!filtroCategoria}>
+                Todas ({semFiltroCategoria.length})
+              </button>
+              {[...CATEGORIAS_COMPRA, { value: SEM_CATEGORIA, label: 'Sem categoria', icon: categoriaCompraIcon(undefined) }]
+                .filter(c => contagemCategorias.get(c.value) || filtroCategoria === c.value)
+                .map(c => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => setFiltroCategoria(filtroCategoria === c.value ? '' : c.value)}
+                    className={chip(filtroCategoria === c.value)}
+                    aria-pressed={filtroCategoria === c.value}
+                  >
+                    <c.icon className="h-3.5 w-3.5" />
+                    {c.label} ({contagemCategorias.get(c.value) ?? 0})
+                  </button>
+                ))}
+            </div>
+          )}
+
+          {fechado ? null : !links ? (
             <Spinner size="sm" />
           ) : !links.length ? (
             <p className="py-1 text-xs text-muted-foreground">Sem links ainda.</p>
+          ) : !filtrados.length ? (
+            <div className="flex items-center justify-between gap-2 py-1">
+              <p className="text-xs text-muted-foreground">Nenhum link com esses filtros.</p>
+              {filtrando && (
+                <Button variant="ghost" size="sm" onClick={limparFiltros}>
+                  Limpar filtros
+                </Button>
+              )}
+            </div>
           ) : agrupar ? (
             <div className="space-y-3">
               {grupos.map(g => (
@@ -222,7 +459,7 @@ export function LinksCompraCard({ equipe, users, cenaId, personagemKey }: Props)
               ))}
             </div>
           ) : (
-            <div className="space-y-1">{links.map(linha)}</div>
+            <div className="space-y-1">{filtrados.map(linha)}</div>
           )}
         </CardContent>
       </Card>
@@ -258,6 +495,9 @@ function LinkFormDialog({ equipe, cenas, personagens, link, byUid, onClose }: Fo
   const [personagemKey, setPersonagemKey] = useState(link?.personagemKey ?? '')
   const [url, setUrl] = useState(link?.url ?? '')
   const [produto, setProduto] = useState(link?.produto ?? '')
+  const [categoria, setCategoria] = useState(link?.categoria ?? '')
+  const [genero, setGenero] = useState<GeneroCompra | ''>(link?.genero ?? '')
+  const [faixa, setFaixa] = useState<FaixaCompra | ''>(link?.faixa ?? '')
   const [loja, setLoja] = useState(link?.loja ?? '')
   /** Loja preenchida pelo link — continua acompanhando o link até a pessoa mexer nela. */
   const [lojaAuto, setLojaAuto] = useState(!link?.loja)
@@ -285,7 +525,7 @@ function LinkFormDialog({ equipe, cenas, personagens, link, byUid, onClose }: Fo
     }
     setSaving(true)
     setError('')
-    const comuns = { url, produto, loja, preco: precoNum, descricao }
+    const comuns = { url, produto, categoria, genero: genero || undefined, faixa: faixa || undefined, loja, preco: precoNum, descricao }
     const dados =
       alvo === 'geral'
         ? { ...comuns, alvo, somenteEquipe }
@@ -405,6 +645,56 @@ function LinkFormDialog({ equipe, cenas, personagens, link, byUid, onClose }: Fo
         <div>
           <Label htmlFor="link-compra-produto">Produto</Label>
           <Input id="link-compra-produto" value={produto} onChange={e => setProduto(e.target.value)} placeholder="Ex.: tecido de linho cru" />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Categoria (opcional)</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {CATEGORIAS_COMPRA.map(c => (
+              <button
+                key={c.value}
+                type="button"
+                onClick={() => setCategoria(categoria === c.value ? '' : c.value)}
+                className={chip(categoria === c.value)}
+                aria-pressed={categoria === c.value}
+              >
+                <c.icon className="h-3.5 w-3.5" />
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Pra quem (opcional)</Label>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {GENEROS_COMPRA.map(g => (
+              <button
+                key={g.value}
+                type="button"
+                onClick={() => setGenero(genero === g.value ? '' : g.value)}
+                className={chip(genero === g.value)}
+                aria-pressed={genero === g.value}
+              >
+                <g.icon className="h-3.5 w-3.5" />
+                {g.label}
+              </button>
+            ))}
+            <span className="mx-0.5 h-4 w-px bg-gray-200" />
+            {FAIXAS_COMPRA.map(f => (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => setFaixa(faixa === f.value ? '' : f.value)}
+                className={chip(faixa === f.value)}
+                aria-pressed={faixa === f.value}
+              >
+                <f.icon className="h-3.5 w-3.5" />
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">Sem marcar, serve pra qualquer um.</p>
         </div>
 
         <div className="grid grid-cols-2 gap-2">

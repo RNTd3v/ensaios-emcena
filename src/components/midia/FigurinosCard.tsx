@@ -3,6 +3,7 @@ import { ChevronDown, Image as ImageIcon, Pencil, Plus, SlidersHorizontal, Trash
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
+import { ImagemZoom } from '@/components/ui/ImagemZoom'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -574,6 +575,7 @@ function FigurinoViewer({ figurino, rotulo, podeEditar, cena, cenas, equipeId, p
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [zoom, setZoom] = useState(false)
 
   if (editando) {
     return (
@@ -591,7 +593,10 @@ function FigurinoViewer({ figurino, rotulo, podeEditar, cena, cenas, equipeId, p
   return (
     <Dialog open onClose={onClose} title="Figurino">
       <div className="space-y-3">
-        <img src={figurino.url} crossOrigin={corsDoStorage(figurino.url)} alt={figurino.legenda ?? ''} className="max-h-[55vh] w-full rounded-lg object-contain bg-gray-50" />
+        <button type="button" onClick={() => setZoom(true)} className="block w-full cursor-zoom-in" aria-label="Ampliar imagem">
+          <img src={figurino.url} crossOrigin={corsDoStorage(figurino.url)} alt={figurino.legenda ?? ''} className="max-h-[55vh] w-full rounded-lg object-contain bg-gray-50" />
+        </button>
+        {zoom && <ImagemZoom src={figurino.url} alt={figurino.legenda} onClose={() => setZoom(false)} />}
         <div className="text-xs text-muted-foreground">
           <p>
             {!cena && (figurino.cenaNome ? `${figurino.cenaNome} · ` : 'Sem cena · ')}

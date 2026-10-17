@@ -536,6 +536,11 @@ export interface LinkCompra {
   personagemNome?: string
   url: string
   produto?: string
+  /** Valor de `CATEGORIAS_COMPRA` (lib/categoriasCompra). */
+  categoria?: string
+  /** Vazio = serve pra qualquer um. */
+  genero?: 'feminino' | 'masculino'
+  faixa?: 'adulto' | 'crianca'
   loja?: string
   /** Em reais. */
   preco?: number

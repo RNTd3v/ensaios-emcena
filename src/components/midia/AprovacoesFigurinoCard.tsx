@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Check, ShieldCheck, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { ImagemZoom } from '@/components/ui/ImagemZoom'
 import { Spinner } from '@/components/ui/Spinner'
 import { Textarea } from '@/components/ui/Textarea'
 import { avaliarFigurino, subscribeToFigurinos } from '@/services/firebase/midias'
@@ -22,6 +23,7 @@ export function AprovacoesFigurinoCard({ cena, users }: { cena: Cena; users: Rec
   const [reprovandoId, setReprovandoId] = useState<string | null>(null)
   const [motivo, setMotivo] = useState('')
   const [salvandoId, setSalvandoId] = useState<string | null>(null)
+  const [zoomUrl, setZoomUrl] = useState<string | null>(null)
 
   useEffect(() => {
     if (!podeAvaliar) return
@@ -54,9 +56,9 @@ export function AprovacoesFigurinoCard({ cena, users }: { cena: Cena; users: Rec
           const salvando = salvandoId === f.id
           return (
             <div key={f.id} className="flex gap-3 rounded-xl bg-gray-50 p-2">
-              <a href={f.url} target="_blank" rel="noreferrer" className="shrink-0">
+              <button type="button" onClick={() => setZoomUrl(f.url)} className="shrink-0 cursor-zoom-in" aria-label="Ampliar foto">
                 <img src={f.url} crossOrigin={corsDoStorage(f.url)} alt="" className="h-20 w-20 rounded-lg object-cover" />
-              </a>
+              </button>
               <div className="min-w-0 flex-1 space-y-1.5">
                 <div>
                   {f.personagemId ? (
@@ -105,6 +107,7 @@ export function AprovacoesFigurinoCard({ cena, users }: { cena: Cena; users: Rec
             </div>
           )
         })}
+        {zoomUrl && <ImagemZoom src={zoomUrl} onClose={() => setZoomUrl(null)} />}
       </CardContent>
     </Card>
   )

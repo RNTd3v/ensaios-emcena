@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Image as ImageIcon, Pencil, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, Image as ImageIcon, Pencil, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
@@ -10,7 +10,16 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
 import { subscribeToCenas } from '@/services/firebase/cenas'
-import { deleteFigurino, figurinoVisivel, juntarComLegado, subscribeToFigurinos, updateFigurino, uploadFigurino } from '@/services/firebase/midias'
+import {
+  deleteFigurino,
+  figurinoVisivel,
+  juntarComLegado,
+  nomeGuardadoNoFigurino,
+  personagensDoFigurino,
+  subscribeToFigurinos,
+  updateFigurino,
+  uploadFigurino,
+} from '@/services/firebase/midias'
 import { useAuthStore } from '@/stores/authStore'
 import { FIGURINO_MAX_BYTES } from '@/lib/uploads'
 import type { Cena, FigurinoImagem } from '@/types'
@@ -130,15 +139,16 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhive
 
   const personagensDosItens = useMemo(() => {
     const m = new Map<string, string>()
-    for (const f of filtradosPorCena) if (f.personagemId) m.set(f.personagemId, rotulo(f))
+    for (const f of filtradosPorCena) for (const id of personagensDoFigurino(f)) m.set(id, nomePersonagem(f, id))
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'))
   }, [filtradosPorCena])
 
   const filtrados = useMemo(
     () =>
       filtradosPorCena.filter(f => {
-        if (filtroPersonagem === 'geral' && f.personagemId) return false
-        if (filtroPersonagem !== 'todos' && filtroPersonagem !== 'geral' && f.personagemId !== filtroPersonagem) return false
+        const ids = personagensDoFigurino(f)
+        if (filtroPersonagem === 'geral' && ids.length) return false
+        if (filtroPersonagem !== 'todos' && filtroPersonagem !== 'geral' && !ids.includes(filtroPersonagem)) return false
         if (filtroAprovacao === 'valendo' && !figurinoVisivel(f)) return false
         if ((filtroAprovacao === 'pendente' || filtroAprovacao === 'reprovado') && f.aprovacao !== filtroAprovacao) return false
         return true
@@ -164,19 +174,23 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhive
   ].filter((x): x is string => !!x)
   const mostrarFiltros = (!cena && cenasDosItens.length > 0) || personagensDosItens.length > 0 || pode
 
+  function nomePersonagem(f: FigurinoItem, id: string) {
+    return (cena?.personagens.find(p => p.id === id)?.nome ?? nomeGuardadoNoFigurino(f, id)) || 'Personagem'
+  }
+
   function rotulo(f: FigurinoItem) {
-    if (!f.personagemId) return 'Geral'
-    return (cena?.personagens.find(p => p.id === f.personagemId)?.nome ?? f.personagemNome) || 'Personagem'
+    const ids = personagensDoFigurino(f)
+    return ids.length ? ids.map(id => nomePersonagem(f, id)).join(', ') : 'Geral'
   }
 
   const grupos = useMemo(() => {
     if (cena) {
       // Gerais primeiro, depois por personagem (na ordem da cena).
-      const gerais = filtrados.filter(f => !f.personagemId)
+      const gerais = filtrados.filter(f => !personagensDoFigurino(f).length)
       const ordem = new Map(cena.personagens.map((p, i) => [p.id, i]))
-      const dePersonagem = filtrados
-        .filter(f => f.personagemId)
-        .sort((a, b) => (ordem.get(a.personagemId!) ?? 999) - (ordem.get(b.personagemId!) ?? 999))
+      // Foto de vários personagens entra na posição do primeiro deles na cena.
+      const posicao = (f: FigurinoItem) => Math.min(...personagensDoFigurino(f).map(id => ordem.get(id) ?? 999))
+      const dePersonagem = filtrados.filter(f => personagensDoFigurino(f).length).sort((a, b) => posicao(a) - posicao(b))
       return [{ chave: cena.id, titulo: '', itens: [...gerais, ...dePersonagem] }]
     }
     const porCena = new Map<string, { chave: string; titulo: string; itens: FigurinoItem[] }>()
@@ -423,7 +437,7 @@ interface FormProps {
 
 function FigurinoFormDialog({ figurino, cena, cenas, personagemFixo, equipeId, podeSemCena, byUid, onClose }: FormProps) {
   const [cenaId, setCenaId] = useState(cena?.id ?? figurino?.cenaId ?? '')
-  const [personagemId, setPersonagemId] = useState(personagemFixo ?? figurino?.personagemId ?? '')
+  const [personagemIds, setPersonagemIds] = useState<string[]>(personagemFixo ? [personagemFixo] : figurino ? personagensDoFigurino(figurino) : [])
   const [legenda, setLegenda] = useState(figurino?.legenda ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -434,12 +448,13 @@ function FigurinoFormDialog({ figurino, cena, cenas, personagemFixo, equipeId, p
   const cenaForaDaLista = !cena && !!figurino?.cenaId && !cenas.some(c => c.id === figurino.cenaId)
 
   function vinculo() {
-    const personagem = personagens.find(p => p.id === personagemId)
     return {
       cenaId: cenaAlvo?.id ?? (cenaForaDaLista && cenaId === figurino?.cenaId ? figurino?.cenaId : undefined),
       cenaNome: cenaAlvo?.nome ?? (cenaForaDaLista && cenaId === figurino?.cenaId ? figurino?.cenaNome : undefined),
-      personagemId: personagemId || undefined,
-      personagemNome: personagem?.nome ?? (personagemId === figurino?.personagemId ? figurino?.personagemNome : undefined),
+      // Na ordem da cena; nome guardado na foto se o personagem saiu da cena.
+      personagens: [...personagemIds]
+        .sort((a, b) => personagens.findIndex(p => p.id === a) - personagens.findIndex(p => p.id === b))
+        .map(id => ({ id, nome: personagens.find(p => p.id === id)?.nome ?? (figurino ? nomeGuardadoNoFigurino(figurino, id) : undefined) })),
       legenda,
     }
   }
@@ -496,7 +511,7 @@ function FigurinoFormDialog({ figurino, cena, cenas, personagemFixo, equipeId, p
               value={cenaId}
               onChange={v => {
                 setCenaId(v)
-                setPersonagemId('')
+                setPersonagemIds([])
               }}
               cenas={cenas}
               vazio={podeSemCena ? 'Nenhuma — vale pra peça toda' : 'Escolha a cena'}
@@ -507,15 +522,28 @@ function FigurinoFormDialog({ figurino, cena, cenas, personagemFixo, equipeId, p
 
         {!personagemFixo && personagens.length > 0 && (
           <div>
-            <Label htmlFor="figurino-personagem">Personagem (opcional)</Label>
-            <Select id="figurino-personagem" value={personagemId} onChange={e => setPersonagemId(e.target.value)}>
-              <option value="">Geral da cena</option>
-              {personagens.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.nome}
-                </option>
-              ))}
-            </Select>
+            <Label>Personagens (opcional)</Label>
+            <p className="text-xs text-muted-foreground">Toque em um ou mais. Sem nenhum, a foto vale pra cena toda.</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {personagens.map(p => {
+                const marcado = personagemIds.includes(p.id)
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    aria-pressed={marcado}
+                    onClick={() => setPersonagemIds(ids => (marcado ? ids.filter(id => id !== p.id) : [...ids, p.id]))}
+                    className={cn(
+                      'flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm transition-colors',
+                      marcado ? 'border-primary bg-primary/10 font-medium text-primary' : 'border-gray-300 bg-white text-gray-700',
+                    )}
+                  >
+                    {marcado && <Check className="h-3.5 w-3.5" />}
+                    {p.nome}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         )}
 
@@ -597,7 +625,7 @@ function FigurinoViewer({ figurino, rotulo, podeEditar, cena, cenas, equipeId, p
         <button type="button" onClick={() => setZoom(true)} className="block w-full cursor-zoom-in" aria-label="Ampliar imagem">
           <img src={figurino.url} crossOrigin={corsDoStorage(figurino.url)} alt={figurino.legenda ?? ''} className="max-h-[55vh] w-full rounded-lg object-contain bg-gray-50" />
         </button>
-        <ImagemAcoes src={figurino.url} nome={figurino.legenda ?? figurino.personagemNome} />
+        <ImagemAcoes src={figurino.url} nome={figurino.legenda ?? rotulo} />
         {zoom && <ImagemZoom src={figurino.url} alt={figurino.legenda} onClose={() => setZoom(false)} />}
         <div className="text-xs text-muted-foreground">
           <p>

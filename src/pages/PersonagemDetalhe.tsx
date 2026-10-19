@@ -18,7 +18,15 @@ import { subscribeToCena, alterarCenaPersonagens } from '@/services/firebase/cen
 import { subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
 import { subscribeToEquipes } from '@/services/firebase/equipes'
-import { avaliarFigurino, deleteFigurino, figurinoVisivel, juntarComLegado, subscribeToFigurinos, uploadFigurino } from '@/services/firebase/midias'
+import {
+  avaliarFigurino,
+  deleteFigurino,
+  figurinoVisivel,
+  juntarComLegado,
+  personagensDoFigurino,
+  subscribeToFigurinos,
+  uploadFigurino,
+} from '@/services/firebase/midias'
 import type { AppUser, Cena, Ensaio, Equipe, FigurinoImagem, Inscricao, PersonagemFicha } from '@/types'
 import { toDateKey, formatRelativeDia } from '@/lib/agenda'
 import { formatHoraCompacta } from '@/lib/cenaHorario'
@@ -98,7 +106,7 @@ export function PersonagemDetalhe() {
     () =>
       (cena ? juntarComLegado(figurinosDaCena, cena.figurinos, { cenaId: cena.id, cenaNome: cena.nome }) : []).filter(
         f =>
-          f.personagemId === personagemId &&
+          !!personagemId && personagensDoFigurino(f).includes(personagemId) &&
           (figurinoVisivel(f) || f.uploadedByUid === currentUser?.uid || podeAvaliarFigurino),
       ),
     [figurinosDaCena, cena, personagemId, currentUser?.uid, podeAvaliarFigurino],

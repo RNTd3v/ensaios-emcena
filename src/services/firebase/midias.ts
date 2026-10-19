@@ -112,11 +112,47 @@ export async function deleteMusica(musica: Musica, comoEquipeId?: string): Promi
 
 // ---------- Figurinos ----------
 
+export interface PersonagemDoFigurino {
+  id: string
+  nome?: string
+}
+
+/** Ids dos personagens da foto (vazio = geral). */
+export function personagensDoFigurino(f: Pick<FigurinoImagem, 'personagemId' | 'personagemIds'>): string[] {
+  return f.personagemIds?.length ? f.personagemIds : f.personagemId ? [f.personagemId] : []
+}
+
+/** Nome guardado na foto pro personagem `id` (pra quando ele não está mais na cena). */
+export function nomeGuardadoNoFigurino(f: Pick<FigurinoImagem, 'personagemId' | 'personagemNome' | 'personagemIds' | 'personagemNomes'>, id: string) {
+  const i = f.personagemIds?.indexOf(id) ?? -1
+  if (i >= 0 && f.personagemNomes?.[i]) return f.personagemNomes[i]
+  return id === f.personagemId ? f.personagemNome : undefined
+}
+
+/** Campos de personagem da foto: o primeiro em `personagemId`/`personagemNome`; com 2+, a lista toda também. */
+function camposPersonagens(cenaId: string | undefined, lista: PersonagemDoFigurino[]) {
+  const l = cenaId ? lista : []
+  return {
+    personagemId: l[0]?.id,
+    personagemNome: l[0]?.nome,
+    personagemIds: l.length > 1 ? l.map(p => p.id) : undefined,
+    personagemNomes: l.length > 1 ? l.map(p => p.nome ?? '') : undefined,
+  }
+}
+
 export async function uploadFigurino(
   file: File,
-  vinculo: MidiaVinculo & { personagemId?: string; personagemNome?: string; legenda?: string; aprovacao?: 'pendente' },
+  vinculo: MidiaVinculo & {
+    personagemId?: string
+    personagemNome?: string
+    /** Vários personagens (substitui `personagemId`/`personagemNome`). */
+    personagens?: PersonagemDoFigurino[]
+    legenda?: string
+    aprovacao?: 'pendente'
+  },
   byUid: string,
 ): Promise<void> {
+  const personagens = vinculo.personagens ?? (vinculo.personagemId ? [{ id: vinculo.personagemId, nome: vinculo.personagemNome }] : [])
   const up = await uploadCenaFile(vinculo.cenaId ?? PASTA_SEM_CENA, 'figurino', file)
   await setDoc(
     doc(db, 'figurinos', up.id),
@@ -125,8 +161,7 @@ export async function uploadFigurino(
       path: up.path,
       cenaId: vinculo.cenaId,
       cenaNome: vinculo.cenaId ? vinculo.cenaNome : undefined,
-      personagemId: vinculo.cenaId ? vinculo.personagemId : undefined,
-      personagemNome: vinculo.cenaId && vinculo.personagemId ? vinculo.personagemNome : undefined,
+      ...camposPersonagens(vinculo.cenaId, personagens),
       legenda: vinculo.legenda?.trim() || undefined,
       equipeId: vinculo.equipeId,
       aprovacao: vinculo.aprovacao,
@@ -138,17 +173,20 @@ export async function uploadFigurino(
 
 export async function updateFigurino(
   id: string,
-  input: { cenaId?: string; cenaNome?: string; personagemId?: string; personagemNome?: string; legenda?: string },
+  input: { cenaId?: string; cenaNome?: string; personagens: PersonagemDoFigurino[]; legenda?: string },
   comoEquipeId?: string,
 ): Promise<void> {
+  const p = camposPersonagens(input.cenaId, input.personagens)
   await updateDoc(
     doc(db, 'figurinos', id),
     comEquipe(
       {
         cenaId: input.cenaId || deleteField(),
         cenaNome: input.cenaId ? input.cenaNome ?? deleteField() : deleteField(),
-        personagemId: input.cenaId && input.personagemId ? input.personagemId : deleteField(),
-        personagemNome: input.cenaId && input.personagemId ? input.personagemNome ?? deleteField() : deleteField(),
+        personagemId: p.personagemId ?? deleteField(),
+        personagemNome: p.personagemNome ?? deleteField(),
+        personagemIds: p.personagemIds ?? deleteField(),
+        personagemNomes: p.personagemNomes ?? deleteField(),
         legenda: input.legenda?.trim() || deleteField(),
       },
       comoEquipeId,

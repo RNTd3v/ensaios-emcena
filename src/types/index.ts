@@ -157,6 +157,13 @@ export interface FigurinoImagem {
   cenaId?: string
   cenaNome?: string
   personagemNome?: string
+  /**
+   * Foto de mais de um personagem: todos os ids/nomes, na mesma ordem. O primeiro também fica em
+   * `personagemId`/`personagemNome` (regras, notificações e telas antigas leem só esses). Ler pelo
+   * `personagensDoFigurino`.
+   */
+  personagemIds?: string[]
+  personagemNomes?: string[]
   legenda?: string
   /** Equipe (com `gerencia` incluindo 'figurinos') em nome de quem foi cadastrado — base da permissão. */
   equipeId?: string

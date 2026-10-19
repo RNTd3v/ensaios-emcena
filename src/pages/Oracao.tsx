@@ -89,6 +89,8 @@ export function Oracao() {
         <h1 className="text-xl font-semibold text-white">Relógio de oração</h1>
       </div>
 
+      <PedidosCard pedidos={pedidos} podeGerenciar={podeGerenciar} uid={currentUser.uid} />
+
       <EquipeCard config={config} users={users} isAdmin={isAdmin} onEditar={() => setEquipeOpen(true)} />
 
       <OrientacoesCard config={config} podeEditar={podeGerenciar} />
@@ -98,8 +100,6 @@ export function Oracao() {
       <MeuHorarioCard key={meuHorario?.updatedAt ?? 'novo'} uid={currentUser.uid} horario={meuHorario} />
 
       <GradeCard horarios={horarios} users={users} nameFor={nameFor} podeRemover={podeGerenciar} />
-
-      <PedidosCard pedidos={pedidos} podeGerenciar={podeGerenciar} uid={currentUser.uid} />
 
       {isAdmin && (
         <EquipeDialog

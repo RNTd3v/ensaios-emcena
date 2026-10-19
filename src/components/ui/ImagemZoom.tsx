@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { X } from 'lucide-react'
-import { corsDoStorage } from '@/lib/imagem'
+import { Download, X } from 'lucide-react'
+import { baixarImagem, corsDoStorage } from '@/lib/imagem'
 
 const ESCALA_MAX = 5
 const ESCALA_TOQUE_DUPLO = 2.5
@@ -117,7 +117,10 @@ export function ImagemZoom({ src, alt, onClose }: Props) {
 
   return createPortal(
     <div className="fixed inset-0 z-[60] flex flex-col bg-black">
-      <div className="flex justify-end p-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))]">
+      <div className="flex justify-end gap-2 p-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))]">
+        <button onClick={() => baixarImagem(src, alt)} className="rounded-full bg-white/10 p-2 text-white hover:bg-white/20" aria-label="Baixar">
+          <Download className="h-5 w-5" />
+        </button>
         <button onClick={onClose} className="rounded-full bg-white/10 p-2 text-white hover:bg-white/20" aria-label="Fechar">
           <X className="h-5 w-5" />
         </button>

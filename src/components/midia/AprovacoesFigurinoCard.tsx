@@ -51,6 +51,7 @@ export function AprovacoesFigurinoCard({ cena, users }: { cena: Cena; users: Rec
           <ShieldCheck className="h-4 w-4 text-amber-600" />
           Fotos de figurino pra aprovar ({pendentes.length})
         </p>
+        <p className="text-xs text-muted-foreground">Toque na foto para ampliar com zoom e baixar.</p>
         {pendentes.map(f => {
           const personagemNome = cena.personagens.find(p => p.id === f.personagemId)?.nome ?? f.personagemNome ?? 'Personagem'
           const salvando = salvandoId === f.id

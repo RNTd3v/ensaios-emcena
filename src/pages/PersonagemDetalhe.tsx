@@ -5,6 +5,8 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
+import { ImagemAcoes } from '@/components/ui/ImagemAcoes'
+import { ImagemZoom } from '@/components/ui/ImagemZoom'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/Spinner'
@@ -126,6 +128,7 @@ export function PersonagemDetalhe() {
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
+  const [zoomUrl, setZoomUrl] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<FigurinoImagem | null>(null)
 
   async function handleUpload(fileList: FileList | null) {
@@ -513,7 +516,9 @@ export function PersonagemDetalhe() {
         {viewerIndex !== null && fotos[viewerIndex] && (
           <div className="space-y-3">
             <div className="relative">
-              <img src={fotos[viewerIndex].url} crossOrigin={corsDoStorage(fotos[viewerIndex].url)} alt="" className="w-full rounded-lg" />
+              <button type="button" onClick={() => setZoomUrl(fotos[viewerIndex].url)} className="block w-full cursor-zoom-in" aria-label="Ampliar imagem">
+                <img src={fotos[viewerIndex].url} crossOrigin={corsDoStorage(fotos[viewerIndex].url)} alt="" className="w-full rounded-lg" />
+              </button>
               {viewerIndex > 0 && (
                 <button
                   type="button"
@@ -538,6 +543,8 @@ export function PersonagemDetalhe() {
             <p className="text-center text-xs text-muted-foreground">
               {viewerIndex + 1}/{fotos.length}
             </p>
+            <ImagemAcoes src={fotos[viewerIndex].url} nome={`figurino-${personagem?.nome ?? ''}`} />
+            {zoomUrl && <ImagemZoom src={zoomUrl} onClose={() => setZoomUrl(null)} />}
             {fotos[viewerIndex].aprovacao === 'pendente' && (
               <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Aguardando aprovação do líder da cena.</p>
             )}

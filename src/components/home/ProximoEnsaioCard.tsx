@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarClock, CalendarDays, Check, CheckCheck, ChevronRight, CircleHelp, Clapperboard, Clock, MapPin, X } from 'lucide-react'
+import { CalendarClock, CalendarDays, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, Clapperboard, Clock, MapPin, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/Spinner'
 import { Card, CardContent } from '@/components/ui/card'
@@ -60,6 +60,8 @@ function juntarNomes(nomes: string[]): string {
 export function ProximoEnsaioCard({ uid, dependentes }: { uid: string; dependentes: PessoaDaCasa[] }) {
   const [porPessoa, setPorPessoa] = useState<Record<string, EnsaiosDaPessoa>>({})
   const [locais, setLocais] = useState<LocalEnsaio[]>([])
+  // "Mais nesta semana" começa fechado: o destaque é o próximo ensaio, o resto fica a um toque.
+  const [semanaAberta, setSemanaAberta] = useState(false)
   const { settings } = useSettingsStore()
   // Re-renderiza a cada 30s pra o ensaio virar "acontecendo" na hora em que começa.
   useAgora()
@@ -218,18 +220,24 @@ export function ProximoEnsaioCard({ uid, dependentes }: { uid: string; dependent
       {(daSemana.length > 0 || realizados.length > 0) && (
         <Card>
           <CardContent className="space-y-1">
-            <div className="flex items-center gap-2 pb-1">
+            <button
+              type="button"
+              onClick={() => setSemanaAberta(a => !a)}
+              aria-expanded={semanaAberta}
+              className={cn('flex w-full items-center gap-2 text-left', semanaAberta && 'pb-1')}
+            >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <CalendarDays className="h-4 w-4" />
               </span>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {daSemana.length ? 'Mais nesta semana' : 'Ensaios da semana'}
+              <p className="flex-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {daSemana.length ? 'Mais nesta semana' : 'Ensaios da semana'} ({daSemana.length + realizados.length})
               </p>
-            </div>
-            {daSemana.map((item, i) => (
+              <ChevronDown className={cn('h-4 w-4 shrink-0 text-gray-400 transition-transform', !semanaAberta && '-rotate-90')} />
+            </button>
+            {semanaAberta && daSemana.map((item, i) => (
               <LinhaDaSemana key={item.ensaio.id} {...item} uid={uid} todayKey={todayKey} className={i > 0 ? 'border-t border-gray-100' : undefined} />
             ))}
-            {realizados.length > 0 && (
+            {semanaAberta && realizados.length > 0 && (
               <>
                 <p className={cn('pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground', daSemana.length > 0 && 'pt-3')}>
                   Realizados

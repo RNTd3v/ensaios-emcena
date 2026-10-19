@@ -85,7 +85,9 @@ import { cn } from '@/lib/utils'
 import { PessoaSelect, nomeComApelido, pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { ContatoPessoaDialog } from '@/components/cena/ContatoPessoaDialog'
 import { DiarioCenaCard } from '@/components/cena/DiarioCenaCard'
-import { uidsDoEnsaio } from '@/lib/ensaioPublico'
+import { avisoNaoChamado, uidsDoEnsaio, type PessoaDaCasaNome } from '@/lib/ensaioPublico'
+import { AvisoNaoChamado } from '@/components/ensaio/AvisoNaoChamado'
+import { subscribeToDependentes } from '@/services/firebase/dependentes'
 import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 interface Occurrence {
@@ -269,6 +271,14 @@ export function CenaDetalhe() {
   }, [ensaios, todayKey])
   const myPersonagem = cena?.personagens.find(p => p.participanteUid === currentUser?.uid)
 
+  // Dependentes: quando só o filho é chamado, o aviso diz isso em vez de "Você não precisa ir".
+  const [dependentes, setDependentes] = useState<PessoaDaCasaNome[]>([])
+  useEffect(
+    () =>
+      currentUser ? subscribeToDependentes(currentUser.uid, lista => setDependentes(lista.map(d => ({ uid: d.uid, nome: d.apelido || d.nomeCompleto })))) : undefined,
+    [currentUser],
+  )
+
   /** Segunda a sábado — domingo não tem ensaio, não faz sentido mostrar a linha na agenda. */
   const displayedWeek = useMemo(() => weekDates(weekBase).filter(d => d.getDay() !== 0), [weekBase])
   const weekLabel = (() => {
@@ -320,14 +330,25 @@ export function CenaDetalhe() {
     return [...(cena?.personagens ?? [])].sort((a, b) => peso(a) - peso(b))
   }, [cena?.personagens, cena?.liderUid, currentUser?.uid])
 
+  /**
+   * Quem pode entrar na cena. Quem não marcou algum dia da cena também entra (o líder decide), mas
+   * vai pro fim da lista com o aviso dos dias que faltam.
+   */
   const availableParaAdicionar = useMemo(
     () =>
       (inscricoes ?? [])
         .filter(i => i.status === 'confirmado' && users[i.uid]?.active !== false)
         .filter(i => !cena?.participantes.includes(i.uid))
         .filter(i => i.areas.some(a => a === 'elenco' || a === 'tecnica'))
-        .filter(i => !cena?.dias.length || cena.dias.every(d => diasDisponiveis(i.disponibilidade.dias).includes(d)))
-        .sort((a, b) => (a.apelido || a.nomeCompleto).localeCompare(b.apelido || b.nomeCompleto)),
+        .map(i => {
+          const disponiveis = diasDisponiveis(i.disponibilidade.dias)
+          return { inscricao: i, diasFaltando: (cena?.dias ?? []).filter(d => !disponiveis.includes(d)) }
+        })
+        .sort(
+          (a, b) =>
+            Number(a.diasFaltando.length > 0) - Number(b.diasFaltando.length > 0) ||
+            (a.inscricao.apelido || a.inscricao.nomeCompleto).localeCompare(b.inscricao.apelido || b.inscricao.nomeCompleto),
+        ),
     [inscricoes, users, cena?.participantes, cena?.dias],
   )
 
@@ -834,6 +855,7 @@ export function CenaDetalhe() {
                     // Com obrigatórios marcados, só eles confirmam presença.
                     const chamado = !!currentUser && uidsDoEnsaio(cena.personagens, e).has(currentUser.uid)
                     const podeConfirmar = !!myPersonagem && chamado && !jaConfirmou && canCheckin(e.data, e.horario, checkinLimiteHoras)
+                    const aviso = avisoNaoChamado(cena.personagens, e, currentUser?.uid, dependentes)
                     return (
                       <div key={e.id} className="flex items-center gap-1">
                         <button
@@ -841,7 +863,7 @@ export function CenaDetalhe() {
                           disabled={!podeConfirmar || confirmingPresenca}
                           onClick={() => handleConfirmPresenca(e)}
                           title={podeConfirmar ? 'Toque pra confirmar presença' : undefined}
-                          className="flex flex-1 items-center gap-2.5 rounded-lg px-2 py-2.5 text-left text-base"
+                          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-2.5 text-left text-base"
                         >
                           <span
                             className={cn('h-2 w-2 shrink-0 rounded-full', jaConfirmou ? 'bg-emerald-500' : naoVai ? 'bg-red-400' : 'bg-primary')}
@@ -857,8 +879,10 @@ export function CenaDetalhe() {
                             <span className="shrink-0 text-xs font-medium text-red-500">Não vou</span>
                           ) : podeConfirmar ? (
                             <span className="shrink-0 text-xs font-medium text-primary">Confirmar</span>
-                          ) : myPersonagem && !chamado ? (
-                            <span className="shrink-0 text-xs text-muted-foreground">Só obrigatórios</span>
+                          ) : aviso ? (
+                            <span className="min-w-0 shrink">
+                              <AvisoNaoChamado soPrecisam={aviso.soPrecisam} />
+                            </span>
                           ) : null}
                         </button>
                         {e.data === todayKey && (
@@ -896,6 +920,7 @@ export function CenaDetalhe() {
                         const canceled = isCanceled(ensaio)
                         const ativo = ensaio && !canceled
                         const occurrence = !ensaio ? weekOccurrencesByDate[dateKey] : undefined
+                        const aviso = ativo ? avisoNaoChamado(cena.personagens, ensaio, currentUser?.uid, dependentes) : null
                         return (
                           <div key={dateKey} className="flex items-center gap-1">
                           <button
@@ -905,7 +930,7 @@ export function CenaDetalhe() {
                               navigate(ensaio ? `/cenas/${cena.id}/ensaios/${ensaio.id}` : `/cenas/${cena.id}/ensaios/dia/${dateKey}`)
                             }
                             className={cn(
-                              'flex flex-1 items-center gap-2.5 rounded-lg px-2 py-2.5 text-left text-base',
+                              'flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg px-2 py-2.5 text-left text-base',
                               ativo && 'bg-primary text-white',
                               canceled && 'bg-red-50 text-red-400',
                               !ensaio && !occurrence && 'text-gray-600',
@@ -961,6 +986,12 @@ export function CenaDetalhe() {
                               </span>
                             )}
                             {!ensaio && !occurrence && canManageAgenda && <Plus className="h-4 w-4 shrink-0 text-gray-400" />}
+                            {/* Segunda linha, alinhada com o horário (depois das colunas do dia da semana e do número). */}
+                            {aviso && (
+                              <span className="flex min-w-0 basis-full pl-[6.75rem]">
+                                <AvisoNaoChamado soPrecisam={aviso.soPrecisam} />
+                              </span>
+                            )}
                           </button>
                           {ativo && dateKey === todayKey && (
                             <Button
@@ -1623,12 +1654,27 @@ export function CenaDetalhe() {
                 id="participante-add"
                 value={participanteAddUid}
                 onChange={setParticipanteAddUid}
-                pessoas={availableParaAdicionar.map(i => pessoaOpcao(i.uid, users[i.uid], i))}
+                pessoas={availableParaAdicionar.map(({ inscricao: i, diasFaltando }) =>
+                  pessoaOpcao(
+                    i.uid,
+                    users[i.uid],
+                    i,
+                    diasFaltando.length ? `Sem disponibilidade: ${sortDias(diasFaltando).map(d => DIA_SEMANA_LABELS[d]).join(', ')}` : undefined,
+                  ),
+                )}
                 titulo="Adicionar participante"
               />
               {availableParaAdicionar.length === 0 && (
-                <p className="text-xs text-muted-foreground mt-1">Não há mais ninguém disponível pra adicionar.</p>
+                <p className="text-xs text-muted-foreground mt-1">Não há mais ninguém pra adicionar.</p>
               )}
+              {(() => {
+                const sel = availableParaAdicionar.find(p => p.inscricao.uid === participanteAddUid)
+                return sel?.diasFaltando.length ? (
+                  <p className="mt-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Essa pessoa não marcou disponibilidade em {sortDias(sel.diasFaltando).map(d => DIA_SEMANA_LABELS[d]).join(', ')}.
+                  </p>
+                ) : null
+              })()}
             </div>
 
             {participanteError && <p className="text-sm text-red-600">{participanteError}</p>}

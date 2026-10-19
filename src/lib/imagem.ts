@@ -28,3 +28,46 @@ export async function reduzirFotoQuadrada(file: File, lado = 512): Promise<Blob>
 export function corsDoStorage(url: string | undefined | null): 'anonymous' | undefined {
   return url?.startsWith('https://firebasestorage.googleapis.com/') ? 'anonymous' : undefined
 }
+
+/** Nome de arquivo seguro a partir da legenda (ou um genérico), com a extensão do tipo baixado. */
+function nomeDoArquivo(nome: string | undefined, tipo: string) {
+  const ext = tipo.split('/')[1]?.replace('jpeg', 'jpg').split('+')[0] || 'jpg'
+  const base = (nome ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
+  return `${base || 'imagem'}.${ext}`
+}
+
+/**
+ * Baixa a imagem. No celular abre a folha de compartilhar (dá pra "Salvar imagem" na galeria —
+ * no PWA do iPhone o `download` do link não funciona); no computador baixa o arquivo. Se o fetch
+ * falhar (CORS), abre a imagem numa aba nova pra salvar por lá.
+ */
+export async function baixarImagem(url: string, nome?: string) {
+  let blob: Blob
+  try {
+    const res = await fetch(url, { mode: 'cors' })
+    if (!res.ok) throw new Error(String(res.status))
+    blob = await res.blob()
+  } catch {
+    window.open(url, '_blank', 'noopener')
+    return
+  }
+  const file = new File([blob], nomeDoArquivo(nome, blob.type), { type: blob.type || 'image/jpeg' })
+  const toque = window.matchMedia('(pointer: coarse)').matches
+  if (toque && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] })
+      return
+    } catch (e) {
+      // Cancelou a folha de compartilhar: não cai no download.
+      if ((e as Error).name === 'AbortError') return
+    }
+  }
+  const objUrl = URL.createObjectURL(file)
+  const a = document.createElement('a')
+  a.href = objUrl
+  a.download = file.name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(objUrl), 1000)
+}

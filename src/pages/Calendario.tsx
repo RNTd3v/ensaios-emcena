@@ -18,6 +18,9 @@ import { formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { DIAS_ORDER } from '@/lib/dias'
 import { cn } from '@/lib/utils'
 import { ensaioStatus } from '@/lib/ensaioStatus'
+import { avisoNaoChamado, type PessoaDaCasaNome } from '@/lib/ensaioPublico'
+import { AvisoNaoChamado } from '@/components/ensaio/AvisoNaoChamado'
+import { subscribeToDependentes } from '@/services/firebase/dependentes'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 
 type Visao = 'semana' | 'mes'
@@ -94,6 +97,14 @@ export function Calendario() {
   useEffect(() => {
     getUsers().then(list => setUsers(Object.fromEntries(list.map(u => [u.uid, u]))))
   }, [])
+
+  // Dependentes: quando só o filho é chamado, o aviso diz isso em vez de "Você não precisa ir".
+  const [dependentes, setDependentes] = useState<PessoaDaCasaNome[]>([])
+  useEffect(
+    () =>
+      currentUser ? subscribeToDependentes(currentUser.uid, lista => setDependentes(lista.map(d => ({ uid: d.uid, nome: d.apelido || d.nomeCompleto })))) : undefined,
+    [currentUser],
+  )
 
   const inscricoesByUid = useMemo(() => Object.fromEntries(inscricoes.map(i => [i.uid, i])), [inscricoes])
 
@@ -254,7 +265,7 @@ export function Calendario() {
                   {key === todayKey && <span className="ml-1.5 text-xs font-medium text-primary">Hoje</span>}
                 </p>
                 {ehApresentacao(key) && <ApresentacaoAviso />}
-                <ListaDoDia itens={itens} nameFor={nameFor} users={users} />
+                <ListaDoDia itens={itens} nameFor={nameFor} users={users} uid={currentUser?.uid} dependentes={dependentes} />
               </Card>
             )
           })}
@@ -323,7 +334,7 @@ export function Calendario() {
               {capitalize(new Date(`${selectedKey}T00:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }))}
             </p>
             {ehApresentacao(selectedKey) && <ApresentacaoAviso />}
-            <ListaDoDia itens={ocorrenciasPorData.get(selectedKey) ?? []} nameFor={nameFor} users={users} />
+            <ListaDoDia itens={ocorrenciasPorData.get(selectedKey) ?? []} nameFor={nameFor} users={users} uid={currentUser?.uid} dependentes={dependentes} />
           </Card>
         </>
       )}
@@ -353,9 +364,11 @@ interface ListaDoDiaProps {
   itens: Ocorrencia[]
   nameFor: (uid: string) => string
   users: Record<string, AppUser>
+  uid?: string
+  dependentes: PessoaDaCasaNome[]
 }
 
-function ListaDoDia({ itens, nameFor, users }: ListaDoDiaProps) {
+function ListaDoDia({ itens, nameFor, users, uid, dependentes }: ListaDoDiaProps) {
   const todayKey = toDateKey(new Date())
   if (!itens.length) return <p className="text-xs text-muted-foreground">Nenhum ensaio.</p>
 
@@ -363,6 +376,7 @@ function ListaDoDia({ itens, nameFor, users }: ListaDoDiaProps) {
     <div className="divide-y divide-gray-100">
       {itens.map(o => {
         const lider = o.cena.liderUid
+        const aviso = o.status === 'cancelado' ? null : avisoNaoChamado(o.cena.personagens, o.ensaio, uid, dependentes)
         return (
           <Link key={o.key} to={o.ensaio ? `/cenas/${o.cena.id}/ensaios/${o.ensaio.id}` : `/cenas/${o.cena.id}/ensaios/dia/${o.data}`} className="flex items-center gap-3 py-2">
             <div className={cn('w-11 shrink-0 text-sm font-semibold', o.status === 'confirmado' ? 'text-primary' : 'text-gray-400')}>
@@ -398,8 +412,11 @@ function ListaDoDia({ itens, nameFor, users }: ListaDoDiaProps) {
                   <span className="truncate">{o.ensaio.local}</span>
                 </p>
               )}
+              <div className="mt-1 flex flex-wrap items-center gap-1">
+                <EnsaioStatusChip status={ensaioStatus(o.ensaio, todayKey)} />
+                {aviso && <AvisoNaoChamado soPrecisam={aviso.soPrecisam} />}
+              </div>
             </div>
-            <EnsaioStatusChip status={ensaioStatus(o.ensaio, todayKey)} />
             <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
           </Link>
         )

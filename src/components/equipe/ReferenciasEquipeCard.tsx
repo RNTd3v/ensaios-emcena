@@ -3,6 +3,7 @@ import { ChevronDown, Image as ImageIcon, Pencil, Plus, Trash2 } from 'lucide-re
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
+import { ImagemAcoes } from '@/components/ui/ImagemAcoes'
 import { ImagemZoom } from '@/components/ui/ImagemZoom'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -348,6 +349,7 @@ function ImagemViewer({ imagem, equipe, cenas, mostrarEquipe, podeEditar, onClos
         <button type="button" onClick={() => setZoom(true)} className="block w-full cursor-zoom-in" aria-label="Ampliar imagem">
           <img src={imagem.url} crossOrigin={corsDoStorage(imagem.url)} alt={imagem.legenda ?? ''} className="max-h-[55vh] w-full rounded-lg object-contain bg-gray-50" />
         </button>
+        <ImagemAcoes src={imagem.url} nome={imagem.legenda} />
         {zoom && <ImagemZoom src={imagem.url} alt={imagem.legenda} onClose={() => setZoom(false)} />}
         <div className="text-xs text-muted-foreground">
           <p>{mostrarEquipe ? imagem.equipeNome : imagem.cenaId ? (imagem.cenaNome ?? 'Cena') : 'Só da equipe'}</p>

@@ -23,6 +23,7 @@ import { VisaoDialog } from '@/components/layout/VisaoDialog'
 import { MinhaFotoDialog } from '@/components/layout/MinhaFotoDialog'
 import { Avatar } from '@/components/ui/Avatar'
 import { PuxarParaAtualizar } from '@/components/layout/PuxarParaAtualizar'
+import { LembreteOracaoToast } from '@/components/oracao/LembreteOracaoToast'
 
 export function AppLayout() {
   const user = useAuthStore(s => s.user)
@@ -112,6 +113,8 @@ export function AppLayout() {
           </button>
         )}
       </footer>
+
+      {uid && !semInscricao && !apresentacao && <LembreteOracaoToast uid={uid} />}
 
       {menuOpen && (
         <div className="absolute inset-0 z-40 bg-black/50" onClick={() => setMenuOpen(false)}>

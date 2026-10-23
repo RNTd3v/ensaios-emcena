@@ -480,6 +480,19 @@ export interface PedidoOracao {
   createdAt: string
 }
 
+/**
+ * Orientação de oração com data (coleção `orientacoesOracao`) — cadastrada pelo líder/assistente da
+ * oração ou admin. O lembrete ao abrir o app mostra a do dia ou, sem ela, a última antes de hoje.
+ */
+export interface OrientacaoOracao {
+  id: string
+  /** yyyy-MM-dd */
+  data: string
+  texto: string
+  createdByUid: string
+  createdAt: string
+}
+
 /** Configuração da página de oração (doc `oracao/config`): quem lidera e as orientações. */
 export interface OracaoConfig {
   liderUid?: string

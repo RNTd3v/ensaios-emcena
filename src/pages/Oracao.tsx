@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Crown, HandHelping, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react'
+import { addDays, format, parseISO } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { ArrowLeft, CheckCircle2, Compass, Crown, HandHelping, Pencil, Plus, Trash2, UsersRound, X } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -12,15 +14,18 @@ import { Textarea } from '@/components/ui/Textarea'
 import { OrandoAgoraCard, useAgora, useUsersMap } from '@/components/oracao/OrandoAgora'
 import { PedidosLista } from '@/components/oracao/PedidosOracaoDialog'
 import {
+  createOrientacaoOracao,
   createPedidoOracao,
   deleteHorarioOracao,
+  deleteOrientacaoOracao,
   deletePedidoOracao,
   saveHorarioOracao,
   saveOracaoEquipe,
-  saveOracaoOrientacoes,
   subscribeToHorariosOracao,
   subscribeToOracaoConfig,
+  subscribeToOrientacoesOracao,
   subscribeToPedidosOracao,
+  updateOrientacaoOracao,
   updatePedidoOracao,
 } from '@/services/firebase/oracao'
 import { useAuthStore } from '@/stores/authStore'
@@ -29,12 +34,14 @@ import {
   DIAS_SEMANA_NOMES,
   DURACOES_ORACAO,
   TODOS_OS_DIAS,
+  dataIso,
   estaOrando,
+  orientacaoDoDia,
   formatFaixa,
   horariosDoDia,
 } from '@/lib/oracao'
 import { cn } from '@/lib/utils'
-import type { AppUser, HorarioOracao, OracaoConfig, PedidoOracao } from '@/types'
+import type { AppUser, HorarioOracao, OracaoConfig, OrientacaoOracao, PedidoOracao } from '@/types'
 import { PessoaSelect, inscritosConfirmados, pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
@@ -89,11 +96,11 @@ export function Oracao() {
         <h1 className="text-xl font-semibold text-white">Relógio de oração</h1>
       </div>
 
+      <OrientacoesCard podeEditar={podeGerenciar} uid={currentUser.uid} />
+
       <PedidosCard pedidos={pedidos} podeGerenciar={podeGerenciar} uid={currentUser.uid} />
 
       <EquipeCard config={config} users={users} isAdmin={isAdmin} onEditar={() => setEquipeOpen(true)} />
-
-      <OrientacoesCard config={config} podeEditar={podeGerenciar} />
 
       <OrandoAgoraCard />
 
@@ -272,68 +279,247 @@ function EquipeDialog({
 
 // ---------- Orientações ----------
 
-function OrientacoesCard({ config, podeEditar }: { config: OracaoConfig; podeEditar: boolean }) {
-  const [editando, setEditando] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [saving, setSaving] = useState(false)
+/** Quantas orientações aparecem antes do "Ver mais". */
+const MAX_ORIENTACOES = 3
 
-  if (!config.orientacoes && !podeEditar) return null
+function OrientacoesCard({ podeEditar, uid }: { podeEditar: boolean; uid: string }) {
+  const [orientacoes, setOrientacoes] = useState<OrientacaoOracao[] | null>(null)
+  const [editando, setEditando] = useState<OrientacaoOracao | 'nova' | null>(null)
+  const [todasOpen, setTodasOpen] = useState(false)
+  const [excluindo, setExcluindo] = useState<string | null>(null)
+  const [excluindoSaving, setExcluindoSaving] = useState(false)
 
-  async function handleSave() {
-    setSaving(true)
+  useEffect(() => subscribeToOrientacoesOracao(setOrientacoes), [])
+
+  if (!orientacoes?.length && !podeEditar) return null
+
+  const agora = new Date()
+  const hoje = dataIso(agora)
+  const amanha = dataIso(addDays(agora, 1))
+  const ontem = dataIso(addDays(agora, -1))
+  // Em ordem crescente de data. O card mostra a do dia (ou a última antes de hoje), em destaque — é a
+  // que o lembrete mostra — e as próximas; o resto fica no "Ver todos".
+  const crescente = [...(orientacoes ?? [])].reverse()
+  const atual = orientacoes ? orientacaoDoDia(orientacoes, hoje) : undefined
+  const proximas = crescente.filter(o => o.data > hoje)
+  const visiveis = (atual ? [atual, ...proximas] : proximas).slice(0, MAX_ORIENTACOES)
+  const ocultas = crescente.length - visiveis.length
+
+  function rotuloData(data: string): string {
+    if (data === hoje) return 'Hoje'
+    if (data === amanha) return 'Amanhã'
+    if (data === ontem) return 'Ontem'
+    return format(parseISO(data), 'EEE, dd/MM', { locale: ptBR })
+  }
+
+  async function handleExcluir(id: string) {
+    setExcluindoSaving(true)
     try {
-      await saveOracaoOrientacoes(draft)
-      setEditando(false)
+      await deleteOrientacaoOracao(id)
+      setExcluindo(null)
     } finally {
+      setExcluindoSaving(false)
+    }
+  }
+
+  function item(o: OrientacaoOracao) {
+    return (
+      <div
+        key={o.id}
+        className={cn(
+          'rounded-xl border px-3 py-2.5',
+          o === atual ? 'border-amber-200 bg-amber-50' : 'border-gray-100 bg-gray-50',
+        )}
+      >
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <p className={cn('text-xs font-semibold capitalize', o === atual ? 'text-amber-700' : 'text-gray-500')}>
+              {/* Sem uma do dia, a última anterior vale pra hoje. */}
+              {o === atual ? 'Hoje' : rotuloData(o.data)}
+            </p>
+            <p className="whitespace-pre-wrap text-sm text-gray-700">{o.texto}</p>
+          </div>
+          {podeEditar && excluindo !== o.id && (
+            <div className="-mr-1.5 -mt-1 flex shrink-0">
+              <Button variant="ghost" size="icon" className="h-8 w-8" title="Editar direcionamento" onClick={() => setEditando(o)}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-red-600"
+                title="Excluir direcionamento"
+                onClick={() => setExcluindo(o.id)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+        {excluindo === o.id && (
+          <div className="mt-2 space-y-2 rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="text-xs text-red-700">Excluir esse direcionamento?</p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="flex-1" onClick={() => setExcluindo(null)} disabled={excluindoSaving}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" size="sm" className="flex-1" onClick={() => handleExcluir(o.id)} disabled={excluindoSaving}>
+                {excluindoSaving && <Spinner size="sm" className="border-white/40 border-t-white" />}
+                Excluir
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <Card>
+      <CardContent className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="flex items-center gap-1.5 text-sm font-semibold">
+            <Compass className="h-4 w-4 text-primary" />
+            Direcionamentos
+          </p>
+          {podeEditar && (
+            <Button size="sm" className="gap-1" onClick={() => setEditando('nova')}>
+              <Plus className="h-4 w-4" />
+              Novo
+            </Button>
+          )}
+        </div>
+        {!orientacoes ? (
+          <Spinner size="sm" />
+        ) : orientacoes.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Nenhum direcionamento ainda.</p>
+        ) : (
+          <div className="space-y-2">
+            {visiveis.map(item)}
+            {ocultas > 0 && (
+              <button
+                type="button"
+                onClick={() => setTodasOpen(true)}
+                className="flex w-full items-center justify-center gap-1.5 py-1 text-sm font-medium text-primary"
+              >
+                Ver todos
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-white">
+                  {ocultas}
+                </span>
+              </button>
+            )}
+          </div>
+        )}
+      </CardContent>
+
+      <Dialog
+        open={todasOpen}
+        onClose={() => setTodasOpen(false)}
+        title={
+          <span className="flex items-center gap-2">
+            <Compass className="h-5 w-5 text-primary" />
+            Direcionamentos
+          </span>
+        }
+      >
+        <ListaComFoco itens={crescente} foco={atual ?? proximas[0]} render={item} />
+      </Dialog>
+
+      {editando && (
+        <OrientacaoDialog orientacao={editando === 'nova' ? undefined : editando} uid={uid} onClose={() => setEditando(null)} />
+      )}
+    </Card>
+  )
+}
+
+/**
+ * Lista que abre com o `foco` (o direcionamento de hoje) no topo, seguido dos próximos; os
+ * anteriores só aparecem rolando pra cima.
+ */
+function ListaComFoco({
+  itens,
+  foco,
+  render,
+}: {
+  itens: OrientacaoOracao[]
+  foco?: OrientacaoOracao
+  render: (o: OrientacaoOracao) => React.ReactNode
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const focoRef = useRef<HTMLDivElement>(null)
+  const i = foco ? itens.indexOf(foco) : 0
+  const antes = i > 0 ? itens.slice(0, i) : []
+  const depois = i > 0 ? itens.slice(i) : itens
+
+  useLayoutEffect(() => {
+    if (containerRef.current && focoRef.current) containerRef.current.scrollTop = focoRef.current.offsetTop
+  }, [])
+
+  return (
+    // Altura fixa e o bloco do foco com no mínimo essa altura: assim ele sempre consegue ficar no
+    // topo, mesmo com poucos próximos.
+    <div ref={containerRef} className="relative h-[60vh] overflow-y-auto">
+      {antes.length > 0 && <div className="space-y-2 pb-2">{antes.map(render)}</div>}
+      <div ref={focoRef} className="min-h-full space-y-2">
+        {depois.map(render)}
+      </div>
+    </div>
+  )
+}
+
+function OrientacaoDialog({ orientacao, uid, onClose }: { orientacao?: OrientacaoOracao; uid: string; onClose: () => void }) {
+  const [data, setData] = useState(orientacao?.data ?? dataIso(new Date()))
+  const [texto, setTexto] = useState(orientacao?.texto ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function run(fn: () => Promise<void>) {
+    setSaving(true)
+    setError('')
+    try {
+      await fn()
+      onClose()
+    } catch {
+      setError('Não foi possível salvar. Tente de novo.')
       setSaving(false)
     }
   }
 
   return (
-    <Card>
-      <CardContent className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold">Orientações</p>
-          {podeEditar && !editando && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              title="Editar orientações"
-              onClick={() => {
-                setDraft(config.orientacoes ?? '')
-                setEditando(true)
-              }}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-          )}
+    <Dialog open onClose={onClose} title={orientacao ? 'Editar direcionamento' : 'Novo direcionamento'}>
+      <div className="space-y-4">
+        <div>
+          <Label htmlFor="orientacao-data">Data</Label>
+          <Input id="orientacao-data" type="date" value={data} onChange={e => setData(e.target.value)} />
         </div>
-        {editando ? (
-          <>
-            <Textarea
-              value={draft}
-              onChange={e => setDraft(e.target.value)}
-              placeholder="Ex.: ore pelo elenco, pela equipe técnica e pelas pessoas que vão assistir..."
-              autoFocus
-            />
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1" onClick={() => setEditando(false)} disabled={saving}>
-                Cancelar
-              </Button>
-              <Button size="sm" className="flex-1" onClick={handleSave} disabled={saving}>
-                {saving && <Spinner size="sm" className="border-white/40 border-t-white" />}
-                Salvar
-              </Button>
-            </div>
-          </>
-        ) : (
-          <p className={cn('whitespace-pre-wrap text-sm', config.orientacoes ? 'text-gray-700' : 'text-muted-foreground')}>
-            {config.orientacoes || 'Nenhuma orientação ainda.'}
-          </p>
-        )}
-      </CardContent>
-    </Card>
+        <div>
+          <Label htmlFor="orientacao-texto">Direcionamento</Label>
+          <Textarea
+            id="orientacao-texto"
+            value={texto}
+            onChange={e => setTexto(e.target.value)}
+            className="mt-1.5"
+            placeholder="Ex.: hoje vamos orar pela equipe de som e iluminação"
+            autoFocus
+          />
+        </div>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <Button
+          className="w-full"
+          disabled={saving || !data || !texto.trim()}
+          onClick={() =>
+            run(() =>
+              orientacao ? updateOrientacaoOracao(orientacao.id, { data, texto }) : createOrientacaoOracao({ data, texto }, uid),
+            )
+          }
+        >
+          {saving && <Spinner size="sm" className="border-white/40 border-t-white" />}
+          Salvar
+        </Button>
+      </div>
+    </Dialog>
   )
 }
 

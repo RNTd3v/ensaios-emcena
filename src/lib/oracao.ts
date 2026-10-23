@@ -1,4 +1,4 @@
-import type { HorarioOracao } from '@/types'
+import type { HorarioOracao, OrientacaoOracao } from '@/types'
 
 export const DURACOES_ORACAO = [15, 30, 60] as const
 
@@ -57,4 +57,14 @@ export function proximoHorario(horarios: HorarioOracao[], agora: Date): { horari
 /** Horários de um dia da semana, ordenados pelo início. */
 export function horariosDoDia(horarios: HorarioOracao[], dia: number): HorarioOracao[] {
   return horarios.filter(h => h.dias.includes(dia)).sort((a, b) => a.inicio.localeCompare(b.inicio))
+}
+
+/** Data local no formato yyyy-MM-dd (o mesmo do campo `data` das orientações). */
+export function dataIso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** A orientação de `hoje` ou, sem ela, a última antes de hoje. `orientacoes` vem da mais recente pra mais antiga. */
+export function orientacaoDoDia(orientacoes: OrientacaoOracao[], hoje: string): OrientacaoOracao | undefined {
+  return orientacoes.find(o => o.data <= hoje)
 }

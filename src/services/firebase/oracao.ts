@@ -1,6 +1,6 @@
 import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import { db } from './config'
-import type { HorarioOracao, OracaoConfig, PedidoOracao } from '@/types'
+import type { HorarioOracao, OracaoConfig, OrientacaoOracao, PedidoOracao } from '@/types'
 
 function toIso(value: unknown): string | undefined {
   return (value as { toDate?: () => Date })?.toDate?.().toISOString()
@@ -21,11 +21,6 @@ export function subscribeToOracaoConfig(callback: (config: OracaoConfig) => void
 /** Só admin define quem lidera (garantido pelas firestore.rules). */
 export async function saveOracaoEquipe(liderUid: string | undefined, assistentes: string[]): Promise<void> {
   await setDoc(CONFIG_REF, { liderUid: liderUid ?? null, assistentes, updatedAt: serverTimestamp() }, { merge: true })
-}
-
-/** Admin, líder ou assistente da oração. */
-export async function saveOracaoOrientacoes(orientacoes: string): Promise<void> {
-  await setDoc(CONFIG_REF, { orientacoes: orientacoes.trim() || deleteField(), updatedAt: serverTimestamp() }, { merge: true })
 }
 
 // ---------- Horários (um por pessoa) ----------
@@ -88,4 +83,38 @@ export async function updatePedidoOracao(id: string, input: { titulo?: string; t
 
 export async function deletePedidoOracao(id: string): Promise<void> {
   await deleteDoc(doc(db, 'pedidosOracao', id))
+}
+
+// ---------- Orientações com data ----------
+
+/** Da data mais recente pra mais antiga (no mesmo dia, a cadastrada por último primeiro). */
+export function subscribeToOrientacoesOracao(callback: (orientacoes: OrientacaoOracao[]) => void) {
+  return onSnapshot(
+    collection(db, 'orientacoesOracao'),
+    snap => {
+      const orientacoes = snap.docs.map(d => {
+        const data = d.data()
+        return { ...data, id: d.id, createdAt: toIso(data.createdAt) ?? new Date().toISOString() } as OrientacaoOracao
+      })
+      callback(orientacoes.sort((a, b) => b.data.localeCompare(a.data) || b.createdAt.localeCompare(a.createdAt)))
+    },
+    () => callback([]),
+  )
+}
+
+export async function createOrientacaoOracao(input: { data: string; texto: string }, createdByUid: string): Promise<void> {
+  await addDoc(collection(db, 'orientacoesOracao'), {
+    data: input.data,
+    texto: input.texto.trim(),
+    createdByUid,
+    createdAt: serverTimestamp(),
+  })
+}
+
+export async function updateOrientacaoOracao(id: string, input: { data: string; texto: string }): Promise<void> {
+  await updateDoc(doc(db, 'orientacoesOracao', id), { data: input.data, texto: input.texto.trim() })
+}
+
+export async function deleteOrientacaoOracao(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'orientacoesOracao', id))
 }

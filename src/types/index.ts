@@ -164,6 +164,11 @@ export interface FigurinoImagem {
    */
   personagemIds?: string[]
   personagemNomes?: string[]
+  /**
+   * Foto de um personagem em todas as cenas onde ele aparece (chave de `personagemKey()`), sem
+   * cena — o nome fica em `personagemNome`. Exclusivo com `cenaId`/`personagemId`.
+   */
+  personagemKey?: string
   legenda?: string
   /** Equipe (com `gerencia` incluindo 'figurinos') em nome de quem foi cadastrado — base da permissão. */
   equipeId?: string

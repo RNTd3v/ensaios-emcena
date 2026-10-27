@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/Spinner'
+import { PessoaSelect, pessoaOpcao, type PessoaOpcao } from '@/components/ui/PessoaSelect'
+import { getUsers } from '@/services/firebase/auth'
 import { subscribeToCenas } from '@/services/firebase/cenas'
 import {
   deleteFigurino,
@@ -17,12 +19,15 @@ import {
   nomeGuardadoNoFigurino,
   personagensDoFigurino,
   subscribeToFigurinos,
+  subscribeToFigurinosDePersonagem,
   updateFigurino,
   uploadFigurino,
 } from '@/services/firebase/midias'
+import { subscribeToCatalogoPersonagens } from '@/services/firebase/personagens'
 import { useAuthStore } from '@/stores/authStore'
 import { FIGURINO_MAX_BYTES } from '@/lib/uploads'
-import type { Cena, FigurinoImagem } from '@/types'
+import { agregarPersonagens, personagemKey } from '@/lib/personagens'
+import type { AppUser, Cena, FigurinoImagem, PersonagemCatalogo } from '@/types'
 import { CenaSelect } from '@/components/midia/CenaSelect'
 import { corsDoStorage } from '@/lib/imagem'
 import { cn } from '@/lib/utils'
@@ -50,15 +55,21 @@ interface Props {
   semCard?: boolean
 }
 
+/** Prefixo do "id" de personagem de uma foto de personagem (todas as cenas) fora da página da cena. */
+const PREFIXO_KEY = 'k:'
+
 /**
- * Figurinos (fotos). A equipe de figurino cadastra referências em qualquer cena (ou sem cena); o
- * elenco manda a foto do próprio figurino pela página do personagem, e o líder da cena aprova.
+ * Figurinos (fotos). A equipe de figurino cadastra referências em qualquer cena (ou sem cena), ou
+ * de um personagem em todas as cenas dele; o elenco manda a foto do próprio figurino pela página do
+ * personagem, e o líder da cena aprova.
  */
 export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhivel, ocultarSeVazio, semTitulo, semCard }: Props) {
   const currentUser = useAuthStore(s => s.user)
   const pode = !!gerenciar
   const equipeId = gerenciar?.equipeId
   const [figurinos, setFigurinos] = useState<FigurinoImagem[] | null>(null)
+  /** Na cena: as fotos de personagem (todas as cenas) — entram as dos personagens dela. */
+  const [dePersonagem, setDePersonagem] = useState<FigurinoImagem[]>([])
   const [todasCenas, setTodasCenas] = useState<Cena[]>([])
   const cenas = useMemo(() => todasCenas.filter(c => c.ativo), [todasCenas])
   const isAdmin = currentUser?.role === 'admin'
@@ -71,12 +82,16 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhive
   const cenasEscolha = isAdmin ? todasCenas : cenas
   const [viewer, setViewer] = useState<FigurinoItem | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
-  const [filtroCena, setFiltroCena] = useState<'todas' | 'sem' | 'inativas' | string>('todas')
+  const [filtroCena, setFiltroCena] = useState<'todas' | 'sem' | 'personagem' | 'inativas' | string>('todas')
   const [filtroPersonagem, setFiltroPersonagem] = useState<'todos' | 'geral' | string>('todos')
   const [filtroAprovacao, setFiltroAprovacao] = useState<'todas' | 'valendo' | 'pendente' | 'reprovado'>('todas')
   const [filtrosOpen, setFiltrosOpen] = useState(false)
 
   useEffect(() => subscribeToFigurinos(cena?.id, setFigurinos), [cena?.id])
+  useEffect(() => {
+    if (!cena) return
+    return subscribeToFigurinosDePersonagem(setDePersonagem)
+  }, [cena])
   useEffect(() => {
     if (cena || !currentUser || !pode) return
     return subscribeToCenas(currentUser.role, currentUser.uid, setTodasCenas)
@@ -108,13 +123,26 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhive
     return pode && !f.legado
   }
 
+  /**
+   * Personagens da foto. A de personagem (todas as cenas) vale, na cena, pelos personagens dela com
+   * aquela chave; fora da cena, por `k:<chave>`.
+   */
+  function idsDaFoto(f: FigurinoItem) {
+    if (!f.personagemKey) return personagensDoFigurino(f)
+    if (!cena) return [PREFIXO_KEY + f.personagemKey]
+    return cena.personagens.filter(p => personagemKey(p.nome, p.participanteUid) === f.personagemKey).map(p => p.id)
+  }
+
   const itens: FigurinoItem[] = useMemo(() => {
     const base = cena
-      ? juntarComLegado(figurinos ?? [], cena.figurinos, { cenaId: cena.id, cenaNome: cena.nome })
+      ? [
+          ...juntarComLegado(figurinos ?? [], cena.figurinos, { cenaId: cena.id, cenaNome: cena.nome }),
+          ...dePersonagem.filter(f => idsDaFoto(f).length),
+        ]
       : (figurinos ?? [])
     // Fora da página da equipe, só o que já vale (sem as fotos do elenco pendentes/reprovadas).
     return pode ? base : base.filter(figurinoVisivel)
-  }, [figurinos, cena, pode])
+  }, [figurinos, dePersonagem, cena, pode])
 
   /** Opções dos filtros, a partir do que existe (cena/personagem pelo nome copiado no item). */
   const cenasDosItens = useMemo(() => {
@@ -129,7 +157,9 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhive
         filtroCena === 'todas'
           ? true
           : filtroCena === 'sem'
-            ? !f.cenaId
+            ? !f.cenaId && !f.personagemKey
+            : filtroCena === 'personagem'
+            ? !!f.personagemKey
             : filtroCena === 'inativas'
               ? !!f.cenaId && inativas.has(f.cenaId)
               : f.cenaId === filtroCena,
@@ -139,14 +169,14 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhive
 
   const personagensDosItens = useMemo(() => {
     const m = new Map<string, string>()
-    for (const f of filtradosPorCena) for (const id of personagensDoFigurino(f)) m.set(id, nomePersonagem(f, id))
+    for (const f of filtradosPorCena) for (const id of idsDaFoto(f)) m.set(id, nomePersonagem(f, id))
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'))
   }, [filtradosPorCena])
 
   const filtrados = useMemo(
     () =>
       filtradosPorCena.filter(f => {
-        const ids = personagensDoFigurino(f)
+        const ids = idsDaFoto(f)
         if (filtroPersonagem === 'geral' && ids.length) return false
         if (filtroPersonagem !== 'todos' && filtroPersonagem !== 'geral' && !ids.includes(filtroPersonagem)) return false
         if (filtroAprovacao === 'valendo' && !figurinoVisivel(f)) return false
@@ -164,7 +194,7 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhive
   }
   const APROVACAO_LABEL = { valendo: 'Valendo', pendente: 'Aguardando', reprovado: 'Reprovadas' } as const
   const resumoFiltros = [
-    filtroCena === 'sem' ? 'Sem cena' : filtroCena === 'inativas' ? 'Cenas inativas' : filtroCena !== 'todas' ? (cenasDosItens.find(([id]) => id === filtroCena)?.[1] ?? 'Cena') : null,
+    filtroCena === 'sem' ? 'Sem cena' : filtroCena === 'personagem' ? 'Todas as cenas do personagem' : filtroCena === 'inativas' ? 'Cenas inativas' : filtroCena !== 'todas' ? (cenasDosItens.find(([id]) => id === filtroCena)?.[1] ?? 'Cena') : null,
     filtroPersonagem === 'geral'
       ? 'Geral'
       : filtroPersonagem !== 'todos'
@@ -172,35 +202,39 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhive
         : null,
     filtroAprovacao !== 'todas' ? APROVACAO_LABEL[filtroAprovacao] : null,
   ].filter((x): x is string => !!x)
-  const mostrarFiltros = (!cena && cenasDosItens.length > 0) || personagensDosItens.length > 0 || pode
+  const temDePersonagem = itens.some(f => f.personagemKey)
+  const mostrarFiltros = (!cena && (cenasDosItens.length > 0 || temDePersonagem)) || personagensDosItens.length > 0 || pode
 
   function nomePersonagem(f: FigurinoItem, id: string) {
+    if (id.startsWith(PREFIXO_KEY)) return f.personagemNome || 'Personagem'
     return (cena?.personagens.find(p => p.id === id)?.nome ?? nomeGuardadoNoFigurino(f, id)) || 'Personagem'
   }
 
   function rotulo(f: FigurinoItem) {
-    const ids = personagensDoFigurino(f)
+    const ids = idsDaFoto(f)
     return ids.length ? ids.map(id => nomePersonagem(f, id)).join(', ') : 'Geral'
   }
 
   const grupos = useMemo(() => {
     if (cena) {
       // Gerais primeiro, depois por personagem (na ordem da cena).
-      const gerais = filtrados.filter(f => !personagensDoFigurino(f).length)
+      const gerais = filtrados.filter(f => !idsDaFoto(f).length)
       const ordem = new Map(cena.personagens.map((p, i) => [p.id, i]))
       // Foto de vários personagens entra na posição do primeiro deles na cena.
-      const posicao = (f: FigurinoItem) => Math.min(...personagensDoFigurino(f).map(id => ordem.get(id) ?? 999))
-      const dePersonagem = filtrados.filter(f => personagensDoFigurino(f).length).sort((a, b) => posicao(a) - posicao(b))
-      return [{ chave: cena.id, titulo: '', itens: [...gerais, ...dePersonagem] }]
+      const posicao = (f: FigurinoItem) => Math.min(...idsDaFoto(f).map(id => ordem.get(id) ?? 999))
+      const comPersonagem = filtrados.filter(f => idsDaFoto(f).length).sort((a, b) => posicao(a) - posicao(b))
+      return [{ chave: cena.id, titulo: '', itens: [...gerais, ...comPersonagem] }]
     }
     const porCena = new Map<string, { chave: string; titulo: string; itens: FigurinoItem[] }>()
     for (const f of filtrados) {
-      const chave = f.cenaId ?? ''
-      const titulo = f.cenaNome ?? (f.cenaId ? 'Cena' : 'Sem cena')
+      // Fotos de personagem (todas as cenas) num grupo só, logo depois das cenas.
+      const chave = f.personagemKey ? PREFIXO_KEY : (f.cenaId ?? '')
+      const titulo = f.personagemKey ? 'Personagem (todas as cenas)' : (f.cenaNome ?? (f.cenaId ? 'Cena' : 'Sem cena'))
       if (!porCena.has(chave)) porCena.set(chave, { chave, titulo: inativas.has(chave) ? `${titulo} (inativa)` : titulo, itens: [] })
       porCena.get(chave)!.itens.push(f)
     }
-    return [...porCena.values()].sort((a, b) => (a.chave ? 0 : 1) - (b.chave ? 0 : 1) || a.titulo.localeCompare(b.titulo, 'pt-BR'))
+    const ordemGrupo = (chave: string) => (chave === '' ? 2 : chave === PREFIXO_KEY ? 1 : 0)
+    return [...porCena.values()].sort((a, b) => ordemGrupo(a.chave) - ordemGrupo(b.chave) || a.titulo.localeCompare(b.titulo, 'pt-BR'))
   }, [filtrados, cena, inativas])
 
   const conteudo = (
@@ -320,7 +354,7 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhive
 
       <Dialog open={filtrosOpen} onClose={() => setFiltrosOpen(false)} title="Filtrar figurinos">
         <div className="space-y-4">
-          {!cena && cenasDosItens.length > 0 && (
+          {!cena && (cenasDosItens.length > 0 || temDePersonagem) && (
             <div>
               <Label htmlFor="filtro-figurino-cena">Cena</Label>
               <Select
@@ -333,6 +367,7 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhive
               >
                 <option value="todas">Todas as cenas</option>
                 <option value="sem">Sem cena</option>
+                {temDePersonagem && <option value="personagem">Personagem (todas as cenas)</option>}
                 {cenasDosItens.some(([id]) => inativas.has(id)) && <option value="inativas">Só cenas inativas</option>}
                 {cenasDosItens
                   .filter(([id]) => !inativas.has(id))
@@ -436,6 +471,9 @@ interface FormProps {
 }
 
 function FigurinoFormDialog({ figurino, cena, cenas, personagemFixo, equipeId, podeSemCena, byUid, onClose }: FormProps) {
+  /** Foto de uma cena (ou da peça toda) ou de um personagem em todas as cenas dele. */
+  const [alvo, setAlvo] = useState<'cena' | 'personagem'>(figurino?.personagemKey ? 'personagem' : 'cena')
+  const [chavePersonagem, setChavePersonagem] = useState(figurino?.personagemKey ?? '')
   const [cenaId, setCenaId] = useState(cena?.id ?? figurino?.cenaId ?? '')
   const [personagemIds, setPersonagemIds] = useState<string[]>(personagemFixo ? [personagemFixo] : figurino ? personagensDoFigurino(figurino) : [])
   const [legenda, setLegenda] = useState(figurino?.legenda ?? '')
@@ -447,7 +485,49 @@ function FigurinoFormDialog({ figurino, cena, cenas, personagemFixo, equipeId, p
   const personagens = cenaAlvo?.personagens ?? []
   const cenaForaDaLista = !cena && !!figurino?.cenaId && !cenas.some(c => c.id === figurino.cenaId)
 
+  // "Personagem (todas as cenas)" só fora da cena — e só pra quem pode cadastrar sem cena.
+  const comAlvoPersonagem = !cena && !personagemFixo && podeSemCena
+  const [catalogo, setCatalogo] = useState<PersonagemCatalogo[]>([])
+  const [users, setUsers] = useState<Record<string, AppUser>>({})
+  useEffect(() => {
+    if (!comAlvoPersonagem) return
+    return subscribeToCatalogoPersonagens(setCatalogo)
+  }, [comAlvoPersonagem])
+  useEffect(() => {
+    if (!comAlvoPersonagem) return
+    getUsers()
+      .then(list => setUsers(Object.fromEntries(list.map(u => [u.uid, u]))))
+      .catch(() => {})
+  }, [comAlvoPersonagem])
+  /**
+   * Personagens no seletor com busca: a foto e o nome de quem faz (a busca acha pelos dois — e
+   * separa os papéis de coro, que repetem o nome). `uid` aqui é a chave do personagem.
+   */
+  const opcoesPersonagem = useMemo<PessoaOpcao[]>(() => {
+    if (!comAlvoPersonagem) return []
+    const lista: PessoaOpcao[] = agregarPersonagens(cenas, catalogo).map(p => {
+      const ator = p.participanteUid ? pessoaOpcao(p.participanteUid, users[p.participanteUid]) : undefined
+      const qtd = p.ocorrencias.length
+      return {
+        uid: p.key,
+        nome: p.nome,
+        apelido: ator?.apelido ?? ator?.nome,
+        photoURL: ator?.photoURL,
+        detalhe: qtd ? `${qtd} ${qtd === 1 ? 'cena' : 'cenas'}` : 'Sem cena',
+      }
+    })
+    // Personagem que saiu de todas as cenas e do catálogo: continua escolhível na foto que já é dele.
+    if (figurino?.personagemKey && !lista.some(p => p.uid === figurino.personagemKey))
+      lista.unshift({ uid: figurino.personagemKey, nome: figurino.personagemNome ?? 'Personagem' })
+    return lista
+  }, [comAlvoPersonagem, cenas, catalogo, users, figurino])
+  const deTodasCenas = comAlvoPersonagem && alvo === 'personagem'
+
   function vinculo() {
+    if (deTodasCenas) {
+      const nome = opcoesPersonagem.find(p => p.uid === chavePersonagem)?.nome ?? 'Personagem'
+      return { personagens: [], personagemTodasCenas: { key: chavePersonagem, nome }, legenda }
+    }
     return {
       cenaId: cenaAlvo?.id ?? (cenaForaDaLista && cenaId === figurino?.cenaId ? figurino?.cenaId : undefined),
       cenaNome: cenaAlvo?.nome ?? (cenaForaDaLista && cenaId === figurino?.cenaId ? figurino?.cenaNome : undefined),
@@ -498,12 +578,46 @@ function FigurinoFormDialog({ figurino, cena, cenas, personagemFixo, equipeId, p
     }
   }
 
-  const faltaCena = !podeSemCena && !cenaAlvo
+  const faltaCena = deTodasCenas ? !chavePersonagem : !podeSemCena && !cenaAlvo
 
   return (
     <Dialog open onClose={onClose} title={figurino ? 'Editar foto' : 'Adicionar figurino'}>
       <div className="space-y-4">
-        {!cena && (
+        {comAlvoPersonagem && (
+          <div>
+            <Label>É de</Label>
+            <div className="mt-1 grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1">
+              {(['cena', 'personagem'] as const).map(a => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => setAlvo(a)}
+                  className={cn('rounded-md py-1.5 text-sm', alvo === a ? 'bg-white font-semibold shadow-sm' : 'text-muted-foreground')}
+                  aria-pressed={alvo === a}
+                >
+                  {a === 'cena' ? 'Cena' : 'Personagem'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {deTodasCenas && (
+          <div>
+            <Label htmlFor="figurino-personagem">Personagem</Label>
+            <PessoaSelect
+              id="figurino-personagem"
+              value={chavePersonagem}
+              onChange={setChavePersonagem}
+              pessoas={opcoesPersonagem}
+              placeholder="Escolha o personagem"
+              titulo="Escolher personagem"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">Vale em todas as cenas desse personagem e aparece na página dele.</p>
+          </div>
+        )}
+
+        {!cena && !deTodasCenas && (
           <div>
             <Label htmlFor="figurino-cena">Cena {podeSemCena ? '(opcional)' : ''}</Label>
             <CenaSelect
@@ -520,7 +634,7 @@ function FigurinoFormDialog({ figurino, cena, cenas, personagemFixo, equipeId, p
           </div>
         )}
 
-        {!personagemFixo && personagens.length > 0 && (
+        {!personagemFixo && !deTodasCenas && personagens.length > 0 && (
           <div>
             <Label>Personagens (opcional)</Label>
             <p className="text-xs text-muted-foreground">Toque em um ou mais. Sem nenhum, a foto vale pra cena toda.</p>
@@ -629,7 +743,8 @@ function FigurinoViewer({ figurino, rotulo, podeEditar, cena, cenas, equipeId, p
         {zoom && <ImagemZoom src={figurino.url} alt={figurino.legenda} onClose={() => setZoom(false)} />}
         <div className="text-xs text-muted-foreground">
           <p>
-            {!cena && (figurino.cenaNome ? `${figurino.cenaNome} · ` : 'Sem cena · ')}
+            {(!cena || figurino.personagemKey) &&
+              (figurino.personagemKey ? 'Todas as cenas · ' : figurino.cenaNome ? `${figurino.cenaNome} · ` : 'Sem cena · ')}
             {rotulo}
           </p>
           {figurino.legenda && <p className="mt-0.5 text-sm text-gray-700">{figurino.legenda}</p>}

@@ -25,6 +25,7 @@ import {
   juntarComLegado,
   personagensDoFigurino,
   subscribeToFigurinos,
+  subscribeToFigurinosDePersonagem,
   uploadFigurino,
 } from '@/services/firebase/midias'
 import type { AppUser, Cena, Ensaio, Equipe, FigurinoImagem, Inscricao, PersonagemFicha } from '@/types'
@@ -99,6 +100,10 @@ export function PersonagemDetalhe() {
     if (!cena?.id) return
     return subscribeToFigurinos(cena.id, setFigurinosDaCena)
   }, [cena?.id])
+  /** Fotos do personagem em todas as cenas (cadastradas pela equipe, sem cena). */
+  const [figurinosDePersonagem, setFigurinosDePersonagem] = useState<FigurinoImagem[]>([])
+  useEffect(() => subscribeToFigurinosDePersonagem(setFigurinosDePersonagem), [])
+  const chavePersonagem = personagem ? personagemKey(personagem.nome, personagem.participanteUid) : undefined
   // Coleção nova + o que ainda estiver no formato antigo (array na cena), sem duplicar. Todo mundo
   // vê o que já vale (da equipe ou aprovado); quem mandou vê as suas em qualquer status; o líder vê
   // as pendentes/reprovadas pra avaliar.
@@ -108,8 +113,8 @@ export function PersonagemDetalhe() {
         f =>
           !!personagemId && personagensDoFigurino(f).includes(personagemId) &&
           (figurinoVisivel(f) || f.uploadedByUid === currentUser?.uid || podeAvaliarFigurino),
-      ),
-    [figurinosDaCena, cena, personagemId, currentUser?.uid, podeAvaliarFigurino],
+      ).concat(figurinosDePersonagem.filter(f => !!chavePersonagem && f.personagemKey === chavePersonagem)),
+    [figurinosDaCena, figurinosDePersonagem, cena, personagemId, chavePersonagem, currentUser?.uid, podeAvaliarFigurino],
   )
   /** Excluir (igual às firestore.rules): admin, ou quem mandou enquanto não foi aprovada. */
   function podeExcluirFoto(f: FigurinoImagem & { legado?: boolean }) {

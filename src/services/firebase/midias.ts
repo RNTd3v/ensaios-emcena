@@ -26,6 +26,15 @@ export function subscribeToMusicas(cenaId: string | undefined, callback: (musica
   )
 }
 
+/** Fotos de personagem (todas as cenas, sem `cenaId`) — a cena e o personagem filtram pela chave. */
+export function subscribeToFigurinosDePersonagem(callback: (figurinos: FigurinoImagem[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'figurinos'), where('personagemKey', '>', '')),
+    snap => callback(snap.docs.map(d => ({ ...d.data(), id: d.id }) as FigurinoImagem).sort((a, b) => a.uploadedAt.localeCompare(b.uploadedAt))),
+    () => callback([]),
+  )
+}
+
 export function subscribeToFigurinos(cenaId: string | undefined, callback: (figurinos: FigurinoImagem[]) => void) {
   const col = collection(db, 'figurinos')
   return onSnapshot(
@@ -140,6 +149,12 @@ function camposPersonagens(cenaId: string | undefined, lista: PersonagemDoFiguri
   }
 }
 
+/** Personagem em todas as cenas (ver `FigurinoImagem.personagemKey`). */
+export interface PersonagemTodasCenas {
+  key: string
+  nome: string
+}
+
 export async function uploadFigurino(
   file: File,
   vinculo: MidiaVinculo & {
@@ -147,21 +162,25 @@ export async function uploadFigurino(
     personagemNome?: string
     /** Vários personagens (substitui `personagemId`/`personagemNome`). */
     personagens?: PersonagemDoFigurino[]
+    /** De um personagem em todas as cenas — ignora cena e `personagens`. */
+    personagemTodasCenas?: PersonagemTodasCenas
     legenda?: string
     aprovacao?: 'pendente'
   },
   byUid: string,
 ): Promise<void> {
+  const todas = vinculo.personagemTodasCenas
+  const cenaId = todas ? undefined : vinculo.cenaId
   const personagens = vinculo.personagens ?? (vinculo.personagemId ? [{ id: vinculo.personagemId, nome: vinculo.personagemNome }] : [])
-  const up = await uploadCenaFile(vinculo.cenaId ?? PASTA_SEM_CENA, 'figurino', file)
+  const up = await uploadCenaFile(cenaId ?? PASTA_SEM_CENA, 'figurino', file)
   await setDoc(
     doc(db, 'figurinos', up.id),
     semUndefined({
       url: up.url,
       path: up.path,
-      cenaId: vinculo.cenaId,
-      cenaNome: vinculo.cenaId ? vinculo.cenaNome : undefined,
-      ...camposPersonagens(vinculo.cenaId, personagens),
+      cenaId,
+      cenaNome: cenaId ? vinculo.cenaNome : undefined,
+      ...(todas ? { personagemKey: todas.key, personagemNome: todas.nome } : camposPersonagens(cenaId, personagens)),
       legenda: vinculo.legenda?.trim() || undefined,
       equipeId: vinculo.equipeId,
       aprovacao: vinculo.aprovacao,
@@ -173,20 +192,30 @@ export async function uploadFigurino(
 
 export async function updateFigurino(
   id: string,
-  input: { cenaId?: string; cenaNome?: string; personagens: PersonagemDoFigurino[]; legenda?: string },
+  input: {
+    cenaId?: string
+    cenaNome?: string
+    personagens: PersonagemDoFigurino[]
+    /** De um personagem em todas as cenas — ignora cena e `personagens`. */
+    personagemTodasCenas?: PersonagemTodasCenas
+    legenda?: string
+  },
   comoEquipeId?: string,
 ): Promise<void> {
-  const p = camposPersonagens(input.cenaId, input.personagens)
+  const todas = input.personagemTodasCenas
+  const cenaId = todas ? undefined : input.cenaId
+  const p = camposPersonagens(cenaId, input.personagens)
   await updateDoc(
     doc(db, 'figurinos', id),
     comEquipe(
       {
-        cenaId: input.cenaId || deleteField(),
-        cenaNome: input.cenaId ? input.cenaNome ?? deleteField() : deleteField(),
+        cenaId: cenaId || deleteField(),
+        cenaNome: cenaId ? input.cenaNome ?? deleteField() : deleteField(),
         personagemId: p.personagemId ?? deleteField(),
-        personagemNome: p.personagemNome ?? deleteField(),
+        personagemNome: (todas ? todas.nome : p.personagemNome) ?? deleteField(),
         personagemIds: p.personagemIds ?? deleteField(),
         personagemNomes: p.personagemNomes ?? deleteField(),
+        personagemKey: todas?.key ?? deleteField(),
         legenda: input.legenda?.trim() || deleteField(),
       },
       comoEquipeId,

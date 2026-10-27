@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, ChevronLeft, ChevronRight, Crown, MapPin, Shirt, Star } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Crown, Info, MapPin, Shirt, Star } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -12,7 +12,7 @@ import { subscribeToAllEnsaios, subscribeToEnsaiosDaCena } from '@/services/fire
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { DEFAULT_SETTINGS } from '@/services/firebase/settings'
-import { type AppUser, type Cena, type DiaSemana, type Ensaio, type Inscricao } from '@/types'
+import { DIA_SEMANA_LABELS, type AppUser, type Cena, type DiaSemana, type Ensaio, type Inscricao } from '@/types'
 import { DIA_TO_WEEKDAY, addDays, monthMatrix, toDateKey, weekDates } from '@/lib/agenda'
 import { formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { DIAS_ORDER } from '@/lib/dias'
@@ -22,6 +22,7 @@ import { avisoNaoChamado, type PessoaDaCasaNome } from '@/lib/ensaioPublico'
 import { AvisoNaoChamado } from '@/components/ensaio/AvisoNaoChamado'
 import { subscribeToDependentes } from '@/services/firebase/dependentes'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
+import { MeusEnsaiosSemanaDialog } from '@/components/ensaio/MeusEnsaiosSemanaDialog'
 
 type Visao = 'semana' | 'mes'
 
@@ -47,6 +48,26 @@ const STATUS_DOT: Record<Status, string> = {
   cancelado: 'bg-red-400',
 }
 
+const FILTRO_KEY = 'calendario.filtro'
+
+interface Filtro {
+  /** Vazio = todos os dias. */
+  dias: DiaSemana[]
+  previstos: boolean
+}
+
+function lerFiltro(): Filtro {
+  try {
+    const salvo = JSON.parse(localStorage.getItem(FILTRO_KEY) ?? 'null') as Partial<Filtro> | null
+    return {
+      dias: (salvo?.dias ?? []).filter(d => DIAS_ORDER.includes(d)),
+      previstos: salvo?.previstos ?? true,
+    }
+  } catch {
+    return { dias: [], previstos: true }
+  }
+}
+
 function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
@@ -68,6 +89,20 @@ export function Calendario() {
   const [visao, setVisao] = useState<Visao>('semana')
   const [base, setBase] = useState(() => new Date())
   const [selectedKey, setSelectedKey] = useState(() => toDateKey(new Date()))
+  const [meusAberto, setMeusAberto] = useState(false)
+  // Filtro (dias da semana + não confirmados) fica salvo no aparelho.
+  const [filtro, setFiltroState] = useState(lerFiltro)
+  function setFiltro(f: Filtro) {
+    setFiltroState(f)
+    try {
+      localStorage.setItem(FILTRO_KEY, JSON.stringify(f))
+    } catch {
+      // storage indisponível — segue só em memória
+    }
+  }
+  function alternarDia(d: DiaSemana) {
+    setFiltro({ ...filtro, dias: filtro.dias.includes(d) ? filtro.dias.filter(x => x !== d) : [...filtro.dias, d] })
+  }
 
   useEffect(() => {
     if (!currentUser) return
@@ -118,6 +153,8 @@ export function Calendario() {
   const eventDate = useSettingsStore(s => s.settings.eventDate) || DEFAULT_SETTINGS.eventDate || ''
   const ehApresentacao = (key: string) => key === eventDate
   const mostrarDia = (d: Date) => d.getDay() !== 0 || ehApresentacao(toDateKey(d))
+  /** Dia que passa no filtro de dias da semana (o da apresentação sempre passa). */
+  const diaNoFiltro = (d: Date) => !filtro.dias.length || filtro.dias.includes(WEEKDAY_TO_DIA[d.getDay()]) || ehApresentacao(toDateKey(d))
 
   const dates = useMemo(() => {
     if (visao === 'semana') return weekDates(base)
@@ -142,6 +179,10 @@ export function Calendario() {
     const map = new Map<string, Ocorrencia[]>()
     for (const date of dates) {
       const key = toDateKey(date)
+      if (!diaNoFiltro(date)) {
+        map.set(key, [])
+        continue
+      }
       const doDia = ensaiosPorData.get(key) ?? []
       const itens: Ocorrencia[] = doDia.map(e => ({
         key: e.id,
@@ -153,7 +194,7 @@ export function Calendario() {
       }))
 
       const dia = WEEKDAY_TO_DIA[date.getDay()]
-      if (dia && key >= todayKey) {
+      if (dia && key >= todayKey && filtro.previstos) {
         const comEnsaio = new Set(doDia.map(e => e.cenaId))
         for (const cena of cenas ?? []) {
           if (!cena.ativo || !cena.dias.includes(dia) || comEnsaio.has(cena.id)) continue
@@ -166,7 +207,7 @@ export function Calendario() {
       map.set(key, itens)
     }
     return map
-  }, [dates, ensaiosPorData, cenas, cenasById, todayKey])
+  }, [dates, ensaiosPorData, cenas, cenasById, todayKey, filtro, eventDate])
 
   function navegar(delta: number) {
     const next = visao === 'semana' ? addDays(base, delta * 7) : new Date(base.getFullYear(), base.getMonth() + delta, 1)
@@ -214,7 +255,27 @@ export function Calendario() {
           </Button>
         </Link>
         <h1 className="text-xl font-semibold text-white">Calendário</h1>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="ml-auto text-white hover:bg-white/10"
+          onClick={() => setMeusAberto(true)}
+          title="Meus ensaios da semana"
+          aria-label="Meus ensaios da semana"
+        >
+          <Info className="h-5 w-5" />
+        </Button>
       </div>
+
+      {meusAberto && currentUser && (
+        <MeusEnsaiosSemanaDialog
+          uid={currentUser.uid}
+          dependentes={dependentes}
+          // Semana na tela; no mês, a do dia selecionado.
+          semana={weekDates(visao === 'semana' ? base : new Date(`${selectedKey}T00:00:00`))}
+          onClose={() => setMeusAberto(false)}
+        />
+      )}
 
       <div className="flex rounded-full border border-white/30 bg-white/10 p-1">
         {(['semana', 'mes'] as Visao[]).map(v => (
@@ -249,13 +310,54 @@ export function Calendario() {
 
       <Legenda />
 
+      <div className="space-y-2">
+        <div className="flex gap-1">
+          {DIAS_ORDER.map(d => {
+            const marcado = filtro.dias.includes(d)
+            return (
+              <button
+                key={d}
+                type="button"
+                aria-pressed={marcado}
+                onClick={() => alternarDia(d)}
+                className={cn(
+                  'flex-1 rounded-full border py-1 text-xs font-medium transition-colors',
+                  marcado ? 'border-white bg-white text-gray-900' : 'border-white/30 bg-white/10 text-white',
+                )}
+              >
+                {DIA_SEMANA_LABELS[d]}
+              </button>
+            )
+          })}
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={filtro.previstos}
+            onClick={() => setFiltro({ ...filtro, previstos: !filtro.previstos })}
+            className="flex items-center gap-2 text-xs text-white"
+          >
+            <span className={cn('relative h-5 w-9 shrink-0 rounded-full transition-colors', filtro.previstos ? 'bg-primary' : 'bg-white/30')}>
+              <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all', filtro.previstos ? 'left-[18px]' : 'left-0.5')} />
+            </span>
+            Mostrar não confirmados
+          </button>
+          {filtro.dias.length > 0 && (
+            <button type="button" onClick={() => setFiltro({ ...filtro, dias: [] })} className="text-xs text-white/70 hover:underline">
+              Todos os dias
+            </button>
+          )}
+        </div>
+      </div>
+
       {loading ? (
         <div className="flex justify-center py-10">
           <Spinner />
         </div>
       ) : visao === 'semana' ? (
         <div className="space-y-2">
-          {dates.filter(mostrarDia).map(date => {
+          {dates.filter(d => mostrarDia(d) && diaNoFiltro(d)).map(date => {
             const key = toDateKey(date)
             const itens = ocorrenciasPorData.get(key) ?? []
             return (
@@ -297,17 +399,20 @@ export function Calendario() {
                   if (comDomingo && di === 0 && !ehApresentacao(key)) return <span key={di} />
                   const itens = ocorrenciasPorData.get(key) ?? []
                   const isSelected = key === selectedKey
+                  const foraDoFiltro = !diaNoFiltro(new Date(`${key}T00:00:00`))
                   return (
                     <button
                       key={di}
                       type="button"
                       onClick={() => setSelectedKey(key)}
+                      disabled={foraDoFiltro}
                       className={cn(
                         'flex h-12 flex-col items-center justify-start gap-1 rounded-xl pt-1.5 text-sm',
                         isSelected ? 'bg-primary text-white' : 'hover:bg-gray-50',
                         !isSelected && key === todayKey && 'font-bold text-primary',
                         !isSelected && key < todayKey && 'text-gray-400',
                         !isSelected && ehApresentacao(key) && 'bg-amber-100 font-bold text-amber-800',
+                        !isSelected && foraDoFiltro && 'text-gray-200 hover:bg-transparent',
                       )}
                     >
                       {day}

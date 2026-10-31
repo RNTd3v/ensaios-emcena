@@ -23,13 +23,17 @@ function appInstalado(): boolean {
  * melhor que o popup (no iPhone o popup abre numa janela à parte que às vezes não volta pro app).
  */
 export async function loginWithGoogle() {
-  if (appInstalado() && authNoMesmoDominio()) return signInWithRedirect(auth, new GoogleAuthProvider())
+  const provider = new GoogleAuthProvider()
+  // Sempre mostra a escolha de conta: o logout do app não sai do Google, e sem isso quem entrou
+  // com a conta errada voltava direto nela.
+  provider.setCustomParameters({ prompt: 'select_account' })
+  if (appInstalado() && authNoMesmoDominio()) return signInWithRedirect(auth, provider)
   try {
-    return await signInWithPopup(auth, new GoogleAuthProvider())
+    return await signInWithPopup(auth, provider)
   } catch (err) {
     const code = (err as { code?: string }).code
     if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
-      return signInWithRedirect(auth, new GoogleAuthProvider())
+      return signInWithRedirect(auth, provider)
     }
     throw err
   }
@@ -37,6 +41,7 @@ export async function loginWithGoogle() {
 
 export async function loginWithMicrosoft() {
   const provider = new OAuthProvider('microsoft.com')
+  provider.setCustomParameters({ prompt: 'select_account' })
   try {
     return await signInWithPopup(auth, provider)
   } catch (err) {

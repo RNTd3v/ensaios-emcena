@@ -111,11 +111,13 @@ export async function updateInscricaoStatus(uid: string, status: InscricaoStatus
 /**
  * Se a própria pessoa já tem inscrição, em tempo real (`null` = ainda não tem). Em caso de erro
  * (rede, permissão) chama com `undefined` — "não sei", quem usa não deve bloquear por isso.
+ * "Não existe" vindo do cache local também é "não sei": o aparelho pode ter guardado a ausência de
+ * antes da inscrição (feita depois, em outro aparelho) e mandaria a pessoa pro formulário à toa.
  */
 export function subscribeToMinhaInscricaoExiste(uid: string, callback: (existe: boolean | undefined) => void) {
   return onSnapshot(
     doc(db, 'inscricoes', uid),
-    snap => callback(snap.exists()),
+    snap => callback(snap.exists() ? true : snap.metadata.fromCache ? undefined : false),
     () => callback(undefined),
   )
 }

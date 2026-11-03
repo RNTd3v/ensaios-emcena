@@ -42,43 +42,51 @@ function chunks<T>(lista: T[], tamanho: number): T[][] {
 
 /**
  * Dependentes (crianças sem login, id `dep_…`) não recebem nada direto: cada um é trocado pelos
- * responsáveis, com o nome da criança no título. Retorna [uid, notificação] já resolvidos.
+ * responsáveis. Retorna [destinatário, nome da criança] — `null` = a notificação é da própria pessoa.
  */
-async function resolverDependentes(uids: string[], n: Notificacao): Promise<[string, Notificacao][]> {
+async function resolverDependentes(uids: string[]): Promise<[string, string | null][]> {
   const deps = uids.filter(u => u.startsWith('dep_'))
-  const saida: [string, Notificacao][] = uids.filter(u => !u.startsWith('dep_')).map(u => [u, n])
+  const saida: [string, string | null][] = uids.filter(u => !u.startsWith('dep_')).map(u => [u, null])
   for (const grupo of chunks(deps, 30)) {
     const snap = await db.getAll(...grupo.map(u => db.collection('users').doc(u)))
     for (const d of snap) {
       const dados = d.data()
       if (!dados) continue
-      const paraCrianca = { ...n, titulo: `${n.titulo} · ${dados.displayName ?? 'dependente'}` }
-      for (const resp of (dados.responsaveisUids as string[] | undefined) ?? []) saida.push([resp, paraCrianca])
+      const nome = (dados.apelido as string | undefined)?.trim() || (dados.displayName as string | undefined)?.trim() || 'dependente'
+      for (const resp of (dados.responsaveisUids as string[] | undefined) ?? []) saida.push([resp, nome])
     }
   }
   return saida
 }
 
-/** Grava a notificação pra cada destinatário (menos `excetoUid`, quem causou) e manda o push. */
+/** "Ana", "Ana e João", "Ana, João e Maria". */
+function juntarNomes(nomes: string[]): string {
+  return nomes.length <= 1 ? (nomes[0] ?? '') : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`
+}
+
+/**
+ * Grava a notificação pra cada destinatário (menos `excetoUid`, quem causou) e manda o push. Quem
+ * recebe por si e/ou por um ou mais filhos (dependentes) no mesmo acontecimento recebe uma só, com
+ * todos no título ("Ensaio confirmado · você e Ana").
+ */
 async function notificar(uids: (string | undefined | null)[], base: Notificacao, excetoUid?: string | null): Promise<void> {
   const unicos = [...new Set(uids.filter((u): u is string => !!u && u !== excetoUid))]
-  const resolvidos = (await resolverDependentes(unicos, base)).filter(([u]) => u !== excetoUid)
-  // Uma pessoa pode aparecer mais de uma vez (ela mesma + como responsável de um filho): cada
-  // notificação distinta vale — mas o mesmo par (pessoa, título) só uma vez.
-  const vistos = new Set<string>()
-  const itens = resolvidos.filter(([u, n]) => {
-    const chave = `${u}|${n.titulo}`
-    if (vistos.has(chave)) return false
-    vistos.add(chave)
-    return true
-  })
-  if (!itens.length) return
-  // Agrupa por conteúdo (a versão "· nome da criança" é outra notificação) e envia em lote.
+  const porDestinatario = new Map<string, { propria: boolean; criancas: string[] }>()
+  for (const [uid, crianca] of await resolverDependentes(unicos)) {
+    if (uid === excetoUid) continue
+    const atual = porDestinatario.get(uid) ?? { propria: false, criancas: [] }
+    if (crianca === null) atual.propria = true
+    else if (!atual.criancas.includes(crianca)) atual.criancas.push(crianca)
+    porDestinatario.set(uid, atual)
+  }
+  if (!porDestinatario.size) return
+  // Agrupa por título (a versão com nomes é outra notificação) e envia em lote.
   const porTitulo = new Map<string, { n: Notificacao; uids: string[] }>()
-  for (const [uid, n] of itens) {
-    const grupo = porTitulo.get(n.titulo) ?? { n, uids: [] }
+  for (const [uid, { propria, criancas }] of porDestinatario) {
+    const titulo = criancas.length ? `${base.titulo} · ${juntarNomes([...(propria ? ['você'] : []), ...criancas])}` : base.titulo
+    const grupo = porTitulo.get(titulo) ?? { n: { ...base, titulo }, uids: [] }
     grupo.uids.push(uid)
-    porTitulo.set(n.titulo, grupo)
+    porTitulo.set(titulo, grupo)
   }
   for (const { n, uids: destinos } of porTitulo.values()) await gravarEEnviar(destinos, n)
 }

@@ -16,6 +16,7 @@ import {
   Star,
   XCircle,
   Bug,
+  ChartNoAxesColumn,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -281,6 +282,11 @@ export function Admin() {
           <Link to="/admin/versiculos">
             <Button variant="outline" size="icon" title="Versículos" className="border-white/40 bg-white/10 text-white hover:bg-white/20">
               <BookOpen className="h-4 w-4" />
+            </Button>
+          </Link>
+          <Link to="/admin/frequencia">
+            <Button variant="outline" size="icon" title="Frequência nos ensaios" className="border-white/40 bg-white/10 text-white hover:bg-white/20">
+              <ChartNoAxesColumn className="h-4 w-4" />
             </Button>
           </Link>
           <Link to="/admin/locais">

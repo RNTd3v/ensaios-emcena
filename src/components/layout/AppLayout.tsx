@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { BellRing, Bug, Camera, User as UserIcon, CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, GraduationCap, HandHeart, Home, Music, Shirt, ShoppingCart, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
+import { BellRing, Bug, Camera, ChartNoAxesColumn, User as UserIcon, CalendarClock, CalendarDays, Candy, Clapperboard, ExternalLink, Ticket, ClipboardList, Drama, GraduationCap, HandHeart, Home, Music, Shirt, ShoppingCart, Target, UsersRound, LogOut, Menu, Monitor, Moon, ShieldCheck, Sun, X } from 'lucide-react'
 import { logout } from '@/services/firebase/auth'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -192,6 +192,7 @@ export function AppLayout() {
                       {isAdmin && (
                         <>
                           <MenuItem to="/admin" label="Gerenciamento" icon={ShieldCheck} onClick={() => setMenuOpen(false)} />
+                          <MenuItem to="/admin/frequencia" label="Frequência nos ensaios" icon={ChartNoAxesColumn} onClick={() => setMenuOpen(false)} />
                           <MenuItem to="/admin/reportes" label="Problemas reportados" icon={Bug} onClick={() => setMenuOpen(false)} />
                           <MenuItem to="/admin/notificacoes" label="Entrega de notificações" icon={BellRing} onClick={() => setMenuOpen(false)} />
                         </>

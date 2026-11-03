@@ -1,4 +1,4 @@
-import { addDoc, arrayRemove, arrayUnion, collection, deleteField, doc, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { addDoc, arrayRemove, arrayUnion, collection, deleteField, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { db } from './config'
 import { uidsDoEnsaio } from '@/lib/ensaioPublico'
 import type { AusenciaMotivo, Cena, CronometroEnsaio, Ensaio, Inscricao, RessalvaPresenca } from '@/types'
@@ -261,6 +261,12 @@ export function subscribeToMinhaRessalva(ensaioId: string, uid: string, callback
     snap => callback(snap.exists() ? (snap.data() as RessalvaPresenca) : null),
     () => callback(null),
   )
+}
+
+/** O motivo da ausência de `uid` num ensaio, lido uma vez (só admin/liderança da cena e a própria pessoa leem). */
+export async function getAusencia(ensaioId: string, uid: string): Promise<AusenciaMotivo | null> {
+  const snap = await getDoc(ausenciaRef(ensaioId, uid))
+  return snap.exists() ? (snap.data() as AusenciaMotivo) : null
 }
 
 /** Todas as ressalvas de presença do ensaio, por uid — só admin/liderança da cena têm leitura. */

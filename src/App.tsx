@@ -35,6 +35,7 @@ import { TreinamentoDetalhe } from '@/pages/TreinamentoDetalhe'
 import { initAuth } from '@/stores/authStore'
 import { AdminReportes } from '@/pages/AdminReportes'
 import { AdminEntregas } from '@/pages/AdminEntregas'
+import { AdminFrequencia } from '@/pages/AdminFrequencia'
 
 function App() {
   useEffect(() => {
@@ -79,6 +80,14 @@ function App() {
             element={
               <AdminGuard>
                 <AdminEntregas />
+              </AdminGuard>
+            }
+          />
+          <Route
+            path="admin/frequencia"
+            element={
+              <AdminGuard>
+                <AdminFrequencia />
               </AdminGuard>
             }
           />

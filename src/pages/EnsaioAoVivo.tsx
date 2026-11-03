@@ -22,6 +22,7 @@ import {
   createEnsaio,
   reconfirmarEnsaio,
   removerPresenca,
+  reabrirEnsaio,
   salvarRegistroEnsaio,
   subscribeToEnsaiosDaCena,
   updateEnsaioAnotacoes,
@@ -235,6 +236,20 @@ export function EnsaioAoVivo() {
 
   // ---------- Finalizar ----------
   const [finalizando, setFinalizando] = useState(false)
+  const [reabrirOpen, setReabrirOpen] = useState(false)
+  const [reabrindo, setReabrindo] = useState(false)
+
+  /** Ensaio finalizado por engano antes da data: volta a ser só confirmado (hoje, volta pro ao vivo). */
+  async function handleReabrir() {
+    if (!ensaio) return
+    setReabrindo(true)
+    try {
+      await reabrirEnsaio(ensaio.id)
+      setReabrirOpen(false)
+    } finally {
+      setReabrindo(false)
+    }
+  }
 
   /** Grava o registro e fica na página, que passa pro modo consulta (pela rota do próprio ensaio). */
   async function handleFinalizar() {
@@ -386,6 +401,12 @@ export function EnsaioAoVivo() {
               Reconfirmar ensaio
             </Button>
           )}
+          {!ensaio.canceledByUid && ensaio.finalizadoAt && canManageAgenda && ensaio.data >= todayKey && (
+            <Button variant="outline" className="w-full gap-1.5" onClick={() => setReabrirOpen(true)}>
+              <RotateCcw className="h-4 w-4" />
+              Reabrir ensaio
+            </Button>
+          )}
         </>
       ) : (
         <>
@@ -471,6 +492,24 @@ export function EnsaioAoVivo() {
           {ensaio.canceledByUid && ensaio.canceledAt && ` · cancelado em ${formatDateTime(ensaio.canceledAt)}`}
         </p>
       )}
+
+      <Dialog open={reabrirOpen} onClose={() => setReabrirOpen(false)} title="Reabrir ensaio">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">
+            Esse ensaio ainda não aconteceu, mas está como realizado. Reabrir volta ele pra confirmado: a duração registrada é
+            apagada, as anotações e as presenças ficam. Ninguém é notificado.
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setReabrirOpen(false)} disabled={reabrindo}>
+              Voltar
+            </Button>
+            <Button className="flex-1 gap-1.5" onClick={handleReabrir} disabled={reabrindo}>
+              {reabrindo ? <Spinner size="sm" className="border-white/40 border-t-white" /> : <RotateCcw className="h-4 w-4" />}
+              Reabrir
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
       {canManageAgenda && ((!ensaio && dataParam) || ensaio?.canceledByUid) && (
         <EditarEnsaioDialog

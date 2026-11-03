@@ -339,6 +339,19 @@ export async function salvarRegistroEnsaio(
   })
 }
 
+/**
+ * Desfaz a finalização de um ensaio que ainda não aconteceu (finalizado por engano): volta a ser só
+ * confirmado. Apaga a duração; as anotações ficam, como rascunho.
+ */
+export async function reabrirEnsaio(id: string): Promise<void> {
+  await updateDoc(doc(db, 'ensaios', id), {
+    duracaoSegundos: deleteField(),
+    finalizadoByUid: deleteField(),
+    finalizadoAt: deleteField(),
+    finalizadoAuto: deleteField(),
+  })
+}
+
 /** Iniciar/pausar/zerar o cronômetro da tela ao vivo — o tempo é calculado a partir disso em cada aparelho. */
 export async function updateEnsaioCronometro(id: string, cronometro: CronometroEnsaio): Promise<void> {
   await updateDoc(doc(db, 'ensaios', id), { cronometro })

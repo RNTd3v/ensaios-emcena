@@ -402,7 +402,11 @@ export function EnsaioAoVivo() {
             </Button>
           )}
           {!ensaio.canceledByUid && ensaio.finalizadoAt && canManageAgenda && ensaio.data >= todayKey && (
-            <Button variant="outline" className="w-full gap-1.5" onClick={() => setReabrirOpen(true)}>
+            <Button
+              variant="outline"
+              className="w-full gap-1.5 border-white/40 bg-white/10 text-white hover:bg-white/20"
+              onClick={() => setReabrirOpen(true)}
+            >
               <RotateCcw className="h-4 w-4" />
               Reabrir ensaio
             </Button>

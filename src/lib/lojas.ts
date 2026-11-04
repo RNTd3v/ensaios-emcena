@@ -34,6 +34,22 @@ export function lojaDaUrl(url: string): string | undefined {
 }
 
 /**
+ * Página de produto da Shein ("...-p-562144461.html") com os parâmetros de rastreio da busca
+ * (detailBusinessFrom, src_identifier...) às vezes abre outro produto — fica só o endereço dele.
+ * Links curtos/de compartilhar da Shein precisam da query e ficam como estão.
+ */
+function limparShein(url: string): string {
+  try {
+    const u = new URL(url)
+    const host = u.hostname.toLowerCase()
+    if (!(host === 'shein.com' || host.endsWith('.shein.com')) || !/-p-\d+\.html$/i.test(u.pathname)) return url
+    return `${u.origin}${u.pathname}`
+  } catch {
+    return url
+  }
+}
+
+/**
  * Link limpo a partir do que foi colado. O "compartilhar" dos apps de loja manda texto junto
  * ("Confira X na Shopee! https://s.shopee.com.br/abc") — pega só o link. Sem protocolo vira
  * https:// — o pessoal cola "loja.com/produto".
@@ -41,8 +57,8 @@ export function lojaDaUrl(url: string): string | undefined {
 export function normalizarUrl(url: string): string {
   const u = url.trim()
   const http = u.match(/https?:\/\/[^\s<>"']+/i)
-  if (http) return http[0]
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(u)) return u
+  if (http) return limparShein(http[0])
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(u)) return limparShein(u)
   const semEspaco = u.split(/\s+/).find(p => /^[^\s/]+\.[a-z]{2,}(\/|$)/i.test(p))
-  return `https://${semEspaco ?? u}`
+  return limparShein(`https://${semEspaco ?? u}`)
 }

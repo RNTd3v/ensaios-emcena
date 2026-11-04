@@ -53,6 +53,7 @@ import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
 import { subscribeToDependentes } from '@/services/firebase/dependentes'
 import { MusicasCard } from '@/components/midia/MusicasCard'
+import { useAgora } from '@/components/oracao/OrandoAgora'
 import { PessoaSelect, nomeComApelido, pessoaOpcao, type PessoaOpcao } from '@/components/ui/PessoaSelect'
 import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
@@ -61,7 +62,8 @@ import { PessoaLinha } from '@/components/ui/PessoaLinha'
  * `/cenas/:id/ensaios/dia/:data` (o ensaio da cena nessa data — se ainda não foi confirmado,
  * mostra o previsto pela agenda, com "Confirmar ensaio" pra admin/líder) e
  * `/cenas/:id/iniciar-ensaio` (atalho pro ensaio de hoje). O modo depende do ensaio:
- * - ao vivo: é hoje e ainda não foi finalizado — cronômetro, presença, músicas, anotações;
+ * - ao vivo: é hoje e ainda não foi finalizado — cronômetro, presença, músicas; anotações e
+ *   "Finalizar" só a partir do horário do ensaio (antes disso o pessoal anotava e finalizava cedo);
  * - consulta: já foi finalizado, cancelado ou a data já passou — vira o registro do ensaio;
  * - futuro: ainda não chegou o dia — mostra as infos do ensaio.
  * As infos (horário, local, flags e, na consulta, duração/anotações/presenças) aparecem só como
@@ -157,6 +159,11 @@ export function EnsaioAoVivo() {
       : ensaio.data === todayKey
         ? 'aoVivo'
         : 'futuro'
+
+  /** Já deu o horário do ensaio de hoje — libera anotações e "Finalizar". Sem horário, libera. */
+  const agora = useAgora()
+  const agoraHHmm = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`
+  const comecou = modo === 'aoVivo' && (!ensaio?.horario || agoraHHmm >= ensaio.horario.slice(0, 5))
 
   // ---------- Cronômetro ----------
   // Conta pelo relógio (início + acumulado), não por tiques: com a tela apagada o celular congela
@@ -460,7 +467,15 @@ export function EnsaioAoVivo() {
             podeAlterar={uid => modo === 'aoVivo' && (canManageAgenda || uid === currentUser?.uid)}
           />
 
-          {modo === 'aoVivo' && (
+          {modo === 'aoVivo' && !comecou && (
+            <Card>
+              <CardContent className="py-4 text-center text-sm text-muted-foreground">
+                Anotações e finalizar o ensaio ficam disponíveis a partir das {formatHoraCompacta(ensaio.horario)}.
+              </CardContent>
+            </Card>
+          )}
+
+          {comecou && (
             <Card>
               <CardContent className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
@@ -480,7 +495,7 @@ export function EnsaioAoVivo() {
             </Card>
           )}
 
-          {modo === 'aoVivo' && canManageAgenda && (
+          {comecou && canManageAgenda && (
             <Button className="w-full gap-1.5" onClick={handleFinalizar} disabled={finalizando}>
               {finalizando ? <Spinner size="sm" className="border-white/40 border-t-white" /> : <CheckCircle2 className="h-4 w-4" />}
               Finalizar ensaio

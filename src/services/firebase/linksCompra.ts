@@ -1,5 +1,6 @@
 import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, query, updateDoc, where, type Query } from 'firebase/firestore'
 import { db } from './config'
+import { normalizarUrl } from '@/lib/lojas'
 import type { LinkCompra } from '@/types'
 
 /**
@@ -39,12 +40,6 @@ export function subscribeToLinksCompraPublicos(callback: (links: LinkCompra[]) =
 
 export type LinkCompraDados = Pick<LinkCompra, 'alvo' | 'url'> &
   Partial<Pick<LinkCompra, 'somenteEquipe' | 'cenaId' | 'cenaNome' | 'personagemKey' | 'personagemNome' | 'produto' | 'categoria' | 'genero' | 'faixa' | 'loja' | 'preco' | 'descricao'>>
-
-/** Sem protocolo vira https:// — o pessoal cola "loja.com/produto". */
-export function normalizarUrl(url: string): string {
-  const u = url.trim()
-  return /^[a-z][a-z0-9+.-]*:\/\//i.test(u) ? u : `https://${u}`
-}
 
 function campos(dados: LinkCompraDados) {
   const { alvo } = dados

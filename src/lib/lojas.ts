@@ -26,9 +26,23 @@ export const LOJAS_SUGERIDAS = LOJAS.map(l => l.nome)
 export function lojaDaUrl(url: string): string | undefined {
   let host: string
   try {
-    host = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`).hostname.toLowerCase()
+    host = new URL(normalizarUrl(url)).hostname.toLowerCase()
   } catch {
     return undefined
   }
   return LOJAS.find(l => l.dominios.some(d => host === d || host.endsWith(`.${d}`) || host.startsWith(`${d}.`) || host.includes(`.${d}.`)))?.nome
+}
+
+/**
+ * Link limpo a partir do que foi colado. O "compartilhar" dos apps de loja manda texto junto
+ * ("Confira X na Shopee! https://s.shopee.com.br/abc") — pega só o link. Sem protocolo vira
+ * https:// — o pessoal cola "loja.com/produto".
+ */
+export function normalizarUrl(url: string): string {
+  const u = url.trim()
+  const http = u.match(/https?:\/\/[^\s<>"']+/i)
+  if (http) return http[0]
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(u)) return u
+  const semEspaco = u.split(/\s+/).find(p => /^[^\s/]+\.[a-z]{2,}(\/|$)/i.test(p))
+  return `https://${semEspaco ?? u}`
 }

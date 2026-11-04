@@ -5,7 +5,7 @@ import { LinksCompraCard } from '@/components/equipe/LinksCompraCard'
 
 /**
  * Sugestões de compra de todas as equipes: as gerais ("para todos") e as de cena e de personagem.
- * Só leitura — cada equipe cadastra os links na página dela; os "só da equipe" ficam de fora.
+ * Cadastro só na página da equipe; aqui admin e quem cadastrou editam. Os "só da equipe" ficam de fora.
  */
 export function SugestoesCompra() {
   const navigate = useNavigate()

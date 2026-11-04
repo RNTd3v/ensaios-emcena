@@ -20,7 +20,7 @@ import {
   updateLinkCompra,
 } from '@/services/firebase/linksCompra'
 import { agregarPersonagens } from '@/lib/personagens'
-import { LOJAS_SUGERIDAS, lojaDaUrl } from '@/lib/lojas'
+import { LOJAS_SUGERIDAS, lojaDaUrl, normalizarUrl } from '@/lib/lojas'
 import { formatBRL } from '@/lib/formatters'
 import {
   CATEGORIAS_COMPRA,
@@ -103,7 +103,7 @@ const ORDEM_GRUPO = { equipe: 0, geral: 1, cena: 2, personagem: 3 } as const
  * Links de sugestão de compra das equipes — de uma cena, de um personagem ou gerais. Na equipe
  * aparecem todos (membros e admin cadastram; líder, assistentes, admin e quem cadastrou editam e
  * excluem); na cena e no personagem, os marcados pra eles; na página de compras, tudo menos o que é
- * só da equipe.
+ * só da equipe. Fora da equipe não cadastra, mas admin e quem cadastrou editam e excluem.
  */
 export function LinksCompraCard({ equipe, users, cenaId, personagemKey }: Props) {
   const currentUser = useAuthStore(s => s.user)
@@ -132,12 +132,14 @@ export function LinksCompraCard({ equipe, users, cenaId, personagemKey }: Props)
 
   const podeCadastrar = !!equipe && !!uid && (isAdmin || equipe.membros.includes(uid))
   const gerenciaEquipe = !!equipe && !!uid && (isAdmin || equipe.liderUid === uid || equipe.assistentes.includes(uid))
+  /** Fora da equipe (página de compras, cena, personagem), admin e quem cadastrou também editam. */
   function podeEditar(l: LinkCompra) {
-    return gerenciaEquipe || (!!equipe && l.criadoPorUid === uid)
+    if (!uid) return false
+    return gerenciaEquipe || isAdmin || l.criadoPorUid === uid
   }
 
-  // Cenas e personagens só pra escolher no cadastro.
-  const precisaOpcoes = podeCadastrar || gerenciaEquipe
+  // Cenas e personagens só pra escolher no cadastro/edição.
+  const precisaOpcoes = podeCadastrar || gerenciaEquipe || (!equipe && !!uid && (isAdmin || !!links?.some(l => l.criadoPorUid === uid)))
   useEffect(() => {
     if (!precisaOpcoes) return
     return subscribeToTodasCenas(setCenas)
@@ -275,7 +277,7 @@ export function LinksCompraCard({ equipe, users, cenaId, personagemKey }: Props)
     return (
       <div key={l.id} className="flex items-center gap-1">
         <a
-          href={l.url}
+          href={normalizarUrl(l.url)}
           target="_blank"
           rel="noopener noreferrer"
           className="flex min-w-0 flex-1 items-center gap-2 rounded-lg bg-gray-50 px-2.5 py-2 text-sm hover:bg-gray-100"
@@ -464,7 +466,7 @@ export function LinksCompraCard({ equipe, users, cenaId, personagemKey }: Props)
         </CardContent>
       </Card>
 
-      {form && equipe && uid && (
+      {form && uid && (equipe || form !== 'novo') && (
         <LinkFormDialog
           equipe={equipe}
           cenas={cenasEscolha}
@@ -479,7 +481,8 @@ export function LinksCompraCard({ equipe, users, cenaId, personagemKey }: Props)
 }
 
 interface FormProps {
-  equipe: Equipe
+  /** Só precisa pra cadastrar — editar funciona de qualquer página. */
+  equipe?: Equipe
   cenas: Cena[]
   personagens: PersonagemOpcao[]
   /** Editando um link já existente. */
@@ -545,7 +548,7 @@ function LinkFormDialog({ equipe, cenas, personagens, link, byUid, onClose }: Fo
           }
     try {
       if (link) await updateLinkCompra(link.id, dados)
-      else await createLinkCompra(equipe, dados, byUid)
+      else if (equipe) await createLinkCompra(equipe, dados, byUid)
       onClose()
     } catch {
       setError('Não foi possível salvar. Tente de novo.')

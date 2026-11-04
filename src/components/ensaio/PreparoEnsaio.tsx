@@ -1,16 +1,17 @@
 import { Backpack, Shirt } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/Textarea'
 import { cn } from '@/lib/utils'
 
 export interface Preparo {
   /** O que vestir (texto livre). */
   roupa: string
-  /** O que levar (texto livre). */
+  /** Importante para o ensaio: o que levar, avisos (texto livre, várias linhas). */
   levar: string
 }
 
-/** Campos "O que vestir" / "O que levar" ao confirmar ou editar um ensaio. `compacto` = no modal da semana. */
+/** Campos "O que vestir" / "Importante para o ensaio" ao confirmar ou editar um ensaio. `compacto` = no modal da semana. */
 export function PreparoCampos({
   value,
   onChange,
@@ -32,12 +33,13 @@ export function PreparoCampos({
           aria-label="O que vestir"
           className="h-8 text-sm"
         />
-        <Input
+        <Textarea
           value={value.levar}
           onChange={e => onChange({ levar: e.target.value })}
-          placeholder="O que levar (opcional)"
-          aria-label="O que levar"
-          className="h-8 text-sm"
+          placeholder="Importante para o ensaio (opcional)"
+          aria-label="Importante para o ensaio"
+          rows={2}
+          className="min-h-0 text-sm"
         />
       </div>
     )
@@ -49,14 +51,20 @@ export function PreparoCampos({
         <Input id={`${idPrefixo}-roupa`} value={value.roupa} onChange={e => onChange({ roupa: e.target.value })} placeholder="Ex.: Roupa preta e tênis" />
       </div>
       <div>
-        <Label htmlFor={`${idPrefixo}-levar`}>O que levar</Label>
-        <Input id={`${idPrefixo}-levar`} value={value.levar} onChange={e => onChange({ levar: e.target.value })} placeholder="Ex.: Roteiro e garrafa d'água" />
+        <Label htmlFor={`${idPrefixo}-levar`}>Importante para o ensaio</Label>
+        <Textarea
+          id={`${idPrefixo}-levar`}
+          value={value.levar}
+          onChange={e => onChange({ levar: e.target.value })}
+          placeholder="Ex.: Levar roteiro e garrafa d'água"
+          rows={3}
+        />
       </div>
     </>
   )
 }
 
-/** Linhas "vestir" / "levar" de um ensaio (página do ensaio e card da Home). Nada se os dois estão vazios. */
+/** Linhas "vestir" / "importante" de um ensaio (página do ensaio e card da Home). Nada se os dois estão vazios. */
 export function PreparoInfo({ roupa, levar, className }: { roupa?: string; levar?: string; className?: string }) {
   if (!roupa && !levar) return null
   return (
@@ -72,8 +80,8 @@ export function PreparoInfo({ roupa, levar, className }: { roupa?: string; levar
       {levar && (
         <p className="flex items-start gap-1.5 text-sm text-gray-700">
           <Backpack className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          <span>
-            <span className="font-medium">Levar:</span> {levar}
+          <span className="whitespace-pre-line">
+            <span className="font-medium">Importante:</span> {levar}
           </span>
         </p>
       )}

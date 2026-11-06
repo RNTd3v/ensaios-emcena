@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, CheckCircle2, Clock, ExternalLink, Info, Plus, MapPin, MessageCircle, NotebookPen, Pause, Pencil, Play, RotateCcw, Shirt, SlidersHorizontal, Star, Users, X, XCircle, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Check, CheckCircle2, Clock, ExternalLink, Info, Plus, MapPin, MessageCircle, NotebookPen, Pause, Pencil, Play, RotateCcw, Shirt, SlidersHorizontal, Star, UserPlus, Users, X, XCircle, RefreshCw } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { NotificarElenco } from '@/components/ensaio/NotificarElenco'
 import { PreparoCampos, PreparoInfo, type Preparo } from '@/components/ensaio/PreparoEnsaio'
@@ -24,6 +24,7 @@ import {
   removerPresenca,
   reabrirEnsaio,
   salvarRegistroEnsaio,
+  subscribeToEnsaio,
   subscribeToEnsaiosDaCena,
   updateEnsaioAnotacoes,
   updateEnsaioCronometro,
@@ -86,10 +87,18 @@ export function EnsaioAoVivo() {
     return subscribeToCena(cenaId, setCena)
   }, [cenaId])
 
+  // Quem foi convidado sem ser da cena não lê a lista da cena (a regra nega) — vira lista vazia, e
+  // o ensaio vem pela assinatura por id abaixo.
   useEffect(() => {
     if (!cenaId) return
-    return subscribeToEnsaiosDaCena(cenaId, setEnsaios)
+    return subscribeToEnsaiosDaCena(cenaId, setEnsaios, () => setEnsaios([]))
   }, [cenaId])
+
+  const [ensaioPorId, setEnsaioPorId] = useState<Ensaio | null | undefined>(undefined)
+  useEffect(() => {
+    if (!ensaioId) return setEnsaioPorId(null)
+    return subscribeToEnsaio(ensaioId, setEnsaioPorId)
+  }, [ensaioId])
 
   useEffect(() => subscribeToAllInscricoes(setInscricoes), [])
 
@@ -110,13 +119,13 @@ export function EnsaioAoVivo() {
   const todayKey = toDateKey(new Date())
   const ensaio = useMemo(() => {
     const lista = ensaios ?? []
-    if (ensaioId) return lista.find(e => e.id === ensaioId)
+    if (ensaioId) return lista.find(e => e.id === ensaioId) ?? (ensaioPorId && ensaioPorId.cenaId === cenaId ? ensaioPorId : undefined)
     if (dataParam) {
       const doDia = lista.filter(e => e.data === dataParam)
       return doDia.find(e => !e.canceledByUid) ?? doDia[0]
     }
     return lista.find(e => e.data === todayKey && !e.canceledByUid)
-  }, [ensaios, ensaioId, dataParam, todayKey])
+  }, [ensaios, ensaioId, ensaioPorId, cenaId, dataParam, todayKey])
   const proximoEnsaio = useMemo(() => {
     if (!ensaios) return undefined
     return ensaios
@@ -133,6 +142,11 @@ export function EnsaioAoVivo() {
   const elenco = useMemo(() => (cena?.personagens ?? []).filter(p => p.participanteUid), [cena?.personagens])
   /** Quem é chamado pra esse ensaio: com obrigatórios marcados, só eles (ver `elencoDoEnsaio`). */
   const elencoChamado = useMemo(() => elencoDoEnsaio(cena?.personagens ?? [], ensaio?.obrigatorios), [cena?.personagens, ensaio?.obrigatorios])
+  /** Convidados de fora do elenco chamado (quem também tem personagem chamado aparece só no elenco). */
+  const convidados = useMemo(() => {
+    const doElenco = new Set(elencoChamado.map(p => p.participanteUid))
+    return (ensaio?.convidados ?? []).filter(uid => !doElenco.has(uid))
+  }, [ensaio?.convidados, elencoChamado])
 
   // Motivos de ausência gravados no formato antigo (no próprio ensaio, legíveis por todo o elenco)
   // vão pra subcoleção privada assim que admin/líder abre a página.
@@ -290,7 +304,7 @@ export function EnsaioAoVivo() {
     else await confirmarPresenca(ensaio.id, uid)
   }
 
-  if (cena === undefined || !ensaios) {
+  if (cena === undefined || !ensaios || (ensaioId && ensaioPorId === undefined)) {
     return (
       <div className="flex justify-center py-10">
         <Spinner />
@@ -311,7 +325,16 @@ export function EnsaioAoVivo() {
 
   // Menor de idade sem telefone próprio: fala com o responsável.
   const telefoneDe = (uid: string) => inscricoesByUid[uid]?.telefone || inscricoesByUid[uid]?.responsavel?.telefone || undefined
-  const presencaProps = { elenco: elencoChamado, users, nameFor, onToggle: togglePresenca, podeVerMotivo: canManageAgenda, telefoneDe, atorDe }
+  const presencaProps = {
+    elenco: elencoChamado,
+    convidados,
+    users,
+    nameFor,
+    onToggle: togglePresenca,
+    podeVerMotivo: canManageAgenda,
+    telefoneDe,
+    atorDe,
+  }
 
   return (
     <div className="space-y-4">
@@ -459,7 +482,7 @@ export function EnsaioAoVivo() {
 
           <MusicasCard cena={cena} ensaio={{ id: ensaio.id, data: ensaio.data }} />
 
-          <CheckinCard ensaio={ensaio} elenco={elencoChamado} checkinLimiteHoras={checkinLimiteHoras} />
+          <CheckinCard ensaio={ensaio} elenco={elencoChamado} convidados={convidados} checkinLimiteHoras={checkinLimiteHoras} />
 
           <PresencaCard
             {...presencaProps}
@@ -542,6 +565,7 @@ export function EnsaioAoVivo() {
           personagens={cena.personagens}
           elenco={elenco}
           pessoas={pessoas}
+          users={users}
           nameFor={nameFor}
           atorDe={atorDe}
         />
@@ -557,6 +581,7 @@ export function EnsaioAoVivo() {
           personagens={cena.personagens}
           elenco={elenco}
           pessoas={pessoas}
+          users={users}
           nameFor={nameFor}
           atorDe={atorDe}
         />
@@ -652,11 +677,12 @@ function LocalCard({ ensaio }: { ensaio: Ensaio }) {
 interface CheckinCardProps {
   ensaio: Ensaio
   elenco: Personagem[]
+  convidados: string[]
   checkinLimiteHoras: number
 }
 
-/** A resposta da própria pessoa (quem tem personagem na cena): "Vou" / "Não vou" com motivo. */
-function CheckinCard({ ensaio, elenco, checkinLimiteHoras }: CheckinCardProps) {
+/** A resposta da própria pessoa (chamada pelo personagem ou convidada): "Vou" / "Não vou" com motivo. */
+function CheckinCard({ ensaio, elenco, convidados, checkinLimiteHoras }: CheckinCardProps) {
   const currentUser = useAuthStore(s => s.user)
   // Filhos (dependentes) da pessoa: ela responde a presença por eles também.
   const [dependentes, setDependentes] = useState<Inscricao[]>([])
@@ -671,7 +697,7 @@ function CheckinCard({ ensaio, elenco, checkinLimiteHoras }: CheckinCardProps) {
 
   return (
     <>
-      {noElenco(currentUser.uid) && (
+      {(noElenco(currentUser.uid) || convidados.includes(currentUser.uid)) && (
         <Card>
           <CardContent className="space-y-2">
             <p className="text-sm font-semibold">Sua presença</p>
@@ -694,6 +720,8 @@ function CheckinCard({ ensaio, elenco, checkinLimiteHoras }: CheckinCardProps) {
 interface PresencaCardProps {
   ensaio: Ensaio
   elenco: Personagem[]
+  /** Convidados de fora do elenco chamado — mesma lista de presença, sem personagem. */
+  convidados: string[]
   users: Record<string, AppUser>
   nameFor: (uid: string) => string
   onToggle: (uid: string) => void
@@ -731,7 +759,7 @@ function useMotivosAusencia(ensaio: Ensaio, podeVerTodos: boolean, currentUid: s
   }
 }
 
-function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, podeVerMotivo, telefoneDe, atorDe }: PresencaCardProps) {
+function PresencaCard({ ensaio, elenco, convidados, users, nameFor, onToggle, podeAlterar, podeVerMotivo, telefoneDe, atorDe }: PresencaCardProps) {
   const currentUid = useAuthStore(s => s.user?.uid)
   const ausentes = uidsAusentes(ensaio)
   const motivoDe = useMotivosAusencia(ensaio, !!podeVerMotivo, currentUid)
@@ -740,10 +768,15 @@ function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, p
     if (!podeVerMotivo) return setRessalvas({})
     return subscribeToRessalvas(ensaio.id, setRessalvas)
   }, [ensaio.id, podeVerMotivo])
-  const elencoUids = new Set(elenco.map(p => p.participanteUid as string))
+  const elencoUids = new Set([...elenco.map(p => p.participanteUid as string), ...convidados])
   const presentesElenco = (ensaio.presencas ?? []).filter(uid => elencoUids.has(uid)).length
-  /** Quem esteve presente sem ser do elenco da cena (adicionado pelo modal de edição). */
+  /** Quem esteve presente sem ser chamado nem convidado (adicionado pelo modal de edição). */
   const extras = (ensaio.presencas ?? []).filter(uid => !elencoUids.has(uid))
+  // Convidados entram na mesma lista, com o nome no lugar do personagem.
+  const linhas = [
+    ...elenco.map(p => ({ key: p.id, uid: p.participanteUid as string, titulo: p.nome, sub: atorDe(p.participanteUid as string) })),
+    ...convidados.map(uid => ({ key: `convidado-${uid}`, uid, titulo: atorDe(uid), sub: 'Convidado' })),
+  ]
   return (
     <Card>
       <CardContent className="space-y-2.5">
@@ -757,21 +790,21 @@ function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, p
             {extras.length > 0 && ` + ${extras.length}`}
           </span>
         </div>
-        {elenco.length === 0 ? (
+        {linhas.length === 0 ? (
           <p className="text-xs text-muted-foreground">Nenhum personagem com participante vinculado.</p>
         ) : (
           <div className="space-y-1">
-            {elenco.map(p => {
-              const uid = p.participanteUid as string
+            {linhas.map(p => {
+              const uid = p.uid
               const presente = !!ensaio.presencas?.includes(uid)
               const telefone = telefoneDe(uid)
               const pessoa = (
                 <>
                   <Avatar photoURL={users[uid]?.photoURL} name={nameFor(uid)} className="h-8 w-8 shrink-0 text-xs" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{p.nome}</p>
+                    <p className="truncate font-medium">{p.titulo}</p>
                     <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
-                      <span className="truncate">{atorDe(uid)}</span>
+                      <span className="truncate">{p.sub}</span>
                       {telefone && <MessageCircle className="h-3 w-3 shrink-0 text-emerald-600" />}
                     </p>
                     {!presente && ausentes.includes(uid) && (
@@ -805,7 +838,7 @@ function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, p
               if (!telefone) {
                 return (
                   <button
-                    key={p.id}
+                    key={p.key}
                     type="button"
                     disabled={!podeAlterar(uid)}
                     onClick={() => onToggle(uid)}
@@ -819,7 +852,7 @@ function PresencaCard({ ensaio, elenco, users, nameFor, onToggle, podeAlterar, p
 
               // Com telefone: tocar na pessoa abre o WhatsApp; a bolinha marca presença.
               return (
-                <div key={p.id} className={cn('flex w-full items-center gap-1 rounded-lg pl-2 text-sm', fundo)}>
+                <div key={p.key} className={cn('flex w-full items-center gap-1 rounded-lg pl-2 text-sm', fundo)}>
                   <a
                     href={whatsappLink(telefone)}
                     target="_blank"
@@ -943,6 +976,8 @@ interface EditarEnsaioDialogProps {
   personagens: Personagem[]
   elenco: Personagem[]
   pessoas: PessoaOpcao[]
+  /** Pra não oferecer crianças (dependentes) como convidadas. */
+  users: Record<string, AppUser>
   nameFor: (uid: string) => string
   atorDe: (uid: string) => string
 }
@@ -962,6 +997,7 @@ function EditarEnsaioDialog({
   personagens,
   elenco,
   pessoas,
+  users,
   nameFor,
   atorDe,
 }: EditarEnsaioDialogProps) {
@@ -979,6 +1015,8 @@ function EditarEnsaioDialog({
   const [anotacoes, setAnotacoes] = useState(ensaio?.anotacoes ?? '')
   const [presencas, setPresencas] = useState<string[]>(ensaio?.presencas ?? [])
   const [obrigatorios, setObrigatorios] = useState<string[]>(ensaio?.obrigatorios ?? [])
+  const [convidados, setConvidados] = useState<string[]>(ensaio?.convidados ?? [])
+  const [convidadoUid, setConvidadoUid] = useState('')
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [canceling, setCanceling] = useState(false)
   // Horário, local e obrigatórios geram aviso ("Ensaio alterado", "Você foi chamado", "Você não
@@ -986,15 +1024,23 @@ function EditarEnsaioDialog({
   const [notificar, setNotificar] = useState(true)
   const obrigatoriosMudaram =
     !!ensaio && JSON.stringify([...obrigatorios].sort()) !== JSON.stringify([...(ensaio.obrigatorios ?? [])].sort())
+  const convidadosMudaram =
+    !!ensaio && JSON.stringify([...convidados].sort()) !== JSON.stringify([...(ensaio.convidados ?? [])].sort())
   // Confirmar sempre avisa o elenco ("Ensaio confirmado"/"reconfirmado"), sem essa opção.
   const mudaAviso =
-    !confirmando && !!ensaio && (horario !== ensaio.horario || local.trim() !== (ensaio.local ?? '').trim() || obrigatoriosMudaram)
+    !confirmando &&
+    !!ensaio &&
+    (horario !== ensaio.horario || local.trim() !== (ensaio.local ?? '').trim() || obrigatoriosMudaram || convidadosMudaram)
   const [extraUid, setExtraUid] = useState('')
   // A lista de presença segue os obrigatórios do rascunho: marcou obrigatórios, só eles ficam no elenco.
   const elencoChamado = elencoDoEnsaio(elenco, obrigatorios)
-  const elencoUids = new Set(elencoChamado.map(p => p.participanteUid as string))
+  const doElenco = new Set(elencoChamado.map(p => p.participanteUid as string))
+  // Convidado que também foi chamado pelo personagem aparece só no elenco.
+  const convidadosFora = convidados.filter(uid => !doElenco.has(uid))
+  const elencoUids = new Set([...doElenco, ...convidadosFora])
   const extras = presencas.filter(uid => !elencoUids.has(uid))
   const disponiveisExtra = pessoas.filter(p => !elencoUids.has(p.uid) && !presencas.includes(p.uid))
+  const disponiveisConvite = pessoas.filter(p => !elencoUids.has(p.uid) && !users[p.uid]?.dependente)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -1012,7 +1058,7 @@ function EditarEnsaioDialog({
     setError('')
     if (onConfirmar) {
       try {
-        await onConfirmar({ horario, local, geral, comFigurino, ...preparo, obrigatorios })
+        await onConfirmar({ horario, local, geral, comFigurino, ...preparo, obrigatorios, convidados: convidadosFora })
         onClose()
       } catch {
         setError('Não foi possível confirmar. Tente de novo.')
@@ -1027,7 +1073,16 @@ function EditarEnsaioDialog({
       const presencasMudaram = JSON.stringify([...presencas].sort()) !== JSON.stringify([...(ensaio.presencas ?? [])].sort())
       await updateEnsaioInfo(
         ensaio.id,
-        { horario, local, geral, comFigurino, ...preparo, obrigatorios, presencas: presencasMudaram ? presencas : undefined },
+        {
+          horario,
+          local,
+          geral,
+          comFigurino,
+          ...preparo,
+          obrigatorios,
+          convidados: convidadosFora,
+          presencas: presencasMudaram ? presencas : undefined,
+        },
         currentUser.uid,
         notificar,
       )
@@ -1132,6 +1187,56 @@ function EditarEnsaioDialog({
           </div>
         )}
 
+        <div>
+          <p className="text-sm font-medium">Convidados</p>
+          <p className="mb-1.5 text-xs text-muted-foreground">
+            Pessoas de fora do elenco chamado: recebem os avisos do ensaio e confirmam presença como o elenco.
+          </p>
+          {convidadosFora.length > 0 && (
+            <div className="mb-2 space-y-1">
+              {convidadosFora.map(uid => (
+                <PessoaLinha
+                  key={uid}
+                  pessoa={pessoas.find(p => p.uid === uid) ?? { uid, nome: nameFor(uid) }}
+                  className="rounded-lg bg-primary/5 px-2 py-1.5"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setConvidados(prev => prev.filter(u => u !== uid))}
+                    title="Remover convite"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </PessoaLinha>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-1.5">
+            <div className="flex-1">
+              <PessoaSelect
+                value={convidadoUid}
+                onChange={setConvidadoUid}
+                pessoas={disponiveisConvite}
+                placeholder="Convidar pessoa..."
+                titulo="Convidar para o ensaio"
+              />
+            </div>
+            <Button
+              size="icon"
+              title="Convidar"
+              disabled={!convidadoUid}
+              onClick={() => {
+                setConvidados(prev => (prev.includes(convidadoUid) ? prev : [...prev, convidadoUid]))
+                setConvidadoUid('')
+              }}
+              className="shrink-0 bg-primary/10 text-primary hover:bg-primary/15"
+            >
+              <UserPlus className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
         {comRegistro && (
           <>
             <div>
@@ -1164,16 +1269,19 @@ function EditarEnsaioDialog({
               Presença ({presencas.filter(uid => elencoUids.has(uid)).length}/{elencoUids.size}
               {extras.length > 0 && ` + ${extras.length}`})
             </p>
-            {elencoChamado.length === 0 ? (
+            {elencoUids.size === 0 ? (
               <p className="text-xs text-muted-foreground">Nenhum personagem com participante vinculado.</p>
             ) : (
               <div className="space-y-1">
-                {elencoChamado.map(p => {
-                  const uid = p.participanteUid as string
+                {[
+                  ...elencoChamado.map(p => ({ key: p.id, uid: p.participanteUid as string, titulo: p.nome, sub: atorDe(p.participanteUid as string) })),
+                  ...convidadosFora.map(uid => ({ key: `convidado-${uid}`, uid, titulo: atorDe(uid), sub: 'Convidado' })),
+                ].map(p => {
+                  const uid = p.uid
                   const presente = presencas.includes(uid)
                   return (
                     <button
-                      key={p.id}
+                      key={p.key}
                       type="button"
                       onClick={() => togglePresenca(uid)}
                       className={cn(
@@ -1182,8 +1290,8 @@ function EditarEnsaioDialog({
                       )}
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{p.nome}</p>
-                        <p className="truncate text-xs text-muted-foreground">{atorDe(uid)}</p>
+                        <p className="truncate font-medium">{p.titulo}</p>
+                        <p className="truncate text-xs text-muted-foreground">{p.sub}</p>
                       </div>
                       <span
                         className={cn(

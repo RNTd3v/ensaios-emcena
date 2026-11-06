@@ -678,7 +678,7 @@ export function CenaDetalhe() {
           const indisponiveis = uidsIndisponiveis(cena, o.dateKey, inscricoesByUid, undefined, detail.obrigatorios)
           // Reconfirma e grava as infos num update só — o aviso sai uma vez, já pros obrigatórios certos.
           return existing
-            ? reconfirmarEnsaio(existing.id, currentUser.uid, { ...detail, local: existing.local ?? '' }).then(() =>
+            ? reconfirmarEnsaio(existing.id, currentUser.uid, { ...detail, local: existing.local ?? '', convidados: existing.convidados ?? [] }).then(() =>
                 aplicarIndisponibilidades(existing.id, indisponiveis),
               )
             : createEnsaio(cena.id, o.dateKey, detail.horario, currentUser.uid, detail.obrigatorios, {

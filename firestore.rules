@@ -546,8 +546,12 @@ service cloud.firestore {
              .hasOnly([alterados[0]]);
     }
 
+    // Convidados (`convidados`, uids de fora do elenco chamado — ver tipo `Ensaio`) leem o ensaio e
+    // respondem a própria presença como o elenco, mesmo sem ser participantes da cena. A Home deles
+    // consulta por `convidados array-contains uid`.
     match /ensaios/{id} {
       allow read: if isAdmin()
+        || (isAuthenticated() && request.auth.uid in resource.data.get('convidados', []))
         || (isAuthenticated()
             && get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.liderUid == request.auth.uid)
         || (isAuthenticated()
@@ -560,6 +564,12 @@ service cloud.firestore {
         || gerenciaEnsaios(get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data)
         || (isAuthenticated()
             && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.participantes
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presencas', 'ausentes', 'ausencias'])
+            && listaPropriaOk('presencas')
+            && listaPropriaOk('ausentes')
+            && ausenciaPropriaOk())
+        || (isAuthenticated()
+            && request.auth.uid in resource.data.get('convidados', [])
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presencas', 'ausentes', 'ausencias'])
             && listaPropriaOk('presencas')
             && listaPropriaOk('ausentes')
@@ -585,6 +595,8 @@ service cloud.firestore {
           || (isAuthenticated() && uid.matches('dep_.*') && responsavelDe(uid));
         allow write: if isAdmin()
           || (isAuthenticated() && request.auth.uid == uid && request.auth.uid in cenaDoEnsaio().participantes)
+          || (isAuthenticated() && request.auth.uid == uid
+              && uid in get(/databases/$(database)/documents/ensaios/$(id)).data.get('convidados', []))
           || gerenciaEnsaios(cenaDoEnsaio())
           || (isAuthenticated() && uid.matches('dep_.*') && responsavelDe(uid) && uid in cenaDoEnsaio().participantes);
       }
@@ -600,6 +612,8 @@ service cloud.firestore {
           || (isAuthenticated() && uid.matches('dep_.*') && responsavelDe(uid));
         allow write: if isAdmin()
           || (isAuthenticated() && request.auth.uid == uid && request.auth.uid in cenaDoEnsaio().participantes)
+          || (isAuthenticated() && request.auth.uid == uid
+              && uid in get(/databases/$(database)/documents/ensaios/$(id)).data.get('convidados', []))
           || gerenciaEnsaios(cenaDoEnsaio())
           || (isAuthenticated() && uid.matches('dep_.*') && responsavelDe(uid) && uid in cenaDoEnsaio().participantes);
       }

@@ -28,7 +28,7 @@ export async function createEnsaio(
   horario: string,
   confirmedByUid: string,
   obrigatorios?: string[],
-  flags?: { geral?: boolean; comFigurino?: boolean; roupa?: string; levar?: string; local?: string },
+  flags?: { geral?: boolean; comFigurino?: boolean; roupa?: string; levar?: string; local?: string; convidados?: string[] },
 ): Promise<string> {
   const ref = await addDoc(collection(db, 'ensaios'), {
     cenaId,
@@ -37,6 +37,7 @@ export async function createEnsaio(
     presencas: [],
     ...(flags?.local?.trim() ? { local: flags.local.trim() } : {}),
     ...(obrigatorios?.length ? { obrigatorios } : {}),
+    ...(flags?.convidados?.length ? { convidados: flags.convidados } : {}),
     ...(flags?.geral ? { geral: true } : {}),
     ...(flags?.comFigurino ? { comFigurino: true } : {}),
     ...(flags?.roupa?.trim() ? { roupa: flags.roupa.trim() } : {}),
@@ -67,6 +68,8 @@ export interface EnsaioInfo {
   roupa: string
   levar: string
   obrigatorios: string[]
+  /** uids convidados de fora do elenco chamado (ver `Ensaio.convidados`). */
+  convidados: string[]
 }
 
 function camposInfo(info: EnsaioInfo) {
@@ -78,6 +81,7 @@ function camposInfo(info: EnsaioInfo) {
     roupa: info.roupa.trim() || deleteField(),
     levar: info.levar.trim() || deleteField(),
     obrigatorios: info.obrigatorios.length ? info.obrigatorios : deleteField(),
+    convidados: info.convidados.length ? info.convidados : deleteField(),
   }
 }
 
@@ -358,9 +362,28 @@ export async function updateEnsaioCronometro(id: string, cronometro: CronometroE
 }
 
 /** Todos os ensaios (confirmados e cancelados) de uma cena, em tempo real — sem paginação. */
-export function subscribeToEnsaiosDaCena(cenaId: string, callback: (ensaios: Ensaio[]) => void) {
+export function subscribeToEnsaiosDaCena(cenaId: string, callback: (ensaios: Ensaio[]) => void, onError?: () => void) {
   const q = query(collection(db, 'ensaios'), where('cenaId', '==', cenaId))
-  return onSnapshot(q, snap => callback(snap.docs.map(d => fromSnap(d.id, d.data()))))
+  return onSnapshot(q, snap => callback(snap.docs.map(d => fromSnap(d.id, d.data()))), onError)
+}
+
+/** Um ensaio, em tempo real (`null` = não existe ou sem acesso). Serve a quem foi convidado e não é da cena. */
+export function subscribeToEnsaio(id: string, callback: (ensaio: Ensaio | null) => void) {
+  return onSnapshot(
+    doc(db, 'ensaios', id),
+    snap => callback(snap.exists() ? fromSnap(snap.id, snap.data()) : null),
+    () => callback(null),
+  )
+}
+
+/** Ensaios pra que `uid` foi convidado (de cenas em que não necessariamente está), em tempo real. */
+export function subscribeToEnsaiosConvidado(uid: string, callback: (ensaios: Ensaio[]) => void) {
+  const q = query(collection(db, 'ensaios'), where('convidados', 'array-contains', uid))
+  return onSnapshot(
+    q,
+    snap => callback(snap.docs.map(d => fromSnap(d.id, d.data()))),
+    () => callback([]),
+  )
 }
 
 /** Todos os ensaios (de todas as cenas), em tempo real — sem paginação. */

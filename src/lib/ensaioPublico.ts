@@ -11,9 +11,9 @@ export function elencoDoEnsaio(personagens: Personagem[], obrigatorios: string[]
   return obrigatorios?.length ? comPessoa.filter(p => obrigatorios.includes(p.id)) : comPessoa
 }
 
-/** Uids chamados pro ensaio (ver `elencoDoEnsaio`). */
-export function uidsDoEnsaio(personagens: Personagem[], ensaio: Pick<Ensaio, 'obrigatorios'> | undefined): Set<string> {
-  return new Set(elencoDoEnsaio(personagens, ensaio?.obrigatorios).map(p => p.participanteUid as string))
+/** Uids chamados pro ensaio (ver `elencoDoEnsaio`) mais os convidados. */
+export function uidsDoEnsaio(personagens: Personagem[], ensaio: Pick<Ensaio, 'obrigatorios' | 'convidados'> | undefined): Set<string> {
+  return new Set([...elencoDoEnsaio(personagens, ensaio?.obrigatorios).map(p => p.participanteUid as string), ...(ensaio?.convidados ?? [])])
 }
 
 export interface PessoaDaCasaNome {
@@ -28,7 +28,7 @@ export interface PessoaDaCasaNome {
  */
 export function avisoNaoChamado(
   personagens: Personagem[],
-  ensaio: Pick<Ensaio, 'obrigatorios'> | undefined,
+  ensaio: Pick<Ensaio, 'obrigatorios' | 'convidados'> | undefined,
   uid: string | undefined,
   dependentes: PessoaDaCasaNome[] = [],
 ): { soPrecisam: string[] } | null {

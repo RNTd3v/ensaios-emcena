@@ -334,7 +334,7 @@ function ColetarEnsaios({
   dependenteDe?: string
   onChange: (uid: string, ensaios: EnsaiosDaPessoa) => void
 }) {
-  const { cenas, minhasCenas, ensaiosPorCena } = useEnsaiosDasMinhasCenas(uid, dependenteDe)
+  const { cenas, minhasCenas, cenasDosEnsaios, ensaiosPorCena } = useEnsaiosDasMinhasCenas(uid, dependenteDe)
   const todayKey = toDateKey(new Date())
 
   // Datas marcadas como indisponíveis na inscrição viram "não vou" nos próximos ensaios que a
@@ -368,7 +368,8 @@ function ColetarEnsaios({
     const futuros: Item[] = []
     const realizados: Item[] = []
     const semanaPassadaKey = toDateKey(addDays(new Date(`${todayKey}T00:00:00`), -7))
-    for (const cena of minhasCenas) {
+    // Inclui as cenas de ensaios pra que a pessoa foi convidada.
+    for (const cena of cenasDosEnsaios) {
       for (const e of ensaiosPorCena[cena.id] ?? []) {
         if (e.canceledByUid) continue
         // Com obrigatórios marcados, o ensaio é só deles (vale pra criança também: obrigatória, aparece).
@@ -384,12 +385,12 @@ function ColetarEnsaios({
       }
     }
     return {
-      temCena: minhasCenas.length > 0,
+      temCena: cenasDosEnsaios.length > 0,
       doDia: doDia.sort(porDataHora),
       futuros: futuros.sort(porDataHora),
       realizados: realizados.sort(porDataHora),
     }
-  }, [cenas, minhasCenas, ensaiosPorCena, todayKey, diasDeTreinamento, uid])
+  }, [cenas, cenasDosEnsaios, ensaiosPorCena, todayKey, diasDeTreinamento, uid])
 
   useEffect(() => onChange(uid, ensaios), [onChange, uid, ensaios])
   useEffect(() => () => onChange(uid, null), [onChange, uid])
@@ -443,8 +444,11 @@ function EnsaioBloco({
           <Clapperboard className="h-4 w-4 shrink-0 text-primary" />
           <span className="truncate">{cena.nome}</span>
         </p>
-        {meusPersonagens.length > 0 && (
+        {meusPersonagens.length > 0 ? (
           <p className="mt-0.5 truncate pl-5.5 text-xs text-muted-foreground">Como {meusPersonagens.join(', ')}</p>
+        ) : (
+          soEu &&
+          ensaio.convidados?.includes(uid) && <p className="mt-0.5 truncate pl-5.5 text-xs text-muted-foreground">Você foi convidado</p>
         )}
         {ensaio.local && (
           <p className="mt-1 flex items-center gap-1.5 text-sm text-gray-700">

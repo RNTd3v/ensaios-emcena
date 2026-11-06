@@ -125,12 +125,13 @@ function Coletor({
   fim: string
   onChange: (uid: string, itens: Item[] | null) => void
 }) {
-  const { cenas, minhasCenas, ensaiosPorCena } = useEnsaiosDasMinhasCenas(uid, dependenteDe)
+  const { cenas, minhasCenas, cenasDosEnsaios, ensaiosPorCena } = useEnsaiosDasMinhasCenas(uid, dependenteDe)
 
   const itens = useMemo<Item[] | null>(() => {
     if (!cenas || minhasCenas.some(c => !ensaiosPorCena[c.id])) return null
     const lista: Item[] = []
-    for (const cena of minhasCenas) {
+    // Inclui as cenas de ensaios pra que a pessoa foi convidada.
+    for (const cena of cenasDosEnsaios) {
       for (const e of ensaiosPorCena[cena.id] ?? []) {
         if (e.canceledByUid || e.data < inicio || e.data > fim) continue
         if (!uidsDoEnsaio(cena.personagens, e).has(uid)) continue
@@ -138,7 +139,7 @@ function Coletor({
       }
     }
     return lista
-  }, [cenas, minhasCenas, ensaiosPorCena, inicio, fim, uid])
+  }, [cenas, minhasCenas, cenasDosEnsaios, ensaiosPorCena, inicio, fim, uid])
 
   useEffect(() => onChange(uid, itens), [onChange, uid, itens])
 

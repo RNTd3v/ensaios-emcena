@@ -228,10 +228,10 @@ function descricaoEnsaio(cenaNome: string, e: DocumentData): string {
 // ---------- Ensaios ----------
 
 /**
- * Quem recebe os avisos do ensaio: com personagens obrigatórios marcados, só quem faz esses
+ * O elenco chamado pro ensaio: com personagens obrigatórios marcados, só quem faz esses
  * personagens; sem nenhum marcado, a cena toda.
  */
-function publicoDoEnsaio(cena: DocumentData, e: DocumentData): string[] {
+function elencoDoEnsaio(cena: DocumentData, e: DocumentData): string[] {
   const obrigatorios: string[] = e.obrigatorios ?? []
   if (!obrigatorios.length) return cena.participantes ?? []
   const uids = new Set<string>()
@@ -241,22 +241,33 @@ function publicoDoEnsaio(cena: DocumentData, e: DocumentData): string[] {
   return [...uids]
 }
 
+/** Convidados do ensaio que não estão no elenco chamado (pessoas de fora, sem personagem chamado). */
+function convidadosDoEnsaio(cena: DocumentData, e: DocumentData): string[] {
+  const elenco = new Set(elencoDoEnsaio(cena, e))
+  return ((e.convidados as string[] | undefined) ?? []).filter(u => !elenco.has(u))
+}
+
+/** Quem recebe os avisos do ensaio: o elenco chamado mais os convidados. */
+function publicoDoEnsaio(cena: DocumentData, e: DocumentData): string[] {
+  return [...new Set([...elencoDoEnsaio(cena, e), ...((e.convidados as string[] | undefined) ?? [])])]
+}
+
 export const ensaioCriado = onDocumentCreated('ensaios/{id}', async event => {
   const e = event.data?.data()
   if (!e || e.canceledByUid) return
   const cena = await getCena(e.cenaId)
   if (!cena || cena.ativo === false) return
-  await notificar(
-    publicoDoEnsaio(cena, e),
-    { titulo: 'Ensaio confirmado', corpo: descricaoEnsaio(cena.nome, e), link: `/cenas/${e.cenaId}/ensaios/${event.params.id}`, tipo: 'ensaio' },
-    e.confirmedByUid,
-  )
+  const link = `/cenas/${e.cenaId}/ensaios/${event.params.id}`
+  const corpo = descricaoEnsaio(cena.nome, e)
+  const convidados = convidadosDoEnsaio(cena, e)
+  await notificar(elencoDoEnsaio(cena, e), { titulo: 'Ensaio confirmado', corpo, link, tipo: 'ensaio' }, e.confirmedByUid)
+  await notificar(convidados, { titulo: 'Você foi convidado para um ensaio', corpo, link, tipo: 'ensaio' }, e.confirmedByUid)
 })
 
-/** Mesmos obrigatórios (sem ligar pra ordem)? */
-function mesmosObrigatorios(a: DocumentData, b: DocumentData): boolean {
-  const x = [...((a.obrigatorios as string[] | undefined) ?? [])].sort()
-  const y = [...((b.obrigatorios as string[] | undefined) ?? [])].sort()
+/** Mesma lista (sem ligar pra ordem) no campo `campo` dos dois lados? */
+function mesmaLista(a: DocumentData, b: DocumentData, campo: 'obrigatorios' | 'convidados'): boolean {
+  const x = [...((a[campo] as string[] | undefined) ?? [])].sort()
+  const y = [...((b[campo] as string[] | undefined) ?? [])].sort()
   return x.length === y.length && x.every((v, i) => v === y[i])
 }
 
@@ -285,12 +296,12 @@ export const ensaioAlterado = onDocumentUpdated('ensaios/{id}', async event => {
   const depois = event.data?.after.data()
   if (!antes || !depois) return
   const cena = await getCena(depois.cenaId)
-  // Mudaram os obrigatórios: quem entrou passa a ser chamado, quem saiu deixa de ser.
+  // Mudaram os obrigatórios ou os convidados: quem entrou passa a ser chamado, quem saiu deixa de ser.
   const publicoAntes = cena ? new Set(publicoDoEnsaio(cena, antes)) : new Set<string>()
   const publicoDepois = cena ? new Set(publicoDoEnsaio(cena, depois)) : new Set<string>()
-  const obrigatoriosMudaram = !mesmosObrigatorios(antes, depois)
-  const entraram = obrigatoriosMudaram ? [...publicoDepois].filter(u => !publicoAntes.has(u)) : []
-  const sairam = obrigatoriosMudaram ? [...publicoAntes].filter(u => !publicoDepois.has(u)) : []
+  const publicoMudou = !mesmaLista(antes, depois, 'obrigatorios') || !mesmaLista(antes, depois, 'convidados')
+  const entraram = publicoMudou ? [...publicoDepois].filter(u => !publicoAntes.has(u)) : []
+  const sairam = publicoMudou ? [...publicoAntes].filter(u => !publicoDepois.has(u)) : []
   if (!depois.canceledByUid) await limparRespostasDeQuemSaiu(event.params.id, sairam, depois)
 
   // Quem alterou/cancelou escolheu não notificar (`notificar: false` no mesmo update): o elenco vê
@@ -308,17 +319,24 @@ export const ensaioAlterado = onDocumentUpdated('ensaios/{id}', async event => {
     return
   }
   if (antes.canceledByUid && !depois.canceledByUid) {
-    await notificar(participantes, { titulo: 'Ensaio reconfirmado', corpo: descricaoEnsaio(cena.nome, depois), link, tipo: 'ensaio' }, depois.confirmedByUid)
+    const corpo = descricaoEnsaio(cena.nome, depois)
+    const convidados = new Set(convidadosDoEnsaio(cena, depois))
+    await notificar(participantes.filter(u => !convidados.has(u)), { titulo: 'Ensaio reconfirmado', corpo, link, tipo: 'ensaio' }, depois.confirmedByUid)
+    await notificar([...convidados], { titulo: 'Você foi convidado para um ensaio', corpo, link, tipo: 'ensaio' }, depois.confirmedByUid)
     return
   }
   if (depois.canceledByUid) return
   await avisarDesistencias(event.params.id, cena, antes, depois, link)
   await avisarAnotacoesDoEnsaio(cena, antes, depois, link)
-  // Ensaio que já foi (ou foi finalizado): mexer nos obrigatórios é só acerto do registro, sem aviso.
+  // Ensaio que já foi (ou foi finalizado): mexer nos obrigatórios/convidados é só acerto do registro, sem aviso.
   const aindaVai = !depois.finalizadoAt && depois.data >= agoraEmSaoPaulo().hoje
   const corpo = descricaoEnsaio(cena.nome, depois)
   if (aindaVai && entraram.length) {
-    await notificar(entraram, { titulo: 'Você foi chamado para o ensaio', corpo, link, tipo: 'ensaio' }, depois.atualizadoPorUid)
+    const convidados = new Set(convidadosDoEnsaio(cena, depois))
+    const chamados = entraram.filter(u => !convidados.has(u))
+    const convidadosNovos = entraram.filter(u => convidados.has(u))
+    await notificar(chamados, { titulo: 'Você foi chamado para o ensaio', corpo, link, tipo: 'ensaio' }, depois.atualizadoPorUid)
+    await notificar(convidadosNovos, { titulo: 'Você foi convidado para um ensaio', corpo, link, tipo: 'ensaio' }, depois.atualizadoPorUid)
   }
   if (aindaVai && sairam.length) {
     await notificar(sairam, { titulo: 'Você não precisa ir ao ensaio', corpo, link, tipo: 'ensaio' }, depois.atualizadoPorUid)

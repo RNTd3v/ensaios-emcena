@@ -342,6 +342,11 @@ export interface Ensaio {
   ausencias?: Record<string, { motivo: string; registradaEm: string }>
   /** ids de personagens (da cena) com presença obrigatória nesse ensaio específico. */
   obrigatorios?: string[]
+  /**
+   * uids de pessoas de fora do elenco chamado convidadas pra esse ensaio (por admin/liderança da
+   * cena): recebem os avisos, veem o ensaio na Home e respondem a presença como o elenco.
+   */
+  convidados?: string[]
   /** Ensaio geral (com todo o elenco reunido, geralmente próximo da apresentação). */
   geral?: boolean
   /** Ensaio em que o figurino deve ser usado. */

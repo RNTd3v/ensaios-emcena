@@ -330,6 +330,22 @@ export function CenaDetalhe() {
   }, [cena?.personagens, cena?.liderUid, currentUser?.uid])
 
   /**
+   * Quem da casa (a própria pessoa e os dependentes dela) está nessa cena, com os personagens de
+   * cada um — pro label "Cena de…" e o destaque dos personagens.
+   */
+  const daCasaNaCena = useMemo(() => {
+    if (!cena || !currentUser) return []
+    const pessoas = [{ uid: currentUser.uid, nome: 'Você', photoURL: currentUser.photoURL }].concat(
+      dependentes.map(d => ({ uid: d.uid, nome: d.nome, photoURL: users[d.uid]?.photoURL })),
+    )
+    return pessoas
+      .map(p => ({ ...p, personagens: personagensOrdenados.filter(x => x.participanteUid === p.uid) }))
+      .filter(p => cena.participantes.includes(p.uid) || p.personagens.length > 0)
+  }, [cena, currentUser, dependentes, users, personagensOrdenados])
+  const souDaCena = daCasaNaCena.some(p => p.uid === currentUser?.uid)
+  const filhosNaCena = daCasaNaCena.filter(p => p.uid !== currentUser?.uid)
+
+  /**
    * Quem pode entrar na cena. Quem não marcou algum dia da cena também entra (o líder decide), mas
    * vai pro fim da lista com o aviso dos dias que faltam.
    */
@@ -759,7 +775,18 @@ export function CenaDetalhe() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <h1 className="text-xl font-semibold text-white flex-1 truncate">{cena?.nome ?? 'Cena'}</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-xl font-semibold text-white">{cena?.nome ?? 'Cena'}</h1>
+          {daCasaNaCena.length > 0 && (
+            <p className="truncate text-xs text-white/80">
+              {souDaCena
+                ? filhosNaCena.length
+                  ? `Sua cena e de ${filhosNaCena.map(p => p.nome).join(', ')}`
+                  : 'Sua cena'
+                : `Cena de ${filhosNaCena.map(p => p.nome).join(', ')}`}
+            </p>
+          )}
+        </div>
         {isAdmin && cena && (
           <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 shrink-0" onClick={openEditModal} title="Editar cena">
             <Pencil className="h-4 w-4" />
@@ -1067,15 +1094,20 @@ export function CenaDetalhe() {
               {!personagensOpen &&
                 cena.personagens.length > 0 &&
                 (() => {
-                  // O personagem de quem está vendo vai à direita, em destaque, e leva pra tela dele.
-                  // Com dois ou mais personagens na mesma cena, fica tudo na fileira, como antes.
-                  const meus = personagensOrdenados.filter(p => !!currentUser && p.participanteUid === currentUser.uid)
-                  const meu = meus.length === 1 ? meus[0] : undefined
+                  // Só uma pessoa da casa na cena (você ou um filho), com um personagem: ele vai à
+                  // direita, em destaque, e leva pra tela dele. Você e filho(s) juntos: um label por
+                  // personagem de cada um, embaixo da fileira. Uma pessoa com dois ou mais
+                  // personagens: fica tudo na fileira, como antes.
+                  const unica = daCasaNaCena.length === 1 ? daCasaNaCena[0] : undefined
+                  const destaque = unica?.personagens.length === 1 ? { pessoa: unica, personagem: unica.personagens[0] } : undefined
+                  const labels = daCasaNaCena.length > 1 ? daCasaNaCena.flatMap(p => p.personagens.map(personagem => ({ pessoa: p, personagem }))) : []
+                  const foraDaFileira = new Set([destaque?.personagem.id, ...labels.map(l => l.personagem.id)])
                   return (
+                    <>
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <AvatarStack
                         items={personagensOrdenados
-                          .filter(p => p.id !== meu?.id)
+                          .filter(p => !foraDaFileira.has(p.id))
                           .map(p => ({
                             key: p.id,
                             photoURL: p.participanteUid ? users[p.participanteUid]?.photoURL : undefined,
@@ -1083,17 +1115,38 @@ export function CenaDetalhe() {
                           }))}
                         className="flex-1"
                       />
-                      {meu && (
+                      {destaque && (
                         <Link
-                          to={`/cenas/${cena.id}/personagens/${meu.id}`}
-                          title={`Seu personagem: ${meu.nome}`}
+                          to={`/cenas/${cena.id}/personagens/${destaque.personagem.id}`}
+                          title={
+                            destaque.pessoa.uid === currentUser?.uid
+                              ? `Seu personagem: ${destaque.personagem.nome}`
+                              : `Personagem de ${destaque.pessoa.nome}: ${destaque.personagem.nome}`
+                          }
                           className="flex shrink-0 items-center gap-2 rounded-full bg-primary/10 py-1 pl-1 pr-3 ring-1 ring-primary/30 hover:bg-primary/15"
                         >
-                          <Avatar photoURL={currentUser?.photoURL} name={meu.nome} className="h-7 w-7 text-[10px] ring-2 ring-primary" />
-                          <span className="max-w-[9rem] truncate text-xs font-semibold text-primary">{meu.nome}</span>
+                          <Avatar photoURL={destaque.pessoa.photoURL} name={destaque.personagem.nome} className="h-7 w-7 text-[10px] ring-2 ring-primary" />
+                          <span className="max-w-[9rem] truncate text-xs font-semibold text-primary">{destaque.personagem.nome}</span>
                         </Link>
                       )}
                     </div>
+                    {labels.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {labels.map(({ pessoa, personagem }) => (
+                          <Link
+                            key={personagem.id}
+                            to={`/cenas/${cena.id}/personagens/${personagem.id}`}
+                            className="flex max-w-full items-center gap-1.5 rounded-full bg-primary/10 py-0.5 pl-0.5 pr-2.5 ring-1 ring-primary/30 hover:bg-primary/15"
+                          >
+                            <Avatar photoURL={pessoa.photoURL} name={personagem.nome} className="h-6 w-6 text-[9px]" />
+                            <span className="truncate text-xs text-primary">
+                              <span className="font-semibold">{pessoa.nome}</span> · {personagem.nome}
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                    </>
                   )
                 })()}
 

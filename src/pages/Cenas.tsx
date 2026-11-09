@@ -561,7 +561,8 @@ export function Cenas() {
                   {filhosNaCena.length > 0 && (
                     <p className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
                       <Baby className="h-3 w-3 shrink-0" />
-                      Cena de {filhosNaCena.map(nameFor).join(', ')}
+                      {cena.participantes.includes(currentUser!.uid) || cena.liderUid === currentUser!.uid ? 'Sua cena e de' : 'Cena de'}{' '}
+                      {filhosNaCena.map(nameFor).join(', ')}
                     </p>
                   )}
                   {!cena.ativo && cena.deactivatedByUid && (

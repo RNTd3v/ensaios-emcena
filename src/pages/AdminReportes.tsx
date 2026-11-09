@@ -4,6 +4,7 @@ import { ArrowLeft, Bug, CheckCircle2, ChevronDown, RotateCcw, Smartphone } from
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/Spinner'
+import { Textarea } from '@/components/ui/Textarea'
 import { marcarReporte, subscribeToReportes } from '@/services/firebase/reportes'
 import { cn } from '@/lib/utils'
 import type { Reporte } from '@/types'
@@ -27,6 +28,8 @@ export function AdminReportes() {
   const destaque = params.get('id')
   const [reportes, setReportes] = useState<Reporte[] | null>(null)
   const [aba, setAba] = useState<Aba>('aberto')
+  /** Comentário sendo escrito pra cada relato aberto (vai na notificação de resolvido). */
+  const [respostas, setRespostas] = useState<Record<string, string>>({})
   const [abertos, setAbertos] = useState<Set<string>>(() => new Set(destaque ? [destaque] : []))
 
   useEffect(() => subscribeToReportes(setReportes), [])
@@ -134,10 +137,33 @@ export function AdminReportes() {
                         {r.registros.length ? r.registros.join('\n') : 'Nenhuma.'}
                       </pre>
                     </div>
+                    {r.status === 'aberto' ? (
+                      <div>
+                        <p className="mb-1 text-xs font-medium text-muted-foreground">Comentário para {r.nome} (opcional)</p>
+                        <Textarea
+                          value={respostas[r.id] ?? ''}
+                          onChange={e => setRespostas(prev => ({ ...prev, [r.id]: e.target.value }))}
+                          maxLength={300}
+                          placeholder="Ex.: era o cache do app, já corrigimos. Feche e abra o app de novo."
+                        />
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Ao marcar como resolvido, {r.nome} recebe uma notificação{respostas[r.id]?.trim() ? ' com esse comentário' : ''}.
+                        </p>
+                      </div>
+                    ) : (
+                      r.resposta && (
+                        <div>
+                          <p className="mb-1 text-xs font-medium text-muted-foreground">Comentário enviado</p>
+                          <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">{r.resposta}</p>
+                        </div>
+                      )
+                    )}
                     <Button
                       variant={r.status === 'aberto' ? 'default' : 'outline'}
                       className="w-full gap-1.5"
-                      onClick={() => marcarReporte(r.id, r.status === 'aberto' ? 'resolvido' : 'aberto')}
+                      onClick={() =>
+                        r.status === 'aberto' ? marcarReporte(r.id, 'resolvido', respostas[r.id]) : marcarReporte(r.id, 'aberto')
+                      }
                     >
                       {r.status === 'aberto' ? <CheckCircle2 className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
                       {r.status === 'aberto' ? 'Marcar como resolvido' : 'Reabrir'}

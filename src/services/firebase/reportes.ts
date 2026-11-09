@@ -3,7 +3,7 @@ import { db } from './config'
 import { uploadArquivo } from './storage'
 import type { Reporte } from '@/types'
 
-export type ReporteInput = Omit<Reporte, 'id' | 'status' | 'createdAt' | 'resolvidoEm' | 'printUrl' | 'printPath'>
+export type ReporteInput = Omit<Reporte, 'id' | 'status' | 'createdAt' | 'resolvidoEm' | 'resposta' | 'printUrl' | 'printPath'>
 
 /** Grava o relato (o print, se houver, sobe antes). A Cloud Function `reporteCriado` avisa o suporte. */
 export async function enviarReporte(input: ReporteInput, print?: File): Promise<string> {
@@ -37,6 +37,14 @@ export function subscribeToReportes(callback: (lista: Reporte[]) => void) {
   )
 }
 
-export async function marcarReporte(id: string, status: Reporte['status']): Promise<void> {
-  await updateDoc(doc(db, 'reportes', id), { status, resolvidoEm: status === 'resolvido' ? serverTimestamp() : null })
+/**
+ * Resolver (com comentário opcional, que vai na notificação pra quem reportou) ou reabrir. Reabrir
+ * mantém o comentário anterior — resolver de novo troca.
+ */
+export async function marcarReporte(id: string, status: Reporte['status'], resposta?: string): Promise<void> {
+  await updateDoc(doc(db, 'reportes', id), {
+    status,
+    resolvidoEm: status === 'resolvido' ? serverTimestamp() : null,
+    ...(status === 'resolvido' ? { resposta: resposta?.trim() || null } : {}),
+  })
 }

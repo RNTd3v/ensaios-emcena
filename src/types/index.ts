@@ -247,6 +247,8 @@ export interface Reporte {
   status: 'aberto' | 'resolvido'
   createdAt: string
   resolvidoEm?: string
+  /** Comentário do suporte ao resolver — vai na notificação pra quem reportou. */
+  resposta?: string
 }
 
 /** O que uma equipe pode cadastrar em nome da peça toda (fase 4 — permissões por equipe). */

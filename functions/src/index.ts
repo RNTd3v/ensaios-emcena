@@ -1007,3 +1007,18 @@ export const reporteCriado = onDocumentCreated('reportes/{id}', async event => {
     // Quem é o suporte e reporta (testando) também recebe — não passa excetoUid.
   )
 })
+
+/** Relato marcado como resolvido: avisa quem reportou, com o comentário do suporte (se tiver). Sem link. */
+export const reporteResolvido = onDocumentUpdated('reportes/{id}', async event => {
+  const antes = event.data?.before.data()
+  const depois = event.data?.after.data()
+  if (!antes || !depois || antes.status === 'resolvido' || depois.status !== 'resolvido' || !depois.uid) return
+  const texto = String(depois.texto ?? '')
+  const trecho = texto.length > 60 ? `${texto.slice(0, 57)}...` : texto
+  const resposta = String(depois.resposta ?? '').trim()
+  await notificar([depois.uid], {
+    titulo: 'Problema resolvido',
+    corpo: resposta || `"${trecho}" — obrigado por avisar!`,
+    tipo: 'reporte',
+  })
+})

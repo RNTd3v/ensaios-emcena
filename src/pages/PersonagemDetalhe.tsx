@@ -95,8 +95,15 @@ export function PersonagemDetalhe() {
   const personagem = cena?.personagens.find(p => p.id === personagemId)
   const atorInscricao = personagem?.participanteUid ? inscricoesByUid[personagem.participanteUid] : undefined
 
-  /** Quem manda a foto do figurino é o próprio ator/atriz — entra pendente e a equipe de figurino aprova. */
-  const podeEnviarFigurino = !!currentUser && !!personagem?.participanteUid && personagem.participanteUid === currentUser.uid
+  /**
+   * Quem manda a foto do figurino é o próprio ator/atriz — ou, se for uma criança (dependente), um
+   * responsável por ela. Entra pendente e a equipe de figurino aprova.
+   */
+  const souResponsavel =
+    !!currentUser && !!personagem?.participanteUid &&
+    !!users[personagem.participanteUid]?.responsaveisUids?.includes(currentUser.uid)
+  const podeEnviarFigurino =
+    !!currentUser && !!personagem?.participanteUid && (personagem.participanteUid === currentUser.uid || souResponsavel)
 
   // Prazo de envio: definido pela equipe de figurino (vale pra todo mundo). O prazo antigo, por
   // personagem, só aparece se a equipe ainda não definiu o dela.
@@ -108,8 +115,12 @@ export function PersonagemDetalhe() {
   const prazoFigurino =
     equipes.find(e => e.gerencia?.includes('figurinos') && e.prazoFigurino)?.prazoFigurino ?? personagem?.prazoFigurino
 
-  /** Só quem interpreta o personagem edita a própria ficha — nem admin, nem líder. */
-  const isAtor = !!currentUser && !!personagem?.participanteUid && personagem.participanteUid === currentUser.uid
+  /**
+   * Só quem interpreta o personagem edita a própria ficha — nem admin, nem líder. Criança
+   * (dependente) não tem login: quem edita é um responsável por ela.
+   */
+  const isAtor =
+    !!currentUser && !!personagem?.participanteUid && (personagem.participanteUid === currentUser.uid || souResponsavel)
 
 
   const [figurinosDaCena, setFigurinosDaCena] = useState<FigurinoImagem[]>([])
@@ -177,7 +188,14 @@ export function PersonagemDetalhe() {
         }
         await uploadFigurino(
           file,
-          { cenaId: cena.id, cenaNome: cena.nome, personagemId, personagemNome: personagem?.nome, aprovacao: 'pendente' },
+          {
+            cenaId: cena.id,
+            cenaNome: cena.nome,
+            personagemId,
+            personagemNome: personagem?.nome,
+            aprovacao: 'pendente',
+            paraUid: souResponsavel ? personagem?.participanteUid : undefined,
+          },
           currentUser.uid,
         )
       }
@@ -243,6 +261,7 @@ export function PersonagemDetalhe() {
         fichaDraft,
         currentUser.uid,
         currentUser.role === 'admin',
+        souResponsavel ? personagem.participanteUid : undefined,
       )
     } catch (e) {
       console.error('Erro ao salvar ficha do personagem', e)
@@ -436,8 +455,8 @@ export function PersonagemDetalhe() {
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                   <div className="space-y-1">
                     <p>
-                      Envie <strong>só fotos suas já caracterizado(a)</strong> como o personagem, montadas a partir das referências que a
-                      equipe de figurino colocou na cena.
+                      Envie <strong>só fotos {souResponsavel ? `de ${nameFor(personagem!.participanteUid!)}` : 'suas'} já caracterizado(a)</strong>{' '}
+                      como o personagem, montadas a partir das referências que a equipe de figurino colocou na cena.
                     </p>
                     <p>
                       Não envie ideias ou sugestões de figurino por aqui — isso fica com a equipe de figurino. As fotos passam pela

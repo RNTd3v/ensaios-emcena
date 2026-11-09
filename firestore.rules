@@ -96,6 +96,7 @@ service cloud.firestore {
     // mexer em `figurinos` (fotos de referência) e `personagens` (a "ficha do personagem" que o
     // próprio ator/atriz preenche na página do personagem) — mas só nesses campos, nada mais; a UI
     // garante que cada um só edita a própria ficha dentro do array, a regra não valida isso.
+    // Responsáveis de crianças da cena também mexem em `personagens` (a ficha do filho).
     // Assistentes da cena podem tirar pessoas do grupo (só tirar, e nunca o líder nem outro assistente).
     match /cenas/{id} {
       function assistenteRemovendoParticipante() {
@@ -118,6 +119,8 @@ service cloud.firestore {
             && request.resource.data.musicas == resource.data.musicas)
         || (isAuthenticated() && request.auth.uid in resource.data.participantes
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['figurinos', 'personagens', 'updatedByUid', 'updatedAt']))
+        || (isAuthenticated() && request.auth.uid in resource.data.get('responsaveisDependentes', [])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['personagens', 'updatedByUid', 'updatedAt']))
         || assistenteRemovendoParticipante();
       allow delete: if isAdmin();
     }
@@ -321,7 +324,8 @@ service cloud.firestore {
     // Figurinos: admin e a equipe responsável cadastram/editam tudo (referências da peça). O
     // elenco manda a foto do próprio figurino pela página do personagem: entra `pendente` e a
     // equipe de figurino aprova/reprova (só os campos de avaliação, com `avaliadoPorEquipeId` =
-    // a equipe de quem avalia). Quem mandou pode excluir enquanto não foi aprovada.
+    // a equipe de quem avalia). Quem mandou pode excluir enquanto não foi aprovada. Criança
+    // (dependente) não tem login: o responsável manda por ela, com `paraUid` = o dependente.
     match /figurinos/{id} {
       allow read: if isAuthenticated();
       allow create: if isAdmin()
@@ -329,7 +333,10 @@ service cloud.firestore {
         || (isAuthenticated()
             && request.resource.data.get('cenaId', null) is string
             && request.resource.data.get('personagemId', null) is string
-            && request.auth.uid in cenaDoc(request.resource.data.cenaId).participantes
+            && (request.auth.uid in cenaDoc(request.resource.data.cenaId).participantes
+                || (request.resource.data.get('paraUid', null) is string
+                    && request.resource.data.paraUid in cenaDoc(request.resource.data.cenaId).participantes
+                    && responsavelDe(request.resource.data.paraUid)))
             && request.resource.data.uploadedByUid == request.auth.uid
             && request.resource.data.get('aprovacao', null) == 'pendente');
       allow update: if isAdmin()

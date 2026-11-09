@@ -166,6 +166,8 @@ export async function uploadFigurino(
     personagemTodasCenas?: PersonagemTodasCenas
     legenda?: string
     aprovacao?: 'pendente'
+    /** Foto enviada por um responsável: o dependente (criança) que está na foto. */
+    paraUid?: string
   },
   byUid: string,
 ): Promise<void> {
@@ -184,6 +186,7 @@ export async function uploadFigurino(
       legenda: vinculo.legenda?.trim() || undefined,
       equipeId: vinculo.equipeId,
       aprovacao: vinculo.aprovacao,
+      paraUid: vinculo.paraUid,
       uploadedByUid: byUid,
       uploadedAt: new Date().toISOString(),
     }),

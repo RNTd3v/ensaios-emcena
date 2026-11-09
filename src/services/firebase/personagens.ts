@@ -152,6 +152,8 @@ export async function salvarFichaPersonagem(
   ficha: PersonagemFicha,
   uid: string,
   isAdmin: boolean,
+  /** Responsável salvando a ficha de um dependente: o uid da criança (é ela quem está nas cenas). */
+  dependenteUid?: string,
 ): Promise<void> {
   const doPersonagem = (p: Personagem) => personagemKey(p.nome, p.participanteUid) === chave
   const todas = await getDocs(collection(db, 'cenas'))
@@ -160,7 +162,7 @@ export async function salvarFichaPersonagem(
     const data = d.data()
     const personagens = (data.personagens as Personagem[] | undefined) ?? []
     const participantes = (data.participantes as string[] | undefined) ?? []
-    if (personagens.some(doPersonagem) && (isAdmin || participantes.includes(uid))) ids.add(d.id)
+    if (personagens.some(doPersonagem) && (isAdmin || participantes.includes(dependenteUid ?? uid))) ids.add(d.id)
   }
   const refs = [...ids].map(id => doc(db, 'cenas', id))
   await runTransaction(db, async tx => {

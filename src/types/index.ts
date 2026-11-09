@@ -152,6 +152,8 @@ export interface FigurinoImagem {
   /** id de um personagem da cena — ausente/undefined significa "geral" (não é de um personagem específico). */
   personagemId?: string
   uploadedByUid: string
+  /** Enviada por um responsável: o uid do dependente (criança) que interpreta o personagem. */
+  paraUid?: string
   uploadedAt: string
   /** Campos da coleção `figurinos` (fase 4) — no legado (array dentro da cena) não existem. */
   cenaId?: string

@@ -14,7 +14,8 @@ import { Textarea } from '@/components/ui/Textarea'
 import { nomeComApelido, pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers } from '@/services/firebase/auth'
-import { subscribeToCena, alterarCenaPersonagens } from '@/services/firebase/cenas'
+import { subscribeToCena, subscribeToTodasCenas } from '@/services/firebase/cenas'
+import { salvarFichaPersonagem } from '@/services/firebase/personagens'
 import { subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
 import { subscribeToEquipes } from '@/services/firebase/equipes'
@@ -39,6 +40,20 @@ import { personagemKey } from '@/lib/personagens'
 import { LinksCompraCard } from '@/components/equipe/LinksCompraCard'
 
 const FICHA_VAZIA: PersonagemFicha = {}
+const CAMPOS_FICHA: (keyof PersonagemFicha)[] = ['idade', 'sexo', 'profissao', 'estiloMusical', 'personalidade', 'descricao']
+
+/**
+ * Compara campo a campo — não dá pra usar JSON.stringify: o Firestore devolve o mapa com as chaves
+ * em ordem alfabética, o rascunho fica na ordem em que a pessoa preencheu, e aí o botão "Salvar"
+ * nunca sumia mesmo depois de salvo.
+ */
+function fichasIguais(a: PersonagemFicha, b: PersonagemFicha): boolean {
+  return CAMPOS_FICHA.every(c => (a[c] ?? '') === (b[c] ?? ''))
+}
+
+function fichaPreenchida(f: PersonagemFicha | undefined): boolean {
+  return !!f && CAMPOS_FICHA.some(c => f[c]?.trim())
+}
 
 /** Tela de detalhe do personagem: quem interpreta, ficha do personagem, ficha técnica (figurino) e presença nos ensaios. */
 export function PersonagemDetalhe() {
@@ -187,26 +202,55 @@ export function PersonagemDetalhe() {
   const [fichaCarregada, setFichaCarregada] = useState(false)
   const [savingFicha, setSavingFicha] = useState(false)
 
-  useEffect(() => {
-    if (!personagem || fichaCarregada) return
-    setFichaDraft(personagem.ficha ?? FICHA_VAZIA)
-    setFichaCarregada(true)
-  }, [personagem, fichaCarregada])
+  // A ficha é uma só pro personagem em todas as cenas (ver `salvarFichaPersonagem`). Fichas antigas
+  // podem ter ficado só numa das cenas: se esta não tem, mostra a primeira preenchida de outra.
+  const [todasCenas, setTodasCenas] = useState<Cena[] | null>(null)
+  useEffect(() => subscribeToTodasCenas(setTodasCenas), [])
+  const ficha: PersonagemFicha =
+    (fichaPreenchida(personagem?.ficha) ? personagem?.ficha : undefined) ??
+    (todasCenas ?? [])
+      .flatMap(c => c.personagens)
+      .find(p => personagemKey(p.nome, p.participanteUid) === chavePersonagem && fichaPreenchida(p.ficha))?.ficha ??
+    FICHA_VAZIA
 
-  const fichaAlterada = JSON.stringify(fichaDraft) !== JSON.stringify(personagem?.ficha ?? FICHA_VAZIA)
+  useEffect(() => {
+    if (!personagem || !todasCenas || fichaCarregada) return
+    setFichaDraft(ficha)
+    setFichaCarregada(true)
+  }, [personagem, todasCenas, ficha, fichaCarregada])
+
+  const fichaAlterada = !fichasIguais(fichaDraft, ficha)
+  const outrasCenasDoPersonagem = (todasCenas ?? []).filter(
+    c => c.id !== cena?.id && c.personagens.some(p => personagemKey(p.nome, p.participanteUid) === chavePersonagem),
+  )
+  const [erroFicha, setErroFicha] = useState<string | null>(null)
 
   function updateFichaCampo(campo: keyof PersonagemFicha, valor: string) {
     setFichaDraft(prev => ({ ...prev, [campo]: valor }))
+    setErroFicha(null)
   }
 
   async function handleSaveFicha() {
     if (!cena || !currentUser || !personagem) return
     setSavingFicha(true)
+    setErroFicha(null)
     try {
-      await alterarCenaPersonagens(
+      await salvarFichaPersonagem(
         cena.id,
-        atuais => atuais.map(p => (p.id === personagem.id ? { ...p, ficha: fichaDraft } : p)),
+        personagemKey(personagem.nome, personagem.participanteUid),
+        fichaDraft,
         currentUser.uid,
+        currentUser.role === 'admin',
+      )
+    } catch (e) {
+      console.error('Erro ao salvar ficha do personagem', e)
+      const code = (e as { code?: string })?.code
+      setErroFicha(
+        code === 'permission-denied'
+          ? 'Sem permissão para salvar. Confira com o líder da cena se você está no elenco dela.'
+          : code === 'unavailable' || code === 'failed-precondition'
+            ? 'Sem conexão. Verifique a internet e tente de novo.'
+            : 'Não foi possível salvar a ficha. Tente de novo.',
       )
     } finally {
       setSavingFicha(false)
@@ -291,6 +335,11 @@ export function PersonagemDetalhe() {
                   </p>
                   {!isAtor && <span className="text-[11px] text-muted-foreground">Só {nameFor(personagem.participanteUid)} edita</span>}
                 </div>
+                {outrasCenasDoPersonagem.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    A mesma ficha vale também para {outrasCenasDoPersonagem.map(c => c.nome).join(', ')}.
+                  </p>
+                )}
 
                 {isAtor ? (
                   <div className="space-y-3">
@@ -346,6 +395,7 @@ export function PersonagemDetalhe() {
                         Salvar ficha
                       </Button>
                     )}
+                    {erroFicha && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{erroFicha}</p>}
                   </div>
                 ) : (
                   <div className="divide-y divide-gray-100">
@@ -361,7 +411,7 @@ export function PersonagemDetalhe() {
                     ).map(([campo, label]) => (
                       <div key={campo} className="py-2">
                         <p className="text-xs text-muted-foreground">{label}</p>
-                        <p className="text-sm">{personagem.ficha?.[campo] || '—'}</p>
+                        <p className="text-sm">{ficha[campo] || '—'}</p>
                       </div>
                     ))}
                   </div>

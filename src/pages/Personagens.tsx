@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { AlertTriangle, ArrowLeft, ChevronRight, Clapperboard, Plus, Trash2, X } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/badge'
@@ -43,6 +43,18 @@ export function Personagens() {
   const [search, setSearch] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const navigate = useNavigate()
+
+  /** Quem não é admin vai direto pra página do personagem quando ele está numa cena só; senão abre a lista de cenas. */
+  function abrirPersonagem(p: PersonagemAgregado) {
+    const cenaIds = new Set(p.ocorrencias.map(o => o.cena.id))
+    if (!isAdmin && cenaIds.size === 1) {
+      const { cena, personagem } = p.ocorrencias[0]
+      navigate(`/cenas/${cena.id}/personagens/${personagem.id}`)
+      return
+    }
+    setSelectedKey(p.key)
+  }
 
   // Quem não é admin não vê cenas excluídas (inativas).
   useEffect(() => subscribeToTodasCenas(l => setCenas(isAdmin ? l : l.filter(c => c.ativo))), [isAdmin])
@@ -158,7 +170,7 @@ export function Personagens() {
               <button
                 key={p.key}
                 type="button"
-                onClick={() => setSelectedKey(p.key)}
+                onClick={() => abrirPersonagem(p)}
                 className="flex w-full items-center gap-3 rounded-2xl px-2 py-2.5 text-left hover:bg-gray-50"
               >
                 <Avatar
@@ -231,7 +243,7 @@ function PersonagemInfoDialog({
   nameFor: (uid: string) => string
   onClose: () => void
 }) {
-  const cenasDoPersonagem = [...new Map(personagem.ocorrencias.map(o => [o.cena.id, o.cena])).values()]
+  const ocorrenciasPorCena = [...new Map(personagem.ocorrencias.map(o => [o.cena.id, o])).values()]
   return (
     <Dialog open onClose={onClose} title={personagem.nome}>
       <div className="space-y-4">
@@ -250,13 +262,18 @@ function PersonagemInfoDialog({
         </div>
         <div>
           <p className="mb-1.5 text-sm text-muted-foreground">Cenas</p>
-          {cenasDoPersonagem.length ? (
-            <div className="flex flex-wrap gap-1.5">
-              {cenasDoPersonagem.map(c => (
-                <Badge key={c.id} variant="outline" className="gap-1">
-                  <Clapperboard className="h-3 w-3" />
-                  {c.nome}
-                </Badge>
+          {ocorrenciasPorCena.length ? (
+            <div className="space-y-1">
+              {ocorrenciasPorCena.map(({ cena, personagem: p }) => (
+                <Link
+                  key={cena.id}
+                  to={`/cenas/${cena.id}/personagens/${p.id}`}
+                  className="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-sm font-medium hover:bg-gray-50"
+                >
+                  <Clapperboard className="h-4 w-4 shrink-0 text-primary" />
+                  <span className="min-w-0 flex-1 truncate">{cena.nome}</span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
+                </Link>
               ))}
             </div>
           ) : (

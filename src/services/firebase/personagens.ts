@@ -1,7 +1,7 @@
-import { collection, doc, onSnapshot, runTransaction, serverTimestamp, setDoc, writeBatch, type Transaction } from 'firebase/firestore'
+import { collection, doc, getDocs, onSnapshot, runTransaction, serverTimestamp, setDoc, writeBatch, type Transaction } from 'firebase/firestore'
 import { db } from './config'
 import { personagemKey, type PersonagemAgregado } from '@/lib/personagens'
-import type { Cena, Personagem, PersonagemCatalogo } from '@/types'
+import type { Cena, Personagem, PersonagemCatalogo, PersonagemFicha } from '@/types'
 
 /**
  * Catálogo de personagens (só admin) + as operações da tela de Personagens, que mexem no
@@ -138,4 +138,41 @@ export async function deletePersonagem(agregado: PersonagemAgregado, byUid: stri
     byUid,
     tx => tx.delete(catalogoRef(agregado.key)),
   )
+}
+
+/**
+ * A ficha é do personagem, não da cena: grava a mesma ficha em todas as cenas onde ele aparece
+ * (mesma `personagemKey`). A cena de onde a pessoa está salvando entra sempre — se ela não tiver
+ * permissão lá, o erro aparece; as outras só entram se a regra deixar (admin ou participante da
+ * cena), pra um vínculo inconsistente em outra cena não impedir de salvar.
+ */
+export async function salvarFichaPersonagem(
+  cenaId: string,
+  chave: string,
+  ficha: PersonagemFicha,
+  uid: string,
+  isAdmin: boolean,
+): Promise<void> {
+  const doPersonagem = (p: Personagem) => personagemKey(p.nome, p.participanteUid) === chave
+  const todas = await getDocs(collection(db, 'cenas'))
+  const ids = new Set([cenaId])
+  for (const d of todas.docs) {
+    const data = d.data()
+    const personagens = (data.personagens as Personagem[] | undefined) ?? []
+    const participantes = (data.participantes as string[] | undefined) ?? []
+    if (personagens.some(doPersonagem) && (isAdmin || participantes.includes(uid))) ids.add(d.id)
+  }
+  const refs = [...ids].map(id => doc(db, 'cenas', id))
+  await runTransaction(db, async tx => {
+    const snaps = await Promise.all(refs.map(ref => tx.get(ref)))
+    snaps.forEach((snap, i) => {
+      const personagens = (snap.data()?.personagens as Personagem[] | undefined) ?? []
+      if (!personagens.some(doPersonagem)) return
+      tx.update(refs[i], {
+        personagens: personagens.map(p => (doPersonagem(p) ? { ...p, ficha } : p)),
+        updatedByUid: uid,
+        updatedAt: serverTimestamp(),
+      })
+    })
+  })
 }

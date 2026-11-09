@@ -64,7 +64,6 @@ import {
 import { useAuthStore } from '@/stores/authStore'
 import { MusicasCard } from '@/components/midia/MusicasCard'
 import { FigurinosCard } from '@/components/midia/FigurinosCard'
-import { AprovacoesFigurinoCard } from '@/components/midia/AprovacoesFigurinoCard'
 import { ReferenciasEquipeCard } from '@/components/equipe/ReferenciasEquipeCard'
 import { LinksCompraCard } from '@/components/equipe/LinksCompraCard'
 import { useMigrarMidiasLegadas } from '@/hooks/useMigrarMidiasLegadas'
@@ -1202,8 +1201,6 @@ export function CenaDetalhe() {
               Iniciar ensaio
             </Button>
           )}
-
-          <AprovacoesFigurinoCard cena={cena} users={users} />
 
           <FigurinosCard cena={cena} titulo="Figurinos" recolhivel ocultarSeVazio={!canManageCena} />
 

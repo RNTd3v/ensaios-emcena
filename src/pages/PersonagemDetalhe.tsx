@@ -22,6 +22,7 @@ import { subscribeToEquipes } from '@/services/firebase/equipes'
 import {
   avaliarFigurino,
   deleteFigurino,
+  equipeDeFigurinoDe,
   figurinoVisivel,
   juntarComLegado,
   personagensDoFigurino,
@@ -94,15 +95,16 @@ export function PersonagemDetalhe() {
   const personagem = cena?.personagens.find(p => p.id === personagemId)
   const atorInscricao = personagem?.participanteUid ? inscricoesByUid[personagem.participanteUid] : undefined
 
-  /** Quem manda a foto do figurino é o próprio ator/atriz — entra pendente e o líder da cena aprova. */
+  /** Quem manda a foto do figurino é o próprio ator/atriz — entra pendente e a equipe de figurino aprova. */
   const podeEnviarFigurino = !!currentUser && !!personagem?.participanteUid && personagem.participanteUid === currentUser.uid
-  /** Aprovar/reprovar foto de figurino: líder da cena (ou admin). */
-  const podeAvaliarFigurino = !!cena && !!currentUser && (currentUser.role === 'admin' || cena.liderUid === currentUser.uid)
 
   // Prazo de envio: definido pela equipe de figurino (vale pra todo mundo). O prazo antigo, por
   // personagem, só aparece se a equipe ainda não definiu o dela.
   const [equipes, setEquipes] = useState<Equipe[]>([])
   useEffect(() => subscribeToEquipes(setEquipes), [])
+  /** Aprovar/reprovar foto de figurino: membro da equipe de figurino (ou admin). */
+  const equipeFigurino = equipeDeFigurinoDe(equipes, currentUser?.uid)
+  const podeAvaliarFigurino = !!cena && !!currentUser && (currentUser.role === 'admin' || !!equipeFigurino)
   const prazoFigurino =
     equipes.find(e => e.gerencia?.includes('figurinos') && e.prazoFigurino)?.prazoFigurino ?? personagem?.prazoFigurino
 
@@ -120,7 +122,7 @@ export function PersonagemDetalhe() {
   useEffect(() => subscribeToFigurinosDePersonagem(setFigurinosDePersonagem), [])
   const chavePersonagem = personagem ? personagemKey(personagem.nome, personagem.participanteUid) : undefined
   // Coleção nova + o que ainda estiver no formato antigo (array na cena), sem duplicar. Todo mundo
-  // vê o que já vale (da equipe ou aprovado); quem mandou vê as suas em qualquer status; o líder vê
+  // vê o que já vale (da equipe ou aprovado); quem mandou vê as suas em qualquer status; a equipe de figurino vê
   // as pendentes/reprovadas pra avaliar.
   const fotos = useMemo(
     () =>
@@ -143,7 +145,7 @@ export function PersonagemDetalhe() {
     if (!currentUser) return
     setUploading(true)
     try {
-      await avaliarFigurino(f.id, aprovado, motivoReprovacao, currentUser.uid)
+      await avaliarFigurino(f.id, aprovado, motivoReprovacao, currentUser.uid, equipeFigurino?.id)
       setReprovando(false)
       setMotivoReprovacao('')
     } finally {
@@ -439,7 +441,7 @@ export function PersonagemDetalhe() {
                     </p>
                     <p>
                       Não envie ideias ou sugestões de figurino por aqui — isso fica com a equipe de figurino. As fotos passam pela
-                      aprovação do líder da cena.
+                      aprovação da equipe de figurino.
                     </p>
                     {cena && (
                       <Link to={`/cenas/${cena.id}`} className="inline-block font-medium underline underline-offset-2">
@@ -609,7 +611,7 @@ export function PersonagemDetalhe() {
             <ImagemAcoes src={fotos[viewerIndex].url} nome={`figurino-${personagem?.nome ?? ''}`} />
             {zoomUrl && <ImagemZoom src={zoomUrl} onClose={() => setZoomUrl(null)} />}
             {fotos[viewerIndex].aprovacao === 'pendente' && (
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Aguardando aprovação do líder da cena.</p>
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Aguardando aprovação da equipe de figurino.</p>
             )}
             {fotos[viewerIndex].aprovacao === 'reprovado' && (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">

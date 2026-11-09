@@ -4,10 +4,14 @@ import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MusicasCard } from '@/components/midia/MusicasCard'
 import { FigurinosCard } from '@/components/midia/FigurinosCard'
+import { AprovacoesFigurinoCard } from '@/components/midia/AprovacoesFigurinoCard'
+import { useUsersMap } from '@/components/oracao/OrandoAgora'
 import { useMigrarMidiasLegadas } from '@/hooks/useMigrarMidiasLegadas'
 import { subscribeToCenas } from '@/services/firebase/cenas'
+import { subscribeToEquipes } from '@/services/firebase/equipes'
+import { equipeDeFigurinoDe, equipeQueGerenciaDe } from '@/services/firebase/midias'
 import { useAuthStore } from '@/stores/authStore'
-import type { Cena } from '@/types'
+import type { Cena, Equipe } from '@/types'
 
 function useVoltar() {
   const navigate = useNavigate()
@@ -39,27 +43,41 @@ function Cabecalho({ titulo }: { titulo: string }) {
 }
 
 /**
- * Todas as músicas da peça, agrupadas por cena (e "Sem cena"). Só leitura pra todos — exceto o
- * admin, que também cadastra/edita/exclui aqui (a equipe responsável faz isso na página dela).
+ * Todas as músicas da peça, agrupadas por cena (e "Sem cena"). Admin e membros da equipe que cuida
+ * de músicas (sonoplastia) também cadastram/editam/excluem aqui; pros outros é só pra ouvir.
  */
 export function MusicasPage() {
   useCenasParaMigrar()
-  const isAdmin = useAuthStore(s => s.user?.role === 'admin')
+  const currentUser = useAuthStore(s => s.user)
+  const isAdmin = currentUser?.role === 'admin'
+  const [equipes, setEquipes] = useState<Equipe[]>([])
+  useEffect(() => subscribeToEquipes(setEquipes), [])
+  const equipeMusicas = equipeQueGerenciaDe(equipes, currentUser?.uid, 'musicas')
   return (
     <div className="space-y-4">
       <Cabecalho titulo="Músicas" />
-      <MusicasCard semTitulo gerenciar={isAdmin ? {} : undefined} />
+      <MusicasCard semTitulo gerenciar={equipeMusicas ? { equipeId: equipeMusicas.id } : isAdmin ? {} : undefined} />
     </div>
   )
 }
 
-/** Todos os figurinos da peça, agrupados por cena (e "Sem cena"). Mesma regra: admin também gerencia aqui. */
+/**
+ * Todos os figurinos da peça, agrupados por cena (e "Sem cena"). Mesma regra: admin também gerencia
+ * aqui. No topo, as fotos que o elenco mandou esperando a aprovação da equipe de figurino (só pra
+ * membros dela e admin).
+ */
 export function FigurinosPage() {
   useCenasParaMigrar()
-  const isAdmin = useAuthStore(s => s.user?.role === 'admin')
+  const currentUser = useAuthStore(s => s.user)
+  const isAdmin = currentUser?.role === 'admin'
+  const users = useUsersMap()
+  const [equipes, setEquipes] = useState<Equipe[]>([])
+  useEffect(() => subscribeToEquipes(setEquipes), [])
+  const equipeFigurino = equipeDeFigurinoDe(equipes, currentUser?.uid)
   return (
     <div className="space-y-4">
       <Cabecalho titulo="Figurinos" />
+      <AprovacoesFigurinoCard equipeId={equipeFigurino?.id} users={users} />
       <FigurinosCard semTitulo gerenciar={isAdmin ? {} : undefined} />
     </div>
   )

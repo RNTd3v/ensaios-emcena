@@ -173,12 +173,14 @@ export interface FigurinoImagem {
   /** Equipe (com `gerencia` incluindo 'figurinos') em nome de quem foi cadastrado — base da permissão. */
   equipeId?: string
   /**
-   * Foto enviada pelo ator/atriz do próprio figurino (página do personagem) passa por aprovação do
-   * líder da cena. Ausente = cadastrada pela equipe (referência), já vale. Só `aprovado` (ou
+   * Foto enviada pelo ator/atriz do próprio figurino (página do personagem) passa por aprovação da
+   * equipe de figurino. Ausente = cadastrada pela equipe (referência), já vale. Só `aprovado` (ou
    * ausente) aparece nas galerias.
    */
   aprovacao?: 'pendente' | 'aprovado' | 'reprovado'
   avaliadoPorUid?: string
+  /** Equipe de figurino de quem avaliou — base da permissão (ausente = avaliado por admin). */
+  avaliadoPorEquipeId?: string
   avaliadoEm?: string
   motivoReprovacao?: string
 }

@@ -102,14 +102,17 @@ export const FUNCOES_APRESENTACAO: FuncaoApresentacao[] = [
       'Agenda recorrente, nome e roteiro da cena',
       'Adicionar e remover participantes, escolher assistentes',
       'Personagens da cena',
-      'Aprovar fotos de figurino',
       'Mandar avisos pra cena',
     ],
   },
   {
     funcao: 'Membro de equipe',
     grupo: 'equipe',
-    pode: ['Atualizar o status das tarefas', 'Cadastrar músicas ou figurinos, se a equipe cuida disso'],
+    pode: [
+      'Atualizar o status das tarefas',
+      'Cadastrar músicas ou figurinos, se a equipe cuida disso',
+      'Aprovar as fotos de figurino do elenco, se for da equipe de figurino',
+    ],
   },
   {
     funcao: 'Assistente de equipe',

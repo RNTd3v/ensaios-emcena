@@ -761,12 +761,14 @@ export const treinamentoAlterado = onDocumentUpdated('treinamentos/{id}', async 
 
 // ---------- Figurino ----------
 
+/** Foto de figurino do elenco: avisa a equipe de figurino (sem equipe com membros, os admins). */
 export const figurinoEnviado = onDocumentCreated('figurinos/{id}', async event => {
   const f = event.data?.data()
   if (!f || f.aprovacao !== 'pendente' || !f.cenaId) return
   const cena = await getCena(f.cenaId)
   if (!cena) return
-  let avaliadores: string[] = cena.liderUid ? [cena.liderUid] : []
+  const equipes = await db.collection('equipes').where('gerencia', 'array-contains', 'figurinos').get()
+  let avaliadores: string[] = [...new Set(equipes.docs.flatMap(d => (d.data().membros as string[] | undefined) ?? []))]
   if (!avaliadores.length) {
     const admins = await db.collection('users').where('role', '==', 'admin').get()
     avaliadores = admins.docs.map(d => d.id)
@@ -776,7 +778,7 @@ export const figurinoEnviado = onDocumentCreated('figurinos/{id}', async event =
     {
       titulo: 'Foto de figurino pra aprovar',
       corpo: `${f.personagemNome ?? 'Personagem'} · ${cena.nome}`,
-      link: `/cenas/${f.cenaId}`,
+      link: '/figurinos',
       tipo: 'figurino',
     },
     f.uploadedByUid,

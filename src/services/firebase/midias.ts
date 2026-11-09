@@ -1,7 +1,7 @@
 import { collection, deleteDoc, deleteField, doc, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { db } from './config'
 import { deleteCenaFile, uploadCenaFile } from './storage'
-import type { Cena, FigurinoImagem, Musica } from '@/types'
+import type { Cena, Equipe, FigurinoImagem, MidiaTipo, Musica } from '@/types'
 
 /**
  * Músicas e figurinos (fase 4): coleções próprias (`musicas`, `figurinos`), com a cena opcional —
@@ -223,17 +223,38 @@ export async function updateFigurino(
   )
 }
 
-/** Líder da cena (ou admin) aprova/reprova a foto de figurino enviada pelo elenco. */
-export async function avaliarFigurino(id: string, aprovado: boolean, motivo: string | undefined, byUid: string): Promise<void> {
+/**
+ * A equipe de figurino (ou admin) aprova/reprova a foto de figurino enviada pelo elenco.
+ * `comoEquipeId`: a equipe de figurino de quem avalia — as regras conferem a permissão por ele.
+ */
+export async function avaliarFigurino(
+  id: string,
+  aprovado: boolean,
+  motivo: string | undefined,
+  byUid: string,
+  comoEquipeId?: string,
+): Promise<void> {
   await updateDoc(doc(db, 'figurinos', id), {
     aprovacao: aprovado ? 'aprovado' : 'reprovado',
     motivoReprovacao: aprovado ? deleteField() : (motivo ?? '').trim() || deleteField(),
     avaliadoPorUid: byUid,
+    avaliadoPorEquipeId: comoEquipeId ?? deleteField(),
     avaliadoEm: new Date().toISOString(),
   })
 }
 
-/** Foto que já vale pra galeria: cadastrada pela equipe (sem aprovação) ou aprovada pelo líder. */
+/** Equipe da pessoa que gerencia esse tipo de mídia (a primeira que gerencia e tem ela como membro). */
+export function equipeQueGerenciaDe(equipes: Equipe[], uid: string | undefined, tipo: MidiaTipo): Equipe | undefined {
+  if (!uid) return undefined
+  return equipes.find(e => e.gerencia?.includes(tipo) && e.membros.includes(uid))
+}
+
+/** Equipe de figurino da pessoa. */
+export function equipeDeFigurinoDe(equipes: Equipe[], uid: string | undefined): Equipe | undefined {
+  return equipeQueGerenciaDe(equipes, uid, 'figurinos')
+}
+
+/** Foto que já vale pra galeria: cadastrada pela equipe (sem aprovação) ou aprovada pela equipe. */
 export function figurinoVisivel(f: Pick<FigurinoImagem, 'aprovacao'>): boolean {
   return !f.aprovacao || f.aprovacao === 'aprovado'
 }

@@ -12,6 +12,7 @@ import { ReferenciasEquipeCard } from '@/components/equipe/ReferenciasEquipeCard
 import { LinksCompraCard } from '@/components/equipe/LinksCompraCard'
 import { MusicasCard } from '@/components/midia/MusicasCard'
 import { FigurinosCard } from '@/components/midia/FigurinosCard'
+import { AprovacoesFigurinoCard } from '@/components/midia/AprovacoesFigurinoCard'
 import { useUsersMap } from '@/components/oracao/OrandoAgora'
 import { deleteEquipe, subscribeToEquipe, updateEquipePessoas } from '@/services/firebase/equipes'
 import { useAuthStore } from '@/stores/authStore'
@@ -49,7 +50,8 @@ export function EquipeDetalhe() {
   /** Tarefas: além de admin e líder, os assistentes também criam e editam. */
   const podeGerenciarTarefas = podeGerenciar || (!!equipe && !!currentUser && equipe.assistentes.includes(currentUser.uid))
   /** Músicas/figurinos que a equipe gerencia: qualquer membro (e admin) cadastra e edita, aqui. */
-  const podeGerenciarMidia = isAdmin || (!!equipe && !!currentUser && equipe.membros.includes(currentUser.uid))
+  const isMembro = !!equipe && !!currentUser && equipe.membros.includes(currentUser.uid)
+  const podeGerenciarMidia = isAdmin || isMembro
 
   const nameFor = (uid: string) => users[uid]?.displayName ?? 'Sem nome'
 
@@ -144,6 +146,7 @@ export function EquipeDetalhe() {
       {equipe.gerencia?.includes('figurinos') && (
         <>
           <PrazoFigurinoCard key={equipe.prazoFigurino ?? ''} equipe={equipe} podeEditar={podeGerenciarTarefas} />
+          <AprovacoesFigurinoCard equipeId={isMembro ? equipe.id : undefined} users={users} />
           <FigurinosCard gerenciar={podeGerenciarMidia ? { equipeId: equipe.id } : undefined} />
         </>
       )}

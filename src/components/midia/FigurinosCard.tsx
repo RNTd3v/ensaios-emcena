@@ -42,7 +42,7 @@ interface Props {
   /**
    * Presente = modo gerenciar (só na página da equipe que cuida de figurinos): cadastrar, editar e
    * excluir, vendo também as fotos do elenco ainda sem aprovação. Ausente = só ver (cena, página
-   * geral) — e só o que já vale (cadastrado pela equipe ou aprovado pelo líder da cena).
+   * geral) — e só o que já vale (cadastrado pela equipe ou aprovado pela equipe de figurino).
    */
   gerenciar?: { equipeId?: string }
   titulo?: string
@@ -61,7 +61,7 @@ const PREFIXO_KEY = 'k:'
 /**
  * Figurinos (fotos). A equipe de figurino cadastra referências em qualquer cena (ou sem cena), ou
  * de um personagem em todas as cenas dele; o elenco manda a foto do próprio figurino pela página do
- * personagem, e o líder da cena aprova.
+ * personagem, e a equipe de figurino aprova.
  */
 export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhivel, ocultarSeVazio, semTitulo, semCard }: Props) {
   const currentUser = useAuthStore(s => s.user)

@@ -319,9 +319,9 @@ service cloud.firestore {
     }
 
     // Figurinos: admin e a equipe responsável cadastram/editam tudo (referências da peça). O
-    // elenco manda a foto do próprio figurino pela página do personagem: entra `pendente` e o líder
-    // da cena aprova/reprova (só os campos de avaliação). Quem mandou pode excluir enquanto não foi
-    // aprovada.
+    // elenco manda a foto do próprio figurino pela página do personagem: entra `pendente` e a
+    // equipe de figurino aprova/reprova (só os campos de avaliação, com `avaliadoPorEquipeId` =
+    // a equipe de quem avalia). Quem mandou pode excluir enquanto não foi aprovada.
     match /figurinos/{id} {
       allow read: if isAuthenticated();
       allow create: if isAdmin()
@@ -335,11 +335,11 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (isAuthenticated() && membroDeEquipeQueGerencia(request.resource.data.get('equipeId', null), 'figurinos'))
         || (isAuthenticated()
-            && resource.data.get('cenaId', null) is string
-            && cenaDoc(resource.data.cenaId).get('liderUid', '') == request.auth.uid
             && request.resource.data.diff(resource.data).affectedKeys()
-                .hasOnly(['aprovacao', 'avaliadoPorUid', 'avaliadoEm', 'motivoReprovacao'])
-            && request.resource.data.aprovacao in ['aprovado', 'reprovado']);
+                .hasOnly(['aprovacao', 'avaliadoPorUid', 'avaliadoPorEquipeId', 'avaliadoEm', 'motivoReprovacao'])
+            && request.resource.data.aprovacao in ['aprovado', 'reprovado']
+            && request.resource.data.get('avaliadoPorUid', null) == request.auth.uid
+            && membroDeEquipeQueGerencia(request.resource.data.get('avaliadoPorEquipeId', null), 'figurinos'));
       allow delete: if isAdmin()
         || (isAuthenticated() && membroDeEquipeQueGerencia(resource.data.get('equipeId', null), 'figurinos'))
         || (isAuthenticated()

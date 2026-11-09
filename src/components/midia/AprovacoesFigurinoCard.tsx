@@ -8,17 +8,18 @@ import { Spinner } from '@/components/ui/Spinner'
 import { Textarea } from '@/components/ui/Textarea'
 import { avaliarFigurino, subscribeToFigurinos } from '@/services/firebase/midias'
 import { useAuthStore } from '@/stores/authStore'
-import type { AppUser, Cena, FigurinoImagem } from '@/types'
+import type { AppUser, FigurinoImagem } from '@/types'
 import { corsDoStorage } from '@/lib/imagem'
 
 
 /**
- * Fotos de figurino que o elenco mandou e ainda esperam a aprovação do líder da cena. Só aparece
- * (e só tem algo) pra quem avalia: líder da cena ou admin. Some quando não há pendências.
+ * Fotos de figurino que o elenco mandou (de todas as cenas) e ainda esperam a aprovação da equipe
+ * de figurino. Só aparece pra quem avalia: membro da equipe de figurino (`equipeId`) ou admin.
+ * Some quando não há pendências.
  */
-export function AprovacoesFigurinoCard({ cena, users }: { cena: Cena; users: Record<string, AppUser> }) {
+export function AprovacoesFigurinoCard({ equipeId, users }: { equipeId?: string; users: Record<string, AppUser> }) {
   const currentUser = useAuthStore(s => s.user)
-  const podeAvaliar = !!currentUser && (currentUser.role === 'admin' || cena.liderUid === currentUser.uid)
+  const podeAvaliar = !!currentUser && (currentUser.role === 'admin' || !!equipeId)
   const [pendentes, setPendentes] = useState<FigurinoImagem[]>([])
   const [reprovandoId, setReprovandoId] = useState<string | null>(null)
   const [motivo, setMotivo] = useState('')
@@ -27,8 +28,8 @@ export function AprovacoesFigurinoCard({ cena, users }: { cena: Cena; users: Rec
 
   useEffect(() => {
     if (!podeAvaliar) return
-    return subscribeToFigurinos(cena.id, lista => setPendentes(lista.filter(f => f.aprovacao === 'pendente')))
-  }, [cena.id, podeAvaliar])
+    return subscribeToFigurinos(undefined, lista => setPendentes(lista.filter(f => f.aprovacao === 'pendente')))
+  }, [podeAvaliar])
 
   if (!podeAvaliar || !pendentes.length) return null
 
@@ -36,7 +37,7 @@ export function AprovacoesFigurinoCard({ cena, users }: { cena: Cena; users: Rec
     if (!currentUser) return
     setSalvandoId(f.id)
     try {
-      await avaliarFigurino(f.id, aprovado, motivo, currentUser.uid)
+      await avaliarFigurino(f.id, aprovado, motivo, currentUser.uid, equipeId)
       setReprovandoId(null)
       setMotivo('')
     } finally {
@@ -53,7 +54,7 @@ export function AprovacoesFigurinoCard({ cena, users }: { cena: Cena; users: Rec
         </p>
         <p className="text-xs text-muted-foreground">Toque na foto para ampliar com zoom e baixar.</p>
         {pendentes.map(f => {
-          const personagemNome = cena.personagens.find(p => p.id === f.personagemId)?.nome ?? f.personagemNome ?? 'Personagem'
+          const personagemNome = f.personagemNome ?? 'Personagem'
           const salvando = salvandoId === f.id
           return (
             <div key={f.id} className="flex gap-3 rounded-xl bg-gray-50 p-2">
@@ -62,13 +63,14 @@ export function AprovacoesFigurinoCard({ cena, users }: { cena: Cena; users: Rec
               </button>
               <div className="min-w-0 flex-1 space-y-1.5">
                 <div>
-                  {f.personagemId ? (
-                    <Link to={`/cenas/${cena.id}/personagens/${f.personagemId}`} className="block truncate text-sm font-medium hover:underline">
+                  {f.personagemId && f.cenaId ? (
+                    <Link to={`/cenas/${f.cenaId}/personagens/${f.personagemId}`} className="block truncate text-sm font-medium hover:underline">
                       {personagemNome}
                     </Link>
                   ) : (
                     <p className="truncate text-sm font-medium">{personagemNome}</p>
                   )}
+                  {f.cenaNome && <p className="truncate text-xs text-muted-foreground">{f.cenaNome}</p>}
                   <p className="truncate text-xs text-muted-foreground">por {users[f.uploadedByUid]?.displayName ?? '...'}</p>
                 </div>
                 {reprovandoId === f.id ? (

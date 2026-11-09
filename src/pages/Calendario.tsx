@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/Spinner'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers } from '@/services/firebase/auth'
-import { subscribeToCenas } from '@/services/firebase/cenas'
+import { subscribeToCenasComDependentes } from '@/services/firebase/cenas'
 import { subscribeToAllEnsaios, subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -74,7 +74,8 @@ function capitalize(s: string) {
 
 /**
  * Calendário dos ensaios, em visão semanal ou mensal — aberto pra todos: admin vê todas as cenas;
- * os demais, só as cenas em que estão (a regra de `ensaios` só libera essas). Aqui não se gerencia
+ * os demais, só as cenas em que estão ou em que um filho (dependente) está (a regra de `ensaios`
+ * só libera essas). Aqui não se gerencia
  * nada: confirmar/editar/cancelar fica na página do ensaio, que só mostra isso pra admin/líder. Mostra os ensaios
  * confirmados (e os cancelados, riscados) e — de hoje em diante — os "previstos": dias da agenda
  * de cada cena ativa que ainda não têm ensaio confirmado nem cancelado naquela data. Tocar em
@@ -106,8 +107,9 @@ export function Calendario() {
 
   useEffect(() => {
     if (!currentUser) return
-    // Cenas inativas saem do calendário inteiro — nem os ensaios já marcados delas aparecem.
-    return subscribeToCenas(currentUser.role, currentUser.uid, lista => setCenas(lista.filter(c => c.ativo)))
+    // Cenas inativas saem do calendário inteiro — nem os ensaios já marcados delas aparecem. Pais
+    // veem também as cenas dos filhos (dependentes).
+    return subscribeToCenasComDependentes(currentUser.role, currentUser.uid, lista => setCenas(lista.filter(c => c.ativo)))
   }, [currentUser])
   const isAdmin = currentUser?.role === 'admin'
   const cenaIdsKey = (cenas ?? []).map(c => c.id).sort().join(',')

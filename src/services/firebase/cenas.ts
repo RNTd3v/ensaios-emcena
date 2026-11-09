@@ -282,6 +282,34 @@ export function subscribeToCenasDosMeusDependentes(responsavelUid: string, callb
 }
 
 /**
+ * As cenas da pessoa (`subscribeToCenas`) mais as cenas em que um dependente (filho) dela
+ * participa — tela de Cenas e Calendário, pra os pais acompanharem as cenas dos filhos. Admin já
+ * vê todas.
+ */
+export function subscribeToCenasComDependentes(role: UserRole, uid: string, callback: (cenas: Cena[]) => void) {
+  if (role === 'admin') return subscribeToCenas(role, uid, callback)
+  let minhas: Cena[] | null = null
+  let dosDependentes: Cena[] | null = null
+  const emitir = () => {
+    if (!minhas || !dosDependentes) return // espera as duas responderem uma vez
+    const todas = new Map<string, Cena>()
+    for (const c of [...minhas, ...dosDependentes]) todas.set(c.id, c)
+    callback([...todas.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)))
+  }
+  const unsubs = [
+    subscribeToCenas(role, uid, lista => {
+      minhas = lista
+      emitir()
+    }),
+    subscribeToCenasDosMeusDependentes(uid, lista => {
+      dosDependentes = lista
+      emitir()
+    }),
+  ]
+  return () => unsubs.forEach(u => u())
+}
+
+/**
  * Uma cena específica, em tempo real — usado na tela de detalhe. `null` = não existe, foi
  * excluída, ou quem está vendo não tem permissão (regra do Firestore nega e o snapshot vira erro).
  */

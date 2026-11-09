@@ -16,6 +16,7 @@ import {
   RotateCcw,
   SlidersHorizontal,
   Trash2,
+  Baby,
 } from 'lucide-react'
 import { ContatoPessoaDialog, type FuncaoNaCena } from '@/components/cena/ContatoPessoaDialog'
 import { Avatar } from '@/components/ui/Avatar'
@@ -35,7 +36,7 @@ import {
   deactivateCena,
   deleteCenaPermanently,
   reactivateCena,
-  subscribeToCenas,
+  subscribeToCenasComDependentes,
   editarCena,
   type CenaInput,
 } from '@/services/firebase/cenas'
@@ -204,7 +205,8 @@ export function Cenas() {
 
   useEffect(() => {
     if (!currentUser) return
-    return subscribeToCenas(currentUser.role, currentUser.uid, setCenas)
+    // Pais veem também as cenas dos filhos (dependentes), com o nome deles no card.
+    return subscribeToCenasComDependentes(currentUser.role, currentUser.uid, setCenas)
   }, [currentUser])
 
   useEffect(() => subscribeToAllInscricoes(setInscricoes), [])
@@ -531,6 +533,9 @@ export function Cenas() {
       <div className="space-y-2">
         {filteredCenas.map(cena => {
           const canManage = isAdmin || cena.liderUid === currentUser?.uid
+          const filhosNaCena = currentUser
+            ? cena.participantes.filter(uid => users[uid]?.dependente && users[uid]?.responsaveisUids?.includes(currentUser.uid))
+            : []
           const isCollapsed = collapsedIds.has(cena.id)
           return (
           <Card
@@ -553,6 +558,12 @@ export function Cenas() {
                       </Badge>
                     )}
                   </div>
+                  {filhosNaCena.length > 0 && (
+                    <p className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
+                      <Baby className="h-3 w-3 shrink-0" />
+                      Cena de {filhosNaCena.map(nameFor).join(', ')}
+                    </p>
+                  )}
                   {!cena.ativo && cena.deactivatedByUid && (
                     <p className="text-[10px] text-gray-400 truncate">Desativado por {nameFor(cena.deactivatedByUid)}</p>
                   )}

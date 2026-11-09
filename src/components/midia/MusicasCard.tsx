@@ -232,7 +232,7 @@ export function MusicasCard({ cena, gerenciar, ensaio, recolhivel, ocultarSeVazi
 
   function validar(file: File) {
     if (!file.type.startsWith('audio/')) return 'Só arquivos de áudio são aceitos.'
-    if (file.size > MUSICA_MAX_BYTES) return 'Cada música precisa ter até 15MB.'
+    if (file.size > MUSICA_MAX_BYTES) return 'Cada música precisa ter até 25MB. Se for WAV, converta pra MP3 antes de enviar.'
     return ''
   }
 

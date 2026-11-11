@@ -23,7 +23,6 @@ import {
   avaliarFigurino,
   deleteFigurino,
   equipeDeFigurinoDe,
-  figurinoVisivel,
   juntarComLegado,
   personagensDoFigurino,
   subscribeToFigurinos,
@@ -132,15 +131,14 @@ export function PersonagemDetalhe() {
   const [figurinosDePersonagem, setFigurinosDePersonagem] = useState<FigurinoImagem[]>([])
   useEffect(() => subscribeToFigurinosDePersonagem(setFigurinosDePersonagem), [])
   const chavePersonagem = personagem ? personagemKey(personagem.nome, personagem.participanteUid) : undefined
-  // Coleção nova + o que ainda estiver no formato antigo (array na cena), sem duplicar. Todo mundo
-  // vê o que já vale (da equipe ou aprovado); quem mandou vê as suas em qualquer status; a equipe de figurino vê
-  // as pendentes/reprovadas pra avaliar.
+  // Coleção nova + o que ainda estiver no formato antigo (array na cena), sem duplicar. Foto mandada pelo
+  // elenco (com `aprovacao`) só aparece pra quem mandou e pra equipe de figurino/admin.
   const fotos = useMemo(
     () =>
       (cena ? juntarComLegado(figurinosDaCena, cena.figurinos, { cenaId: cena.id, cenaNome: cena.nome }) : []).filter(
         f =>
           !!personagemId && personagensDoFigurino(f).includes(personagemId) &&
-          (figurinoVisivel(f) || f.uploadedByUid === currentUser?.uid || podeAvaliarFigurino),
+          (!f.aprovacao || f.uploadedByUid === currentUser?.uid || podeAvaliarFigurino),
       ).concat(figurinosDePersonagem.filter(f => !!chavePersonagem && f.personagemKey === chavePersonagem)),
     [figurinosDaCena, figurinosDePersonagem, cena, personagemId, chavePersonagem, currentUser?.uid, podeAvaliarFigurino],
   )

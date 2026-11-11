@@ -12,8 +12,10 @@ import { Spinner } from '@/components/ui/Spinner'
 import { PessoaSelect, pessoaOpcao, type PessoaOpcao } from '@/components/ui/PessoaSelect'
 import { getUsers } from '@/services/firebase/auth'
 import { subscribeToCenas } from '@/services/firebase/cenas'
+import { subscribeToEquipes } from '@/services/firebase/equipes'
 import {
   deleteFigurino,
+  equipeDeFigurinoDe,
   figurinoVisivel,
   juntarComLegado,
   nomeGuardadoNoFigurino,
@@ -27,7 +29,7 @@ import { subscribeToCatalogoPersonagens } from '@/services/firebase/personagens'
 import { useAuthStore } from '@/stores/authStore'
 import { FIGURINO_MAX_BYTES } from '@/lib/uploads'
 import { agregarPersonagens, personagemKey } from '@/lib/personagens'
-import type { AppUser, Cena, FigurinoImagem, PersonagemCatalogo } from '@/types'
+import type { AppUser, Cena, Equipe, FigurinoImagem, PersonagemCatalogo } from '@/types'
 import { CenaSelect } from '@/components/midia/CenaSelect'
 import { corsDoStorage } from '@/lib/imagem'
 import { cn } from '@/lib/utils'
@@ -99,6 +101,10 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhive
 
   const podeSubir = pode
 
+  const [equipes, setEquipes] = useState<Equipe[]>([])
+  useEffect(() => subscribeToEquipes(setEquipes), [])
+  const veFotosDoElenco = isAdmin || !!equipeDeFigurinoDe(equipes, currentUser?.uid)
+
   // Aberto/fechado (com `recolhivel`) fica salvo no aparelho — vale pra todas as cenas.
   const [aberto, setAbertoState] = useState(() => {
     try {
@@ -140,9 +146,9 @@ export function FigurinosCard({ cena, gerenciar, titulo = 'Figurinos', recolhive
           ...dePersonagem.filter(f => idsDaFoto(f).length),
         ]
       : (figurinos ?? [])
-    // Fora da página da equipe, só o que já vale (sem as fotos do elenco pendentes/reprovadas).
-    return pode ? base : base.filter(figurinoVisivel)
-  }, [figurinos, dePersonagem, cena, pode])
+    // Foto mandada pelo elenco (tem `aprovacao`) só aparece pra quem mandou e pra equipe de figurino/admin.
+    return base.filter(f => !f.aprovacao || veFotosDoElenco || f.uploadedByUid === currentUser?.uid)
+  }, [figurinos, dePersonagem, cena, veFotosDoElenco, currentUser?.uid])
 
   /** Opções dos filtros, a partir do que existe (cena/personagem pelo nome copiado no item). */
   const cenasDosItens = useMemo(() => {

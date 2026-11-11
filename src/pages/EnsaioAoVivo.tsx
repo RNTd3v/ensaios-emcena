@@ -41,7 +41,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { mapsLink, subscribeToLocais } from '@/services/firebase/locais'
 import { localIcon } from '@/lib/localIcons'
-import type { AppUser, AusenciaMotivo, Cena, CronometroEnsaio, Ensaio, Inscricao, LocalEnsaio, Personagem, RessalvaPresenca } from '@/types'
+import type { AppUser, AusenciaMotivo, Cena, CronometroEnsaio, Ensaio, GrupoEnsaioCena, Inscricao, LocalEnsaio, Personagem, RessalvaPresenca } from '@/types'
 import { DIA_TO_WEEKDAY, formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { formatDuracao, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { DIAS_ORDER } from '@/lib/dias'
@@ -57,6 +57,8 @@ import { MusicasCard } from '@/components/midia/MusicasCard'
 import { useAgora } from '@/components/oracao/OrandoAgora'
 import { PessoaSelect, nomeComApelido, pessoaOpcao, type PessoaOpcao } from '@/components/ui/PessoaSelect'
 import { PessoaLinha } from '@/components/ui/PessoaLinha'
+import { PersonagensMultiSelect } from '@/components/ensaio/PersonagensMultiSelect'
+import { GruposEnsaioCena } from '@/components/ensaio/GruposEnsaioCena'
 
 /**
  * A página de um ensaio. Rotas: `/cenas/:id/ensaios/:ensaioId` (um ensaio específico),
@@ -445,6 +447,7 @@ export function EnsaioAoVivo() {
       ) : (
         <>
           <InfoEnsaio ensaio={ensaio} />
+          <GruposInfo ensaio={ensaio} personagens={cena.personagens} nameFor={nameFor} />
           <LocalCard ensaio={ensaio} />
 
           {modo === 'futuro' ? (
@@ -587,6 +590,37 @@ export function EnsaioAoVivo() {
         />
       )}
     </div>
+  )
+}
+
+/** Os grupos do ensaio (horário, local e quem está em cada um) — só aparece se o ensaio foi dividido. */
+function GruposInfo({ ensaio, personagens, nameFor }: { ensaio: Ensaio; personagens: Personagem[]; nameFor: (uid: string) => string }) {
+  if (!ensaio.grupos?.length) return null
+  return (
+    <Card>
+      <CardContent className="space-y-3">
+        <p className="flex items-center gap-1.5 text-sm font-semibold">
+          <Users className="h-4 w-4 text-primary" />
+          Grupos
+        </p>
+        {ensaio.grupos.map((g, i) => (
+          <div key={g.id} className="space-y-0.5">
+            <p className="text-sm font-semibold text-gray-900">
+              {g.nome || `Grupo ${i + 1}`} · {formatHoraCompacta(g.horario)}
+              {g.local && <span className="font-normal text-gray-600"> · {g.local}</span>}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {g.personagens
+                .map(id => personagens.find(p => p.id === id))
+                .filter((p): p is Personagem => !!p)
+                .map(p => (p.participanteUid ? `${p.nome} (${nameFor(p.participanteUid)})` : p.nome))
+                .join(', ')}
+            </p>
+          </div>
+        ))}
+        <p className="text-[11px] text-muted-foreground">Quem não está em nenhum grupo segue o horário e o local do ensaio.</p>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -1016,6 +1050,7 @@ function EditarEnsaioDialog({
   const [presencas, setPresencas] = useState<string[]>(ensaio?.presencas ?? [])
   const [obrigatorios, setObrigatorios] = useState<string[]>(ensaio?.obrigatorios ?? [])
   const [convidados, setConvidados] = useState<string[]>(ensaio?.convidados ?? [])
+  const [grupos, setGrupos] = useState<GrupoEnsaioCena[]>(ensaio?.grupos ?? [])
   const [convidadoUid, setConvidadoUid] = useState('')
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [canceling, setCanceling] = useState(false)
@@ -1027,10 +1062,11 @@ function EditarEnsaioDialog({
   const convidadosMudaram =
     !!ensaio && JSON.stringify([...convidados].sort()) !== JSON.stringify([...(ensaio.convidados ?? [])].sort())
   // Confirmar sempre avisa o elenco ("Ensaio confirmado"/"reconfirmado"), sem essa opção.
+  const gruposMudaram = !!ensaio && JSON.stringify(grupos) !== JSON.stringify(ensaio.grupos ?? [])
   const mudaAviso =
     !confirmando &&
     !!ensaio &&
-    (horario !== ensaio.horario || local.trim() !== (ensaio.local ?? '').trim() || obrigatoriosMudaram || convidadosMudaram)
+    (gruposMudaram || horario !== ensaio.horario || local.trim() !== (ensaio.local ?? '').trim() || obrigatoriosMudaram || convidadosMudaram)
   const [extraUid, setExtraUid] = useState('')
   // A lista de presença segue os obrigatórios do rascunho: marcou obrigatórios, só eles ficam no elenco.
   const elencoChamado = elencoDoEnsaio(elenco, obrigatorios)
@@ -1038,6 +1074,9 @@ function EditarEnsaioDialog({
   // Convidado que também foi chamado pelo personagem aparece só no elenco.
   const convidadosFora = convidados.filter(uid => !doElenco.has(uid))
   const elencoUids = new Set([...doElenco, ...convidadosFora])
+  // Grupos só com personagens ainda chamados (tirou da lista de obrigatórios, sai do grupo).
+  const idsChamados = new Set(elencoChamado.map(p => p.id))
+  const gruposValidos = grupos.map(g => ({ ...g, personagens: g.personagens.filter(id => idsChamados.has(id)) }))
   const extras = presencas.filter(uid => !elencoUids.has(uid))
   const disponiveisExtra = pessoas.filter(p => !elencoUids.has(p.uid) && !presencas.includes(p.uid))
   const disponiveisConvite = pessoas.filter(p => !elencoUids.has(p.uid) && !users[p.uid]?.dependente)
@@ -1054,11 +1093,15 @@ function EditarEnsaioDialog({
       setError('Preencha o horário.')
       return
     }
+    if (gruposValidos.some(g => !g.horario)) {
+      setError('Preencha o horário de cada grupo.')
+      return
+    }
     setSaving(true)
     setError('')
     if (onConfirmar) {
       try {
-        await onConfirmar({ horario, local, geral, comFigurino, ...preparo, obrigatorios, convidados: convidadosFora })
+        await onConfirmar({ horario, local, geral, comFigurino, ...preparo, obrigatorios, convidados: convidadosFora, grupos: gruposValidos })
         onClose()
       } catch {
         setError('Não foi possível confirmar. Tente de novo.')
@@ -1081,6 +1124,7 @@ function EditarEnsaioDialog({
           ...preparo,
           obrigatorios,
           convidados: convidadosFora,
+          grupos: gruposValidos,
           presencas: presencasMudaram ? presencas : undefined,
         },
         currentUser.uid,
@@ -1108,10 +1152,6 @@ function EditarEnsaioDialog({
       setError('Não foi possível cancelar. Tente de novo.')
       setCanceling(false)
     }
-  }
-
-  function toggleObrigatorio(personagemId: string) {
-    setObrigatorios(prev => (prev.includes(personagemId) ? prev.filter(id => id !== personagemId) : [...prev, personagemId]))
   }
 
   const chip = (ativo: boolean) =>
@@ -1170,22 +1210,18 @@ function EditarEnsaioDialog({
         {personagens.length > 0 && (
           <div>
             <p className="mb-1.5 text-sm font-medium">Personagens obrigatórios</p>
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => setObrigatorios(personagens.every(p => obrigatorios.includes(p.id)) ? [] : personagens.map(p => p.id))}
-                className={cn(chip(personagens.every(p => obrigatorios.includes(p.id))), 'font-semibold')}
-              >
-                Todos
-              </button>
-              {personagens.map(p => (
-                <button key={p.id} type="button" onClick={() => toggleObrigatorio(p.id)} className={chip(obrigatorios.includes(p.id))}>
-                  {p.nome}
-                </button>
-              ))}
-            </div>
+            <PersonagensMultiSelect
+              comTodos
+              personagens={personagens}
+              users={users}
+              selecionados={obrigatorios}
+              onChange={setObrigatorios}
+              vazio="Todos (ninguém marcado)"
+            />
           </div>
         )}
+
+        <GruposEnsaioCena grupos={grupos} onChange={setGrupos} personagens={elencoChamado} users={users} locais={locais} />
 
         <div>
           <p className="text-sm font-medium">Convidados</p>

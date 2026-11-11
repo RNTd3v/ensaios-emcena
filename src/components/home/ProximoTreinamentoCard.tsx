@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
-import { Backpack, ChevronRight, GraduationCap, MapPin, Shirt } from 'lucide-react'
+import { Backpack, ChevronRight, Drama, GraduationCap, MapPin, Shirt, Users } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
 import { useEhElenco, useProximosTreinamentos } from '@/hooks/useTreinamentos'
+import { grupoDaPessoa } from '@/services/firebase/treinamentos'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { formatHoraCompacta } from '@/lib/cenaHorario'
@@ -22,26 +23,44 @@ export function ProximoTreinamentoCard({ uid, dependenteDe, nome }: { uid: strin
   if (!proximo) return null
   const { sessao, treinamento } = proximo
   const url = `/treinamentos/${treinamento.id}`
+  const geral = treinamento.tipo === 'ensaio_geral'
+  // Ensaio geral em grupos: mostra o horário e o local do grupo da pessoa.
+  const grupo = grupoDaPessoa(treinamento, [uid])
+  const horario = grupo?.horario ?? sessao.horario
+  const local = grupo?.local || treinamento.local
 
   return (
     <Card className="border-2 border-primary">
       <CardContent className="space-y-3">
         <Link to={url} className="block space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-            {dependenteDe ? `Próximo treinamento de ${nome ?? 'dependente'}` : 'Seu próximo treinamento'}
+            {geral
+              ? dependenteDe
+                ? `Ensaio geral de ${nome ?? 'dependente'}`
+                : 'Ensaio geral'
+              : dependenteDe
+                ? `Próximo treinamento de ${nome ?? 'dependente'}`
+                : 'Seu próximo treinamento'}
           </p>
           <div>
             <p className="text-2xl font-bold text-gray-900">
-              {formatRelativeDia(sessao.data, todayKey)} · {formatHoraCompacta(sessao.horario)}
+              {formatRelativeDia(sessao.data, todayKey)} · {formatHoraCompacta(horario)}
+              {!grupo && treinamento.horarioFim && ` até ${formatHoraCompacta(treinamento.horarioFim)}`}
             </p>
             <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-gray-700">
-              <GraduationCap className="h-4 w-4 shrink-0 text-primary" />
+              {geral ? <Drama className="h-4 w-4 shrink-0 text-primary" /> : <GraduationCap className="h-4 w-4 shrink-0 text-primary" />}
               <span className="truncate">{treinamento.titulo}</span>
             </p>
-            {treinamento.local && (
+            {local && (
               <p className="mt-1 flex items-center gap-1.5 text-sm text-gray-700">
                 <MapPin className="h-4 w-4 shrink-0 text-primary" />
-                <span className="truncate">{treinamento.local}</span>
+                <span className="truncate">{local}</span>
+              </p>
+            )}
+            {grupo?.nome && (
+              <p className="mt-1 flex items-center gap-1.5 text-sm text-gray-700">
+                <Users className="h-4 w-4 shrink-0 text-primary" />
+                <span className="truncate">Grupo: {grupo.nome}</span>
               </p>
             )}
             {treinamento.roupa && (
@@ -73,7 +92,7 @@ export function ProximoTreinamentoCard({ uid, dependenteDe, nome }: { uid: strin
           to={url}
           className="flex items-center justify-center gap-1 rounded-full bg-primary/10 py-2 text-sm font-medium text-primary hover:bg-primary/15"
         >
-          Ver treinamento
+          {geral ? 'Ver ensaio geral' : 'Ver treinamento'}
           <ChevronRight className="h-4 w-4" />
         </Link>
       </CardContent>

@@ -24,6 +24,7 @@ export function EscolherPessoas({
   equipes,
   escolhidos,
   onChange,
+  excluir,
 }: {
   isAdmin: boolean
   users: Record<string, AppUser>
@@ -31,6 +32,8 @@ export function EscolherPessoas({
   equipes: Equipe[]
   escolhidos: string[]
   onChange: (uids: string[]) => void
+  /** uids que não aparecem na lista (ex.: quem já tem personagem, no convite do ensaio geral). */
+  excluir?: Set<string>
 }) {
   const [filtro, setFiltro] = useState<FiltroPessoas>('todas')
   const [grupo, setGrupo] = useState('')
@@ -50,8 +53,8 @@ export function EscolherPessoas({
     const base = isAdmin
       ? inscritosConfirmados(users, [...lideres, ...assistentes])
       : Object.values(users).filter(u => u.active !== false && doGrupos.has(u.uid))
-    return base.filter(u => !u.dependente).map(u => pessoaOpcao(u.uid, u)).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
-  }, [isAdmin, users, cenas, equipes, lideres, assistentes])
+    return base.filter(u => !u.dependente && !excluir?.has(u.uid)).map(u => pessoaOpcao(u.uid, u)).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+  }, [isAdmin, users, cenas, equipes, lideres, assistentes, excluir])
 
   const visiveis = useMemo(() => {
     const [tipo, id] = grupo.split(':')

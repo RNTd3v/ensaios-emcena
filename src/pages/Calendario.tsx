@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, ChevronLeft, ChevronRight, Crown, Info, MapPin, Shirt, Star } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Crown, Drama, Info, MapPin, Shirt, Star } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -12,16 +12,18 @@ import { subscribeToAllEnsaios, subscribeToEnsaiosDaCena } from '@/services/fire
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { DEFAULT_SETTINGS } from '@/services/firebase/settings'
-import { DIA_SEMANA_LABELS, type AppUser, type Cena, type DiaSemana, type Ensaio, type Inscricao } from '@/types'
+import { DIA_SEMANA_LABELS, type AppUser, type Cena, type DiaSemana, type Ensaio, type Inscricao, type Treinamento, type TreinamentoSessao } from '@/types'
 import { DIA_TO_WEEKDAY, addDays, monthMatrix, toDateKey, weekDates } from '@/lib/agenda'
 import { formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { DIAS_ORDER } from '@/lib/dias'
 import { cn } from '@/lib/utils'
 import { ensaioStatus } from '@/lib/ensaioStatus'
-import { avisoNaoChamado, type PessoaDaCasaNome } from '@/lib/ensaioPublico'
+import { avisoNaoChamado, grupoDoEnsaio, type PessoaDaCasaNome } from '@/lib/ensaioPublico'
 import { AvisoNaoChamado } from '@/components/ensaio/AvisoNaoChamado'
 import { subscribeToDependentes } from '@/services/firebase/dependentes'
+import { grupoDaPessoa, subscribeToTodasSessoes, subscribeToTreinamentos, uidsDoElenco } from '@/services/firebase/treinamentos'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
+import { TreinamentoDialog } from '@/pages/Treinamentos'
 import { MeusEnsaiosSemanaDialog } from '@/components/ensaio/MeusEnsaiosSemanaDialog'
 
 type Visao = 'semana' | 'mes'
@@ -36,6 +38,12 @@ interface Ocorrencia {
   horario?: string
   status: Status
   ensaio?: Ensaio
+}
+
+/** Um dia de ensaio geral (cadastrado em `treinamentos` com `tipo: 'ensaio_geral'`). */
+interface Geral {
+  sessao: TreinamentoSessao
+  treinamento: Treinamento
 }
 
 const WEEKDAY_TO_DIA = Object.fromEntries(DIAS_ORDER.map(d => [DIA_TO_WEEKDAY[d], d])) as Record<number, DiaSemana>
@@ -91,6 +99,7 @@ export function Calendario() {
   const [base, setBase] = useState(() => new Date())
   const [selectedKey, setSelectedKey] = useState(() => toDateKey(new Date()))
   const [meusAberto, setMeusAberto] = useState(false)
+  const [geralAberto, setGeralAberto] = useState(false)
   // Filtro (dias da semana + não confirmados) fica salvo no aparelho.
   const [filtro, setFiltroState] = useState(lerFiltro)
   function setFiltro(f: Filtro) {
@@ -142,6 +151,27 @@ export function Calendario() {
       currentUser ? subscribeToDependentes(currentUser.uid, lista => setDependentes(lista.map(d => ({ uid: d.uid, nome: d.apelido || d.nomeCompleto })))) : undefined,
     [currentUser],
   )
+
+  // Ensaios gerais: admin vê todos; os demais, os que valem pra si ou pra um filho (elenco ou convidado).
+  const [treinamentos, setTreinamentos] = useState<Treinamento[]>([])
+  const [sessoes, setSessoes] = useState<TreinamentoSessao[]>([])
+  useEffect(() => subscribeToTreinamentos(setTreinamentos), [])
+  useEffect(() => subscribeToTodasSessoes(setSessoes), [])
+  const geraisPorData = useMemo(() => {
+    const map = new Map<string, Geral[]>()
+    if (!currentUser) return map
+    const meus = [currentUser.uid, ...dependentes.map(d => d.uid)]
+    const elenco = uidsDoElenco(cenas ?? [])
+    const gerais = new Map(treinamentos.filter(t => t.tipo === 'ensaio_geral').map(t => [t.id, t]))
+    for (const sessao of sessoes) {
+      const treinamento = gerais.get(sessao.treinamentoId)
+      if (!treinamento) continue
+      const vale = isAdmin || meus.some(u => elenco.has(u) || treinamento.pessoas?.includes(u))
+      if (vale) map.set(sessao.data, [...(map.get(sessao.data) ?? []), { sessao, treinamento }])
+    }
+    for (const lista of map.values()) lista.sort((a, b) => a.sessao.horario.localeCompare(b.sessao.horario))
+    return map
+  }, [currentUser, dependentes, cenas, treinamentos, sessoes, isAdmin])
 
   const inscricoesByUid = useMemo(() => Object.fromEntries(inscricoes.map(i => [i.uid, i])), [inscricoes])
 
@@ -257,10 +287,21 @@ export function Calendario() {
           </Button>
         </Link>
         <h1 className="text-xl font-semibold text-white">Calendário</h1>
+        {isAdmin && (
+          <Button
+            size="sm"
+            className="ml-auto gap-1.5"
+            onClick={() => setGeralAberto(true)}
+            title="Cadastrar ensaio geral"
+          >
+            <Drama className="h-4 w-4" />
+            Ensaio geral
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
-          className="ml-auto text-white hover:bg-white/10"
+          className={cn('text-white hover:bg-white/10', !isAdmin && 'ml-auto')}
           onClick={() => setMeusAberto(true)}
           title="Meus ensaios da semana"
           aria-label="Meus ensaios da semana"
@@ -268,6 +309,8 @@ export function Calendario() {
           <Info className="h-5 w-5" />
         </Button>
       </div>
+
+      {geralAberto && <TreinamentoDialog geral onClose={() => setGeralAberto(false)} />}
 
       {meusAberto && currentUser && (
         <MeusEnsaiosSemanaDialog
@@ -369,7 +412,7 @@ export function Calendario() {
                   {key === todayKey && <span className="ml-1.5 text-xs font-medium text-primary">Hoje</span>}
                 </p>
                 {ehApresentacao(key) && <ApresentacaoAviso />}
-                <ListaDoDia itens={itens} nameFor={nameFor} users={users} uid={currentUser?.uid} dependentes={dependentes} />
+                <ListaDoDia itens={itens} gerais={diaNoFiltro(date) ? (geraisPorData.get(key) ?? []) : []} nameFor={nameFor} users={users} uid={currentUser?.uid} dependentes={dependentes} />
               </Card>
             )
           })}
@@ -425,6 +468,10 @@ export function Calendario() {
                             className={cn('h-1.5 w-1.5 rounded-full', isSelected ? 'bg-white' : STATUS_DOT[o.status])}
                           />
                         ))}
+                        {!foraDoFiltro &&
+                          (geraisPorData.get(key) ?? []).slice(0, 2).map(g => (
+                            <span key={g.sessao.id} className={cn('h-1.5 w-1.5 rounded-full', isSelected ? 'bg-white' : 'bg-amber-500')} />
+                          ))}
                       </span>
                     </button>
                   )
@@ -441,7 +488,7 @@ export function Calendario() {
               {capitalize(new Date(`${selectedKey}T00:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }))}
             </p>
             {ehApresentacao(selectedKey) && <ApresentacaoAviso />}
-            <ListaDoDia itens={ocorrenciasPorData.get(selectedKey) ?? []} nameFor={nameFor} users={users} uid={currentUser?.uid} dependentes={dependentes} />
+            <ListaDoDia itens={ocorrenciasPorData.get(selectedKey) ?? []} gerais={diaNoFiltro(new Date(`${selectedKey}T00:00:00`)) ? (geraisPorData.get(selectedKey) ?? []) : []} nameFor={nameFor} users={users} uid={currentUser?.uid} dependentes={dependentes} />
           </Card>
         </>
       )}
@@ -456,38 +503,75 @@ function Legenda() {
     { status: 'cancelado', label: 'Cancelado' },
   ]
   return (
-    <div className="flex justify-center gap-4 text-xs text-white/80">
+    <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-white/80">
       {itens.map(i => (
         <span key={i.status} className="flex items-center gap-1.5">
           <span className={cn('h-2 w-2 rounded-full', STATUS_DOT[i.status])} />
           {i.label}
         </span>
       ))}
+      <span className="flex items-center gap-1.5">
+        <span className="h-2 w-2 rounded-full bg-amber-500" />
+        Ensaio geral
+      </span>
     </div>
   )
 }
 
 interface ListaDoDiaProps {
   itens: Ocorrencia[]
+  gerais: Geral[]
   nameFor: (uid: string) => string
   users: Record<string, AppUser>
   uid?: string
   dependentes: PessoaDaCasaNome[]
 }
 
-function ListaDoDia({ itens, nameFor, users, uid, dependentes }: ListaDoDiaProps) {
+function ListaDoDia({ itens, gerais, nameFor, users, uid, dependentes }: ListaDoDiaProps) {
+  const meusUids = [...(uid ? [uid] : []), ...dependentes.map(d => d.uid)]
   const todayKey = toDateKey(new Date())
-  if (!itens.length) return <p className="text-xs text-muted-foreground">Nenhum ensaio.</p>
+  if (!itens.length && !gerais.length) return <p className="text-xs text-muted-foreground">Nenhum ensaio.</p>
 
   return (
     <div className="divide-y divide-gray-100">
+      {gerais.map(({ sessao, treinamento }) => {
+        // Em grupos: mostra o horário e o local do grupo da pessoa (admin vê o geral).
+        const grupo = grupoDaPessoa(treinamento, meusUids)
+        const horario = grupo?.horario ?? sessao.horario
+        const local = grupo?.local || treinamento.local
+        return (
+        <Link key={sessao.id} to={`/treinamentos/${treinamento.id}`} className="flex items-center gap-3 py-2">
+          <div className="w-11 shrink-0 text-sm font-semibold text-amber-600">{formatHoraCompacta(horario)}</div>
+          <div className="min-w-0 flex-1">
+            <p className="flex items-center gap-1.5 text-sm font-medium">
+              <Drama className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+              <span className="truncate">Ensaio geral{treinamento.titulo && treinamento.titulo.toLowerCase() !== 'ensaio geral' ? ` · ${treinamento.titulo}` : ''}</span>
+            </p>
+            <p className="text-xs text-gray-500">
+              {grupo ? `Grupo${grupo.nome ? `: ${grupo.nome}` : ''}` : treinamento.horarioFim ? `${formatHoraCompacta(sessao.horario)} até ${formatHoraCompacta(treinamento.horarioFim)}` : 'Todo o elenco'}
+            </p>
+            {local && (
+              <p className="flex items-center gap-1 text-xs text-gray-500">
+                <MapPin className="h-3 w-3 shrink-0 text-primary" />
+                <span className="truncate">{local}</span>
+              </p>
+            )}
+          </div>
+          <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
+        </Link>
+        )
+      })}
       {itens.map(o => {
         const lider = o.cena.liderUid
+        // Ensaio em grupos: mostra o horário e o local do grupo da pessoa (ou do filho).
+        const grupoEnsaio = grupoDoEnsaio(o.ensaio, o.cena.personagens, meusUids)
+        const horarioExibido = grupoEnsaio?.horario ?? o.horario
+        const localExibido = grupoEnsaio?.local || o.ensaio?.local
         const aviso = o.status === 'cancelado' ? null : avisoNaoChamado(o.cena.personagens, o.ensaio, uid, dependentes)
         return (
           <Link key={o.key} to={o.ensaio ? `/cenas/${o.cena.id}/ensaios/${o.ensaio.id}` : `/cenas/${o.cena.id}/ensaios/dia/${o.data}`} className="flex items-center gap-3 py-2">
             <div className={cn('w-11 shrink-0 text-sm font-semibold', o.status === 'confirmado' ? 'text-primary' : 'text-gray-400')}>
-              {o.horario ? formatHoraCompacta(o.horario) : '—'}
+              {horarioExibido ? formatHoraCompacta(horarioExibido) : '—'}
             </div>
             <div className="min-w-0 flex-1">
               <p
@@ -513,10 +597,10 @@ function ListaDoDia({ itens, nameFor, users, uid, dependentes }: ListaDoDiaProps
                   <span className="text-gray-400">Sem líder</span>
                 )}
               </div>
-              {o.ensaio?.local && (
+              {localExibido && (
                 <p className="flex items-center gap-1 text-xs text-gray-500">
                   <MapPin className="h-3 w-3 shrink-0 text-primary" />
-                  <span className="truncate">{o.ensaio.local}</span>
+                  <span className="truncate">{localExibido}</span>
                 </p>
               )}
               <div className="mt-1 flex flex-wrap items-center gap-1">

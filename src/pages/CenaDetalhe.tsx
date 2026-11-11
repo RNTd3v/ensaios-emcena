@@ -28,6 +28,8 @@ import { Avatar } from '@/components/ui/Avatar'
 import { AvatarStack } from '@/components/ui/AvatarStack'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { PersonagensMultiSelect } from '@/components/ensaio/PersonagensMultiSelect'
+import { GruposEnsaioCena } from '@/components/ensaio/GruposEnsaioCena'
 import { NotificarElenco } from '@/components/ensaio/NotificarElenco'
 import { RoteiroCenaCard } from '@/components/cena/RoteiroCenaCard'
 import { PreparoCampos } from '@/components/ensaio/PreparoEnsaio'
@@ -76,6 +78,7 @@ import {
   type Ensaio,
   type Inscricao,
   type Personagem,
+  type GrupoEnsaioCena,
 } from '@/types'
 import { DIAS_ORDER, diasDisponiveis, sortDias } from '@/lib/dias'
 import { formatTempoTotal, formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
@@ -84,7 +87,7 @@ import { cn } from '@/lib/utils'
 import { PessoaSelect, nomeComApelido, pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { ContatoPessoaDialog } from '@/components/cena/ContatoPessoaDialog'
 import { DiarioCenaCard } from '@/components/cena/DiarioCenaCard'
-import { avisoNaoChamado, uidsDoEnsaio, type PessoaDaCasaNome } from '@/lib/ensaioPublico'
+import { avisoNaoChamado, elencoDoEnsaio, uidsDoEnsaio, type PessoaDaCasaNome } from '@/lib/ensaioPublico'
 import { AvisoNaoChamado } from '@/components/ensaio/AvisoNaoChamado'
 import { subscribeToDependentes } from '@/services/firebase/dependentes'
 import { PessoaLinha } from '@/components/ui/PessoaLinha'
@@ -103,6 +106,7 @@ interface ConfirmDetail {
   roupa: string
   levar: string
   obrigatorios: string[]
+  grupos: GrupoEnsaioCena[]
 }
 
 function occurrencesForWeek(cena: Cena, base: Date): Occurrence[] {
@@ -666,7 +670,7 @@ export function CenaDetalhe() {
   function openConfirmModal() {
     const pending = weekOccurrences.filter(o => !ensaiosByDate[o.dateKey] || isCanceled(ensaiosByDate[o.dateKey]))
     setConfirmSelections(Object.fromEntries(pending.map(o => [o.dateKey, true])))
-    setConfirmDetails(Object.fromEntries(pending.map(o => [o.dateKey, { horario: o.horario, geral: false, comFigurino: false, roupa: '', levar: '', obrigatorios: [] }])))
+    setConfirmDetails(Object.fromEntries(pending.map(o => [o.dateKey, { horario: o.horario, geral: false, comFigurino: false, roupa: '', levar: '', obrigatorios: [], grupos: [] }])))
     setConfirmModalOpen(true)
   }
 
@@ -686,7 +690,7 @@ export function CenaDetalhe() {
       const toConfirm = weekOccurrences.filter(o => confirmSelections[o.dateKey] && (!ensaiosByDate[o.dateKey] || isCanceled(ensaiosByDate[o.dateKey])))
       await Promise.all(
         toConfirm.map(o => {
-          const detail = confirmDetails[o.dateKey] ?? { horario: o.horario, geral: false, comFigurino: false, roupa: '', levar: '', obrigatorios: [] }
+          const detail = confirmDetails[o.dateKey] ?? { horario: o.horario, geral: false, comFigurino: false, roupa: '', levar: '', obrigatorios: [], grupos: [] }
           const existing = ensaiosByDate[o.dateKey]
           // Depois de criar/reconfirmar (que zera as respostas), quem marcou a data como
           // indisponível na inscrição já entra como "não vai".
@@ -701,6 +705,7 @@ export function CenaDetalhe() {
                 comFigurino: detail.comFigurino,
                 roupa: detail.roupa,
                 levar: detail.levar,
+                grupos: detail.grupos,
               }).then(novoId => aplicarIndisponibilidades(novoId, indisponiveis))
         }),
       )
@@ -755,14 +760,6 @@ export function CenaDetalhe() {
     } finally {
       setConfirmingPresenca(false)
     }
-  }
-
-  function toggleObrigatorio(personagemId: string, draft: string[], setDraft: (v: string[]) => void) {
-    setDraft(draft.includes(personagemId) ? draft.filter(id => id !== personagemId) : [...draft, personagemId])
-  }
-
-  function toggleAllObrigatorios(allIds: string[], draft: string[], setDraft: (v: string[]) => void) {
-    setDraft(allIds.every(id => draft.includes(id)) ? [] : allIds)
   }
 
   const hasPendingConfirmation = weekOccurrences.some(o => !ensaiosByDate[o.dateKey] || isCanceled(ensaiosByDate[o.dateKey]))
@@ -1933,44 +1930,24 @@ export function CenaDetalhe() {
                       {cena && cena.personagens.length > 0 && (
                         <div>
                           <p className="text-xs text-muted-foreground mb-1">Quem precisa estar</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                toggleAllObrigatorios(
-                                  cena.personagens.map(p => p.id),
-                                  detail.obrigatorios,
-                                  next => updateConfirmDetail(o.dateKey, { obrigatorios: next }),
-                                )
-                              }
-                              className={cn(
-                                'rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors',
-                                cena.personagens.every(p => detail.obrigatorios.includes(p.id))
-                                  ? 'border-primary bg-primary/10 text-primary'
-                                  : 'border-gray-300 bg-white text-gray-600',
-                              )}
-                            >
-                              Todos
-                            </button>
-                            {cena.personagens.map(p => (
-                              <button
-                                key={p.id}
-                                type="button"
-                                onClick={() =>
-                                  toggleObrigatorio(p.id, detail.obrigatorios, next => updateConfirmDetail(o.dateKey, { obrigatorios: next }))
-                                }
-                                className={cn(
-                                  'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                                  detail.obrigatorios.includes(p.id)
-                                    ? 'border-primary bg-primary/10 text-primary'
-                                    : 'border-gray-300 bg-white text-gray-600',
-                                )}
-                              >
-                                {p.nome}
-                              </button>
-                            ))}
-                          </div>
+                          <PersonagensMultiSelect
+                            comTodos
+                            personagens={cena.personagens}
+                            users={users}
+                            selecionados={detail.obrigatorios}
+                            onChange={next => updateConfirmDetail(o.dateKey, { obrigatorios: next })}
+                            vazio="Todos (ninguém marcado)"
+                          />
                         </div>
+                      )}
+                      {cena && (
+                        <GruposEnsaioCena
+                          compacto
+                          grupos={detail.grupos}
+                          onChange={grupos => updateConfirmDetail(o.dateKey, { grupos })}
+                          personagens={elencoDoEnsaio(cena.personagens, detail.obrigatorios)}
+                          users={users}
+                        />
                       )}
                     </div>
                   )}

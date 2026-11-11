@@ -1,4 +1,4 @@
-import type { Ensaio, Personagem } from '@/types'
+import type { Ensaio, GrupoEnsaioCena, Personagem } from '@/types'
 
 /**
  * Personagens (com pessoa vinculada) chamados pro ensaio: com obrigatórios marcados, só eles; sem
@@ -37,4 +37,18 @@ export function avisoNaoChamado(
   const chamados = uidsDoEnsaio(personagens, ensaio)
   if (chamados.has(uid)) return null
   return { soPrecisam: dependentes.filter(d => chamados.has(d.uid)).map(d => d.nome) }
+}
+
+/**
+ * O grupo do ensaio em que está alguma das pessoas (`uids` = a própria e/ou os filhos), pelo
+ * personagem que fazem. `undefined` = sem grupo: vale o horário e o local do ensaio.
+ */
+export function grupoDoEnsaio(
+  ensaio: Pick<Ensaio, 'grupos'> | undefined,
+  personagens: Personagem[],
+  uids: string[],
+): GrupoEnsaioCena | undefined {
+  if (!ensaio?.grupos?.length) return undefined
+  const meus = personagens.filter(p => p.participanteUid && uids.includes(p.participanteUid)).map(p => p.id)
+  return ensaio.grupos.find(g => g.personagens.some(id => meus.includes(id)))
 }

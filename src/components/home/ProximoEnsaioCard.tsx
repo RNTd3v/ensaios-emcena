@@ -18,7 +18,7 @@ import { subscribeToLocais } from '@/services/firebase/locais'
 import { addDays, canCheckin, formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { formatDuracao, formatHoraCompacta } from '@/lib/cenaHorario'
 import { segundosDoCronometro } from '@/lib/cronometro'
-import { uidsDoEnsaio } from '@/lib/ensaioPublico'
+import { grupoDoEnsaio, uidsDoEnsaio } from '@/lib/ensaioPublico'
 import { ensaioStatus } from '@/lib/ensaioStatus'
 import { localIcon } from '@/lib/localIcons'
 import { cn } from '@/lib/utils'
@@ -430,13 +430,19 @@ function EnsaioBloco({
 
   const ensaioUrl = `/cenas/${cena.id}/ensaios/${ensaio.id}`
   const meusPersonagens = soEu ? personagensDe(uid) : []
+  // Ensaio em grupos: quem está num grupo vê o horário e o local dele. Só eu → no cabeçalho; com
+  // filhos, uma linha por pessoa (quando o grupo difere do ensaio).
+  const gruposDaCasa = pessoas.map(p => ({ pessoa: p, grupo: grupoDoEnsaio(ensaio, cena.personagens, [p.uid]) }))
+  const meuGrupo = soEu ? gruposDaCasa[0]?.grupo : undefined
+  const horario = meuGrupo?.horario ?? ensaio.horario
+  const localEnsaio = meuGrupo?.local || ensaio.local
 
   return (
     <div className="space-y-3">
       <Link to={ensaioUrl} className="block">
         <div className="flex items-start justify-between gap-2">
           <p className="text-2xl font-bold text-gray-900">
-            {formatRelativeDia(ensaio.data, todayKey)} · {formatHoraCompacta(ensaio.horario)}
+            {formatRelativeDia(ensaio.data, todayKey)} · {formatHoraCompacta(horario)}
           </p>
           <EnsaioStatusChip status={ensaioStatus(ensaio, todayKey)} />
         </div>
@@ -450,12 +456,22 @@ function EnsaioBloco({
           soEu &&
           ensaio.convidados?.includes(uid) && <p className="mt-0.5 truncate pl-5.5 text-xs text-muted-foreground">Você foi convidado</p>
         )}
-        {ensaio.local && (
+        {meuGrupo?.nome && <p className="mt-0.5 truncate pl-5.5 text-xs text-muted-foreground">Grupo: {meuGrupo.nome}</p>}
+        {localEnsaio && (
           <p className="mt-1 flex items-center gap-1.5 text-sm text-gray-700">
             <LocalIcon className="h-4 w-4 shrink-0 text-primary" />
-            <span className="truncate">{ensaio.local}</span>
+            <span className="truncate">{localEnsaio}</span>
           </p>
         )}
+        {!soEu &&
+          gruposDaCasa
+            .filter(g => g.grupo)
+            .map(({ pessoa, grupo }) => (
+              <p key={pessoa.uid} className="mt-1 text-xs text-gray-700">
+                <span className="font-medium">{pessoa.nome ?? 'Você'}:</span> {formatHoraCompacta(grupo!.horario)}
+                {(grupo!.local || ensaio.local) && ` · ${grupo!.local || ensaio.local}`}
+              </p>
+            ))}
         <PreparoInfo roupa={ensaio.roupa} levar={ensaio.levar} className="mt-1" />
       </Link>
 

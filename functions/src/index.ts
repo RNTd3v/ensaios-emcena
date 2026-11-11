@@ -252,6 +252,41 @@ function publicoDoEnsaio(cena: DocumentData, e: DocumentData): string[] {
   return [...new Set([...elencoDoEnsaio(cena, e), ...((e.convidados as string[] | undefined) ?? [])])]
 }
 
+interface GrupoEnsaio {
+  id: string
+  nome?: string
+  horario: string
+  local?: string
+  personagens: string[]
+}
+
+/**
+ * Notifica `uids` do ensaio. Em ensaio dividido em grupos, cada grupo recebe o aviso com o seu
+ * horário e local (quem faz um personagem do grupo); os demais, com os do ensaio.
+ */
+async function notificarDoEnsaio(
+  cena: DocumentData,
+  e: DocumentData,
+  uids: string[],
+  base: { titulo: string; link: string },
+  exceto?: string | null,
+): Promise<void> {
+  const grupos = ((e.grupos as GrupoEnsaio[] | undefined) ?? []).filter(g => g.personagens?.length)
+  const restantes = new Set(uids)
+  const personagens = (cena.personagens as { id: string; participanteUid?: string }[] | undefined) ?? []
+  for (const g of grupos) {
+    const doGrupo = personagens.filter(p => g.personagens.includes(p.id) && p.participanteUid && restantes.has(p.participanteUid)).map(p => p.participanteUid as string)
+    doGrupo.forEach(u => restantes.delete(u))
+    if (!doGrupo.length) continue
+    await notificar(
+      doGrupo,
+      { titulo: base.titulo, corpo: descricaoEnsaio(cena.nome, { ...e, horario: g.horario, local: g.local || e.local }), link: base.link, tipo: 'ensaio' },
+      exceto,
+    )
+  }
+  if (restantes.size) await notificar([...restantes], { titulo: base.titulo, corpo: descricaoEnsaio(cena.nome, e), link: base.link, tipo: 'ensaio' }, exceto)
+}
+
 export const ensaioCriado = onDocumentCreated('ensaios/{id}', async event => {
   const e = event.data?.data()
   if (!e || e.canceledByUid) return
@@ -260,7 +295,7 @@ export const ensaioCriado = onDocumentCreated('ensaios/{id}', async event => {
   const link = `/cenas/${e.cenaId}/ensaios/${event.params.id}`
   const corpo = descricaoEnsaio(cena.nome, e)
   const convidados = convidadosDoEnsaio(cena, e)
-  await notificar(elencoDoEnsaio(cena, e), { titulo: 'Ensaio confirmado', corpo, link, tipo: 'ensaio' }, e.confirmedByUid)
+  await notificarDoEnsaio(cena, e, elencoDoEnsaio(cena, e), { titulo: 'Ensaio confirmado', link }, e.confirmedByUid)
   await notificar(convidados, { titulo: 'Você foi convidado para um ensaio', corpo, link, tipo: 'ensaio' }, e.confirmedByUid)
 })
 
@@ -321,7 +356,7 @@ export const ensaioAlterado = onDocumentUpdated('ensaios/{id}', async event => {
   if (antes.canceledByUid && !depois.canceledByUid) {
     const corpo = descricaoEnsaio(cena.nome, depois)
     const convidados = new Set(convidadosDoEnsaio(cena, depois))
-    await notificar(participantes.filter(u => !convidados.has(u)), { titulo: 'Ensaio reconfirmado', corpo, link, tipo: 'ensaio' }, depois.confirmedByUid)
+    await notificarDoEnsaio(cena, depois, participantes.filter(u => !convidados.has(u)), { titulo: 'Ensaio reconfirmado', link }, depois.confirmedByUid)
     await notificar([...convidados], { titulo: 'Você foi convidado para um ensaio', corpo, link, tipo: 'ensaio' }, depois.confirmedByUid)
     return
   }
@@ -335,17 +370,21 @@ export const ensaioAlterado = onDocumentUpdated('ensaios/{id}', async event => {
     const convidados = new Set(convidadosDoEnsaio(cena, depois))
     const chamados = entraram.filter(u => !convidados.has(u))
     const convidadosNovos = entraram.filter(u => convidados.has(u))
-    await notificar(chamados, { titulo: 'Você foi chamado para o ensaio', corpo, link, tipo: 'ensaio' }, depois.atualizadoPorUid)
+    await notificarDoEnsaio(cena, depois, chamados, { titulo: 'Você foi chamado para o ensaio', link }, depois.atualizadoPorUid)
     await notificar(convidadosNovos, { titulo: 'Você foi convidado para um ensaio', corpo, link, tipo: 'ensaio' }, depois.atualizadoPorUid)
   }
   if (aindaVai && sairam.length) {
     await notificar(sairam, { titulo: 'Você não precisa ir ao ensaio', corpo, link, tipo: 'ensaio' }, depois.atualizadoPorUid)
   }
-  const mudou = antes.data !== depois.data || antes.horario !== depois.horario || (antes.local ?? '') !== (depois.local ?? '')
+  const mudou =
+    antes.data !== depois.data ||
+    antes.horario !== depois.horario ||
+    (antes.local ?? '') !== (depois.local ?? '') ||
+    JSON.stringify(antes.grupos ?? []) !== JSON.stringify(depois.grupos ?? [])
   if (mudou) {
     // Quem acabou de entrar já recebeu o "chamado" com os dados novos.
     const ficaram = participantes.filter(u => !entraram.includes(u))
-    await notificar(ficaram, { titulo: 'Ensaio alterado', corpo, link, tipo: 'ensaio' }, depois.atualizadoPorUid)
+    await notificarDoEnsaio(cena, depois, ficaram, { titulo: 'Ensaio alterado', link }, depois.atualizadoPorUid)
   }
 })
 
@@ -429,10 +468,10 @@ export const lembreteEnsaio = onSchedule({ schedule: 'every 15 minutes', timeZon
     if (!cena || cena.ativo === false) continue
     const ausentes = new Set<string>([...(e.ausentes ?? []), ...Object.keys(e.ausencias ?? {})])
     await doc.ref.update({ lembreteEnviado: true })
-    await notificar(
-      publicoDoEnsaio(cena, e).filter(u => !ausentes.has(u)),
-      { titulo: 'Ensaio daqui a pouco', corpo: descricaoEnsaio(cena.nome, e), link: `/cenas/${e.cenaId}/ensaios/${doc.id}`, tipo: 'ensaio' },
-    )
+    await notificarDoEnsaio(cena, e, publicoDoEnsaio(cena, e).filter(u => !ausentes.has(u)), {
+      titulo: 'Ensaio daqui a pouco',
+      link: `/cenas/${e.cenaId}/ensaios/${doc.id}`,
+    })
   }
 })
 
@@ -700,7 +739,8 @@ async function publicoDoTreinamento(t: DocumentData): Promise<string[]> {
   if (t.publico === 'pessoas') return (t.pessoas as string[] | undefined) ?? []
   if (t.publico === 'elenco') {
     const cenas = await db.collection('cenas').get()
-    const uids = new Set<string>()
+    // Ensaio geral: os convidados (sem personagem) entram junto com o elenco.
+    const uids = new Set<string>((t.pessoas as string[] | undefined) ?? [])
     for (const c of cenas.docs) {
       const cena = c.data()
       if (cena.ativo === false) continue
@@ -716,7 +756,7 @@ async function publicoDoTreinamento(t: DocumentData): Promise<string[]> {
 }
 
 function descricaoTreinamento(t: DocumentData, s: DocumentData): string {
-  return `${t.titulo} · ${quando(s.data, s.horario)}${t.local ? ` · ${t.local}` : ''}`
+  return `${t.titulo} · ${quando(s.data, s.horario)}${t.horarioFim ? ` até ${t.horarioFim}` : ''}${t.local ? ` · ${t.local}` : ''}`
 }
 
 /** "Novo treinamento: …" pra `uids` — com os dias tirados das sessões dele. */
@@ -726,11 +766,31 @@ async function avisarTreinamento(id: string, t: DocumentData, uids: string[]): P
     .sort((a, b) => `${a.data} ${a.horario}`.localeCompare(`${b.data} ${b.horario}`))
   if (!sessoes.length || !uids.length) return
   const dias = sessoes.length === 1 ? quando(sessoes[0].data, sessoes[0].horario) : `${sessoes.length} dias, a partir de ${quando(sessoes[0].data, sessoes[0].horario)}`
+  // Ensaio geral em grupos: cada grupo recebe o aviso com o seu horário e local.
+  const grupos = ((t.grupos as { horario: string; local?: string; pessoas: string[] }[] | undefined) ?? []).filter(g => g.pessoas?.length)
+  const restantes = new Set(uids)
+  for (const g of grupos) {
+    const doGrupo = g.pessoas.filter(u => restantes.has(u))
+    doGrupo.forEach(u => restantes.delete(u))
+    if (!doGrupo.length) continue
+    await notificar(
+      doGrupo,
+      {
+        titulo: `Ensaio geral: ${t.titulo}`,
+        corpo: `${sessoes.length === 1 ? quando(sessoes[0].data, g.horario) : `${sessoes.length} dias, a partir de ${quando(sessoes[0].data, g.horario)}`}${g.local || t.local ? ` · ${g.local || t.local}` : ''}${t.levar ? ` · Levar: ${t.levar}` : ''}. Confirme sua presença.`,
+        link: `/treinamentos/${id}`,
+        tipo: 'treinamento',
+      },
+      t.createdByUid,
+    )
+  }
+  uids = [...restantes]
+  if (!uids.length) return
   await notificar(
     uids,
     {
-      titulo: `Novo treinamento: ${t.titulo}`,
-      corpo: `${dias}${t.local ? ` · ${t.local}` : ''}. Confirme sua presença no dia.`,
+      titulo: t.tipo === 'ensaio_geral' ? `Ensaio geral: ${t.titulo}` : `Novo treinamento: ${t.titulo}`,
+      corpo: `${dias}${t.horarioFim ? ` até ${t.horarioFim}` : ''}${t.local ? ` · ${t.local}` : ''}${t.levar ? ` · Levar: ${t.levar}` : ''}. Confirme sua presença${t.tipo === 'ensaio_geral' ? '' : ' no dia'}.`,
       link: `/treinamentos/${id}`,
       tipo: 'treinamento',
     },
@@ -753,7 +813,8 @@ export const treinamentoAlterado = onDocumentUpdated('treinamentos/{id}', async 
   const antes = event.data?.before.data()
   const depois = event.data?.after.data()
   if (!antes || !depois) return
-  if (antes.publico === depois.publico && antes.publico !== 'pessoas') return
+  if (antes.publico === depois.publico && antes.publico === 'todos') return
+  if (antes.publico === depois.publico && antes.publico === 'elenco' && !depois.pessoas?.length) return
   const [eram, sao] = await Promise.all([publicoDoTreinamento(antes), publicoDoTreinamento(depois)])
   const jaAvisados = new Set(eram)
   await avisarTreinamento(event.params.id, depois, sao.filter(u => !jaAvisados.has(u)))

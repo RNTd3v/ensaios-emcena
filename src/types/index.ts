@@ -353,6 +353,11 @@ export interface Ensaio {
    * cena): recebem os avisos, veem o ensaio na Home e respondem a presença como o elenco.
    */
   convidados?: string[]
+  /**
+   * Ensaio dividido em grupos de personagens, cada um com horário/local próprios. Personagem fora
+   * de qualquer grupo segue o `horario`/`local` do ensaio.
+   */
+  grupos?: GrupoEnsaioCena[]
   /** Ensaio geral (com todo o elenco reunido, geralmente próximo da apresentação). */
   geral?: boolean
   /** Ensaio em que o figurino deve ser usado. */
@@ -384,6 +389,17 @@ export interface Ensaio {
   finalizadoAuto?: boolean
 }
 
+/** Grupo de personagens de um ensaio de cena (ver `Ensaio.grupos`). */
+export interface GrupoEnsaioCena {
+  id: string
+  nome?: string
+  /** HH:mm */
+  horario: string
+  local?: string
+  /** ids de personagens da cena. */
+  personagens: string[]
+}
+
 export interface CronometroEnsaio {
   acumuladoSeg: number
   inicioMs: number | null
@@ -403,15 +419,31 @@ export interface Treinamento {
   /** O que precisa levar (texto livre, ex.: "Garrafa d'água, toalha"). */
   levar?: string
   local?: string
+  /** 'ensaio_geral' = ensaio geral do elenco (sem o tipo, é um treinamento comum). */
+  tipo?: 'ensaio_geral'
+  /** HH:mm — até que horas vai (usado no ensaio geral). */
+  horarioFim?: string
+  /** Ensaio geral dividido em grupos, cada um com horário/local próprios (quem fica sem grupo segue o geral). */
+  grupos?: GrupoEnsaio[]
   /**
    * Pra quem vale (e quem é notificado): todos com acesso ativo, só o elenco (personagem em alguma
    * cena ativa) ou só as `pessoas` escolhidas.
    */
   publico: TreinamentoPublico
-  /** uids escolhidos, com `publico: 'pessoas'`. */
+  /** uids escolhidos, com `publico: 'pessoas'` — ou os convidados (sem personagem) do ensaio geral (`publico: 'elenco'`). */
   pessoas?: string[]
   createdByUid: string
   createdAt: string
+}
+
+/** Grupo de um ensaio geral: quem vai a esse horário/local. */
+export interface GrupoEnsaio {
+  id: string
+  nome?: string
+  /** HH:mm */
+  horario: string
+  local?: string
+  pessoas: string[]
 }
 
 export type TreinamentoPublico = 'todos' | 'elenco' | 'pessoas'

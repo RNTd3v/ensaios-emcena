@@ -16,8 +16,10 @@ import {
   subscribeToTodasSessoes,
   subscribeToTreinamentos,
   treinamentoValePara,
+  grupoDaPessoa,
   uidsDoElenco,
 } from '@/services/firebase/treinamentos'
+import { subscribeToDependentes } from '@/services/firebase/dependentes'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { formatRelativeDia, toDateKey } from '@/lib/agenda'
@@ -35,6 +37,10 @@ export function TreinamentoDetalhe() {
   const [treinamentos, setTreinamentos] = useState<Treinamento[] | null>(null)
   const [todasSessoes, setTodasSessoes] = useState<TreinamentoSessao[]>([])
   const [editando, setEditando] = useState(false)
+  // Eu e meus filhos (dependentes) — pra mostrar o grupo de cada um no ensaio geral.
+  const [dependentes, setDependentes] = useState<string[]>([])
+  useEffect(() => (user ? subscribeToDependentes(user.uid, l => setDependentes(l.map(d => d.uid))) : undefined), [user])
+  const meusUids = useMemo(() => (user ? [user.uid, ...dependentes] : []), [user, dependentes])
   const todayKey = toDateKey(new Date())
 
   useEffect(() => subscribeToTreinamentos(setTreinamentos), [])
@@ -53,7 +59,7 @@ export function TreinamentoDetalhe() {
     if (!isAdmin || !treinamento) return []
     const uids =
       treinamento.publico === 'elenco'
-        ? [...uidsDoElenco(cenas)]
+        ? [...new Set([...uidsDoElenco(cenas), ...(treinamento.pessoas ?? [])])]
         : treinamento.publico === 'pessoas'
           ? (treinamento.pessoas ?? [])
           : Object.values(users)
@@ -81,9 +87,9 @@ export function TreinamentoDetalhe() {
 
   return (
     <div className="space-y-4">
-      <Cabecalho titulo={treinamento.titulo}>
+      <Cabecalho titulo={treinamento.titulo} voltar={treinamento.tipo === 'ensaio_geral' ? '/calendario' : '/treinamentos'}>
         {isAdmin && (
-          <Button size="icon" title="Editar treinamento" onClick={() => setEditando(true)}>
+          <Button size="icon" title="Editar" onClick={() => setEditando(true)}>
             <Pencil className="h-4 w-4" />
           </Button>
         )}
@@ -93,14 +99,16 @@ export function TreinamentoDetalhe() {
         <CardContent className="space-y-2">
           {treinamento.descricao && <p className="whitespace-pre-wrap text-sm text-gray-800">{treinamento.descricao}</p>}
           <Info icone={MapPin} rotulo="Local" valor={treinamento.local} />
-          <Info icone={Shirt} rotulo="Roupa" valor={treinamento.roupa} />
+          {treinamento.tipo !== 'ensaio_geral' && <Info icone={Shirt} rotulo="Roupa" valor={treinamento.roupa} />}
           <Info icone={Backpack} rotulo="Levar" valor={treinamento.levar} />
           <Info
             icone={treinamento.publico === 'elenco' ? Drama : treinamento.publico === 'pessoas' ? UserCheck : Users}
             rotulo="Pra quem"
             valor={
               treinamento.publico === 'elenco'
-                ? 'Só elenco'
+                ? treinamento.tipo === 'ensaio_geral'
+                  ? `Elenco${treinamento.pessoas?.length ? ` + ${treinamento.pessoas.length} convidados` : ''}`
+                  : 'Só elenco'
                 : treinamento.publico === 'pessoas'
                   ? `${treinamento.pessoas?.length ?? 0} pessoas escolhidas`
                   : 'Todos'
@@ -109,11 +117,16 @@ export function TreinamentoDetalhe() {
         </CardContent>
       </Card>
 
+      {treinamento.grupos && treinamento.grupos.length > 0 && (
+        <GruposCard treinamento={treinamento} users={users} isAdmin={isAdmin} meusUids={meusUids} />
+      )}
+
       {sessoes.map(s => (
         <Card key={s.id}>
           <CardContent className="space-y-3">
             <p className="text-lg font-bold text-gray-900">
               {formatRelativeDia(s.data, todayKey)} · {formatHoraCompacta(s.horario)}
+              {treinamento.horarioFim && ` até ${formatHoraCompacta(treinamento.horarioFim)}`}
             </p>
             {participa && user && (
               <RespostaPresenca ensaio={s} uid={user.uid} checkinLimiteHoras={settings.checkinLimiteHoras ?? 2} tipo="treinamento" />
@@ -128,11 +141,11 @@ export function TreinamentoDetalhe() {
   )
 }
 
-function Cabecalho({ titulo, children }: { titulo: string; children?: React.ReactNode }) {
+function Cabecalho({ titulo, voltar = '/treinamentos', children }: { titulo: string; voltar?: string; children?: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <div className="flex min-w-0 items-center gap-2">
-        <Link to="/treinamentos">
+        <Link to={voltar}>
           <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -205,5 +218,43 @@ function RespostasSessao({ sessao, publico, users }: { sessao: TreinamentoSessao
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Grupos do ensaio geral. Admin vê todos (com as pessoas); os demais, só o grupo em que estão, ou
+ * o dos filhos — quem não está em grupo nenhum segue o horário e o local gerais.
+ */
+function GruposCard({ treinamento, users, isAdmin, meusUids }: { treinamento: Treinamento; users: Record<string, AppUser>; isAdmin: boolean; meusUids: string[] }) {
+  const grupos = treinamento.grupos ?? []
+  const meu = grupoDaPessoa(treinamento, meusUids)
+  const lista = isAdmin ? grupos : meu ? [meu] : []
+  if (!lista.length) return null
+  return (
+    <Card>
+      <CardContent className="space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-primary">{isAdmin ? 'Grupos' : 'Seu grupo'}</p>
+        {lista.map((g, i) => (
+          <div key={g.id} className="space-y-1">
+            <p className="text-sm font-semibold text-gray-900">
+              {g.nome || `Grupo ${i + 1}`} · {formatHoraCompacta(g.horario)}
+            </p>
+            {g.local && (
+              <p className="flex items-center gap-1.5 text-sm text-gray-700">
+                <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                {g.local}
+              </p>
+            )}
+            {isAdmin && (
+              <div className="space-y-1 pt-1">
+                {g.pessoas.map(u => (
+                  <PessoaLinha key={u} pessoa={pessoaOpcao(u, users[u])} />
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   )
 }

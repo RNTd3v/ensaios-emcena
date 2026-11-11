@@ -1,7 +1,7 @@
 import { addDoc, arrayRemove, arrayUnion, collection, deleteField, doc, getDoc, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { db } from './config'
 import { uidsDoEnsaio } from '@/lib/ensaioPublico'
-import type { AusenciaMotivo, Cena, CronometroEnsaio, Ensaio, Inscricao, RessalvaPresenca } from '@/types'
+import type { AusenciaMotivo, Cena, CronometroEnsaio, Ensaio, GrupoEnsaioCena, Inscricao, RessalvaPresenca } from '@/types'
 
 function toIso(value: unknown): string | undefined {
   return (value as { toDate?: () => Date })?.toDate?.().toISOString()
@@ -22,13 +22,20 @@ function fromSnap(id: string, data: Record<string, unknown>): Ensaio {
   } as Ensaio
 }
 
+/** Tira grupo vazio e espaços dos textos. */
+function limparGrupos(grupos?: GrupoEnsaioCena[]): GrupoEnsaioCena[] {
+  return (grupos ?? [])
+    .filter(g => g.horario && g.personagens.length)
+    .map(g => ({ id: g.id, nome: g.nome?.trim() ?? '', horario: g.horario, local: g.local?.trim() ?? '', personagens: g.personagens }))
+}
+
 export async function createEnsaio(
   cenaId: string,
   data: string,
   horario: string,
   confirmedByUid: string,
   obrigatorios?: string[],
-  flags?: { geral?: boolean; comFigurino?: boolean; roupa?: string; levar?: string; local?: string; convidados?: string[] },
+  flags?: { geral?: boolean; comFigurino?: boolean; roupa?: string; levar?: string; local?: string; convidados?: string[]; grupos?: GrupoEnsaioCena[] },
 ): Promise<string> {
   const ref = await addDoc(collection(db, 'ensaios'), {
     cenaId,
@@ -38,6 +45,7 @@ export async function createEnsaio(
     ...(flags?.local?.trim() ? { local: flags.local.trim() } : {}),
     ...(obrigatorios?.length ? { obrigatorios } : {}),
     ...(flags?.convidados?.length ? { convidados: flags.convidados } : {}),
+    ...(limparGrupos(flags?.grupos).length ? { grupos: limparGrupos(flags?.grupos) } : {}),
     ...(flags?.geral ? { geral: true } : {}),
     ...(flags?.comFigurino ? { comFigurino: true } : {}),
     ...(flags?.roupa?.trim() ? { roupa: flags.roupa.trim() } : {}),
@@ -70,6 +78,8 @@ export interface EnsaioInfo {
   obrigatorios: string[]
   /** uids convidados de fora do elenco chamado (ver `Ensaio.convidados`). */
   convidados: string[]
+  /** Grupos com horário/local próprios; `undefined` = não mexe nos que já existem. */
+  grupos?: GrupoEnsaioCena[]
 }
 
 function camposInfo(info: EnsaioInfo) {
@@ -82,6 +92,7 @@ function camposInfo(info: EnsaioInfo) {
     levar: info.levar.trim() || deleteField(),
     obrigatorios: info.obrigatorios.length ? info.obrigatorios : deleteField(),
     convidados: info.convidados.length ? info.convidados : deleteField(),
+    ...(info.grupos ? { grupos: limparGrupos(info.grupos).length ? limparGrupos(info.grupos) : deleteField() } : {}),
   }
 }
 

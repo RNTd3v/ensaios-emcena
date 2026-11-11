@@ -11,7 +11,7 @@ import {
   writeBatch,
 } from 'firebase/firestore'
 import { db } from './config'
-import type { AusenciaMotivo, Treinamento, TreinamentoPublico, TreinamentoSessao } from '@/types'
+import type { AusenciaMotivo, GrupoEnsaio, Treinamento, TreinamentoPublico, TreinamentoSessao } from '@/types'
 
 /**
  * Treinamentos (só admin cadastra — ver firestore.rules): as infos ficam em `treinamentos/{id}` e
@@ -30,6 +30,9 @@ export interface TreinamentoInput {
   roupa?: string
   levar?: string
   local?: string
+  tipo?: 'ensaio_geral'
+  horarioFim?: string
+  grupos?: GrupoEnsaio[]
   publico: TreinamentoPublico
   pessoas: string[]
 }
@@ -46,8 +49,11 @@ function dadosTreinamento(input: TreinamentoInput) {
     roupa: input.roupa?.trim() ?? '',
     levar: input.levar?.trim() ?? '',
     local: input.local?.trim() ?? '',
+    ...(input.tipo ? { tipo: input.tipo } : {}),
+    horarioFim: input.horarioFim ?? '',
+    grupos: input.tipo === 'ensaio_geral' ? (input.grupos ?? []).map(g => ({ id: g.id, nome: g.nome?.trim() ?? '', horario: g.horario, local: g.local?.trim() ?? '', pessoas: g.pessoas })) : [],
     publico: input.publico,
-    pessoas: input.publico === 'pessoas' ? input.pessoas : [],
+    pessoas: input.publico === 'pessoas' || input.tipo === 'ensaio_geral' ? input.pessoas : [],
   }
 }
 
@@ -183,7 +189,8 @@ export function subscribeToAusenciasSessao(sessaoId: string, callback: (porUid: 
 
 /** Se o treinamento vale pra `uid` (`ehElenco` = tem personagem em alguma cena ativa). */
 export function treinamentoValePara(t: Pick<Treinamento, 'publico' | 'pessoas'>, uid: string, ehElenco: boolean | undefined): boolean {
-  if (t.publico === 'elenco') return !!ehElenco
+  // Elenco (+ convidados, no ensaio geral).
+  if (t.publico === 'elenco') return !!ehElenco || !!t.pessoas?.includes(uid)
   if (t.publico === 'pessoas') return !!t.pessoas?.includes(uid)
   return true
 }
@@ -191,4 +198,9 @@ export function treinamentoValePara(t: Pick<Treinamento, 'publico' | 'pessoas'>,
 /** uids com personagem em alguma cena ativa — quem recebe treinamento "só elenco". */
 export function uidsDoElenco(cenas: { ativo: boolean; personagens: { participanteUid?: string }[] }[]): Set<string> {
   return new Set(cenas.filter(c => c.ativo).flatMap(c => c.personagens.map(p => p.participanteUid).filter((u): u is string => !!u)))
+}
+
+/** O grupo do ensaio geral em que está alguma das pessoas (a própria e/ou os filhos), se houver. */
+export function grupoDaPessoa(t: Pick<Treinamento, 'grupos'>, uids: string[]): GrupoEnsaio | undefined {
+  return t.grupos?.find(g => g.pessoas.some(u => uids.includes(u)))
 }

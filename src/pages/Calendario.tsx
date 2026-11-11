@@ -286,22 +286,23 @@ export function Calendario() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <h1 className="text-xl font-semibold text-white">Calendário</h1>
+        <h1 className="min-w-0 truncate text-xl font-semibold text-white">Calendário</h1>
         {isAdmin && (
           <Button
             size="sm"
-            className="ml-auto gap-1.5"
+            className="ml-auto shrink-0 gap-1.5 whitespace-nowrap px-2.5"
             onClick={() => setGeralAberto(true)}
             title="Cadastrar ensaio geral"
+            aria-label="Cadastrar ensaio geral"
           >
-            <Drama className="h-4 w-4" />
-            Ensaio geral
+            <Drama className="h-4 w-4 shrink-0" />
+            <span className="hidden min-[360px]:inline">Ensaio geral</span>
           </Button>
         )}
         <Button
           variant="ghost"
           size="icon"
-          className={cn('text-white hover:bg-white/10', !isAdmin && 'ml-auto')}
+          className={cn('shrink-0 text-white hover:bg-white/10', !isAdmin && 'ml-auto')}
           onClick={() => setMeusAberto(true)}
           title="Meus ensaios da semana"
           aria-label="Meus ensaios da semana"
@@ -601,6 +602,13 @@ function ListaDoDia({ itens, gerais, nameFor, users, uid, dependentes }: ListaDo
                 <p className="flex items-center gap-1 text-xs text-gray-500">
                   <MapPin className="h-3 w-3 shrink-0 text-primary" />
                   <span className="truncate">{localExibido}</span>
+                </p>
+              )}
+              {grupoEnsaio && (
+                <p className="truncate text-xs text-gray-500">
+                  {grupoEnsaio.nome ? `Grupo ${grupoEnsaio.nome} · ` : 'Seu grupo · '}
+                  ensaio todo às {o.horario ? formatHoraCompacta(o.horario) : '—'}
+                  {o.ensaio?.local && grupoEnsaio.local && grupoEnsaio.local !== o.ensaio.local ? ` · ${o.ensaio.local}` : ''}
                 </p>
               )}
               <div className="mt-1 flex flex-wrap items-center gap-1">

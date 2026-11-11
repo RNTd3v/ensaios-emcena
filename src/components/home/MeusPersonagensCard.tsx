@@ -8,10 +8,11 @@ import { useEnsaiosDasMinhasCenas } from '@/hooks/useEnsaiosDasMinhasCenas'
 import { uidsAusentes } from '@/services/firebase/ensaios'
 import { formatRelativeDia, toDateKey } from '@/lib/agenda'
 import { formatHoraCompacta } from '@/lib/cenaHorario'
+import { grupoDoEnsaio } from '@/lib/ensaioPublico'
 import { cn } from '@/lib/utils'
 import type { Cena, Ensaio, Personagem } from '@/types'
 
-type ItemPersonagem = { personagem: Personagem; cena: Cena; proximo?: Ensaio }
+type ItemPersonagem = { personagem: Personagem; cena: Cena; proximo?: Ensaio; horario?: string }
 
 /** Cor do ícone pela resposta da pessoa ao próximo ensaio do personagem. `quem`: nome do dependente (sem = "Você"). */
 function corDaResposta(uid: string, ensaio?: Ensaio, quem?: string): { cor: string; titulo: string } {
@@ -37,13 +38,15 @@ function usePersonagensComProximo(uid: string, dependenteDe?: string): ItemPerso
         .sort((a, b) => a.data.localeCompare(b.data) || a.horario.localeCompare(b.horario))
       for (const personagem of cena.personagens.filter(p => p.participanteUid === uid)) {
         const proximo = futuros.find(e => !e.obrigatorios?.length || e.obrigatorios.includes(personagem.id))
-        lista.push({ personagem, cena, proximo })
+        // Ensaio em grupos: vale o horário do grupo do personagem (sem grupo, o do ensaio).
+        const horario = proximo ? (grupoDoEnsaio(proximo, [personagem], [uid])?.horario ?? proximo.horario) : undefined
+        lista.push({ personagem, cena, proximo, horario })
       }
     }
     // Quem tem ensaio mais perto primeiro; sem ensaio marcado, no fim.
     return lista.sort((a, b) => {
       if (!a.proximo || !b.proximo) return Number(!a.proximo) - Number(!b.proximo)
-      return a.proximo.data.localeCompare(b.proximo.data) || a.proximo.horario.localeCompare(b.proximo.horario)
+      return a.proximo.data.localeCompare(b.proximo.data) || (a.horario ?? '').localeCompare(b.horario ?? '')
     })
   }, [minhasCenas, ensaiosPorCena, todayKey, uid])
 }
@@ -92,7 +95,7 @@ export function PersonagensDoDependenteBotao({
 
   if (!itens.length) return null
 
-  const proximo = itens[0].proximo
+  const { proximo, horario } = itens[0]
 
   return (
     <>
@@ -107,7 +110,7 @@ export function PersonagensDoDependenteBotao({
               </p>
               <p className={cn('truncate text-xs', proximo?.data === todayKey ? 'font-semibold text-primary' : 'text-muted-foreground')}>
                 {proximo
-                  ? `Próximo ensaio: ${formatRelativeDia(proximo.data, todayKey)} · ${formatHoraCompacta(proximo.horario)}`
+                  ? `Próximo ensaio: ${formatRelativeDia(proximo.data, todayKey)} · ${formatHoraCompacta(horario ?? proximo.horario)}`
                   : 'Sem ensaio marcado'}
               </p>
             </div>
@@ -127,7 +130,7 @@ function ListaPersonagens({ uid, itens, quem }: { uid: string; itens: ItemPerson
   const todayKey = toDateKey(new Date())
   return (
     <div className="space-y-1">
-      {itens.map(({ personagem, cena, proximo }) => {
+      {itens.map(({ personagem, cena, proximo, horario }) => {
         const resposta = corDaResposta(uid, proximo, quem)
         return (
           <Link
@@ -143,7 +146,7 @@ function ListaPersonagens({ uid, itens, quem }: { uid: string; itens: ItemPerson
               <p className="truncate text-xs text-muted-foreground">{cena.nome}</p>
             </div>
             <span className={cn('shrink-0 text-right text-xs', proximo?.data === todayKey ? 'font-semibold text-primary' : 'text-gray-600')}>
-              {proximo ? `${formatRelativeDia(proximo.data, todayKey)} · ${formatHoraCompacta(proximo.horario)}` : 'Sem ensaio marcado'}
+              {proximo ? `${formatRelativeDia(proximo.data, todayKey)} · ${formatHoraCompacta(horario ?? proximo.horario)}` : 'Sem ensaio marcado'}
             </span>
             <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
           </Link>

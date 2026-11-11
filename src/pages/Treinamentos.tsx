@@ -148,6 +148,8 @@ interface TreinamentoDialogProps {
 /** Cadastro/edição de um treinamento (só admin). */
 export function TreinamentoDialog({ treinamento, sessoes: existentes = [], geral: geralProp, onClose }: TreinamentoDialogProps) {
   const geral = treinamento ? treinamento.tipo === 'ensaio_geral' : !!geralProp
+  // Ensaio já realizado (todos os dias no passado): não faz sentido convidar mais ninguém.
+  const jaRealizado = !!treinamento && existentes.length > 0 && existentes.every(s => s.data < toDateKey(new Date()))
   const nomeTipo = geral ? 'ensaio geral' : 'treinamento'
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
@@ -339,11 +341,13 @@ export function TreinamentoDialog({ treinamento, sessoes: existentes = [], geral
             <p className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-primary">
               Todo o elenco (quem tem personagem) recebe a notificação e confirma presença — não precisa escolher um por um.
             </p>
+            {!jaRealizado && (
             <div>
               <Label>Convidar para o ensaio</Label>
               <p className="mb-2 mt-0.5 text-[11px] text-muted-foreground">Só aparece quem não tem personagem.</p>
               <EscolherPessoas isAdmin users={users} cenas={cenas} equipes={equipes} escolhidos={pessoas} onChange={setPessoas} excluir={elenco} />
             </div>
+            )}
             <GruposEnsaioEditor grupos={grupos} onChange={setGrupos} pool={poolGrupos} users={users} locais={locais} />
           </>
         ) : (

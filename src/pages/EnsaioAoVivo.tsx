@@ -581,6 +581,7 @@ export function EnsaioAoVivo() {
           onClose={() => setEditOpen(false)}
           ensaio={ensaio}
           comRegistro={modo === 'consulta'}
+          presencaLiberada={modo === 'consulta' || comecou}
           personagens={cena.personagens}
           elenco={elenco}
           pessoas={pessoas}
@@ -1006,6 +1007,8 @@ interface EditarEnsaioDialogProps {
   horarioInicial?: string
   /** Ensaio já aconteceu: também edita duração, anotações e presenças. */
   comRegistro: boolean
+  /** Já deu a hora do ensaio (ou ele já passou): só aí a lista de presença aparece na edição. */
+  presencaLiberada?: boolean
   /** Todos os personagens da cena — pra marcar os obrigatórios. */
   personagens: Personagem[]
   elenco: Personagem[]
@@ -1028,6 +1031,7 @@ function EditarEnsaioDialog({
   onConfirmar,
   horarioInicial,
   comRegistro,
+  presencaLiberada,
   personagens,
   elenco,
   pessoas,
@@ -1056,7 +1060,7 @@ function EditarEnsaioDialog({
   const [canceling, setCanceling] = useState(false)
   // Horário, local e obrigatórios geram aviso ("Ensaio alterado", "Você foi chamado", "Você não
   // precisa ir") — aí aparece a opção de notificar ou não.
-  const [notificar, setNotificar] = useState(true)
+  const [notificar, setNotificar] = useState(!comRegistro)
   const obrigatoriosMudaram =
     !!ensaio && JSON.stringify([...obrigatorios].sort()) !== JSON.stringify([...(ensaio.obrigatorios ?? [])].sort())
   const convidadosMudaram =
@@ -1065,6 +1069,7 @@ function EditarEnsaioDialog({
   const gruposMudaram = !!ensaio && JSON.stringify(grupos) !== JSON.stringify(ensaio.grupos ?? [])
   const mudaAviso =
     !confirmando &&
+    !comRegistro &&
     !!ensaio &&
     (gruposMudaram || horario !== ensaio.horario || local.trim() !== (ensaio.local ?? '').trim() || obrigatoriosMudaram || convidadosMudaram)
   const [extraUid, setExtraUid] = useState('')
@@ -1161,7 +1166,7 @@ function EditarEnsaioDialog({
     )
 
   return (
-    <Dialog open={open} onClose={onClose} title={!confirmando ? 'Editar ensaio' : ensaio ? 'Reconfirmar ensaio' : 'Confirmar ensaio'}>
+    <Dialog open={open} onClose={onClose} title={!confirmando ? (comRegistro ? 'Registro do ensaio' : 'Editar ensaio') : ensaio ? 'Reconfirmar ensaio' : 'Confirmar ensaio'}>
       <div className="space-y-4">
         <div>
           <Label htmlFor="editar-ensaio-horario">Horário</Label>
@@ -1195,83 +1200,89 @@ function EditarEnsaioDialog({
             </div>
           )}
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          <button type="button" onClick={() => setGeral(v => !v)} className={chip(geral)}>
-            <Star className="h-3.5 w-3.5" />
-            Ensaio geral
-          </button>
-          <button type="button" onClick={() => setComFigurino(v => !v)} className={chip(comFigurino)}>
-            <Shirt className="h-3.5 w-3.5" />
-            Com figurino
-          </button>
-        </div>
-        <PreparoCampos idPrefixo="editar-ensaio" value={preparo} onChange={patch => setPreparo(p => ({ ...p, ...patch }))} />
-
-        {personagens.length > 0 && (
-          <div>
-            <p className="mb-1.5 text-sm font-medium">Personagens obrigatórios</p>
-            <PersonagensMultiSelect
-              comTodos
-              personagens={personagens}
-              users={users}
-              selecionados={obrigatorios}
-              onChange={setObrigatorios}
-              vazio="Todos (ninguém marcado)"
-            />
+        {!comRegistro && (
+          <>
+          <div className="flex flex-wrap gap-1.5">
+            <button type="button" onClick={() => setGeral(v => !v)} className={chip(geral)}>
+              <Star className="h-3.5 w-3.5" />
+              Ensaio geral
+            </button>
+            <button type="button" onClick={() => setComFigurino(v => !v)} className={chip(comFigurino)}>
+              <Shirt className="h-3.5 w-3.5" />
+              Com figurino
+            </button>
           </div>
-        )}
+          <PreparoCampos idPrefixo="editar-ensaio" value={preparo} onChange={patch => setPreparo(p => ({ ...p, ...patch }))} />
 
-        <GruposEnsaioCena grupos={grupos} onChange={setGrupos} personagens={elencoChamado} users={users} locais={locais} />
-
-        <div>
-          <p className="text-sm font-medium">Convidados</p>
-          <p className="mb-1.5 text-xs text-muted-foreground">
-            Pessoas de fora do elenco chamado: recebem os avisos do ensaio e confirmam presença como o elenco.
-          </p>
-          {convidadosFora.length > 0 && (
-            <div className="mb-2 space-y-1">
-              {convidadosFora.map(uid => (
-                <PessoaLinha
-                  key={uid}
-                  pessoa={pessoas.find(p => p.uid === uid) ?? { uid, nome: nameFor(uid) }}
-                  className="rounded-lg bg-primary/5 px-2 py-1.5"
-                >
-                  <button
-                    type="button"
-                    onClick={() => setConvidados(prev => prev.filter(u => u !== uid))}
-                    title="Remover convite"
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </PessoaLinha>
-              ))}
-            </div>
-          )}
-          <div className="flex items-center gap-1.5">
-            <div className="flex-1">
-              <PessoaSelect
-                value={convidadoUid}
-                onChange={setConvidadoUid}
-                pessoas={disponiveisConvite}
-                placeholder="Convidar pessoa..."
-                titulo="Convidar para o ensaio"
+          {personagens.length > 0 && (
+            <div>
+              <p className="mb-1.5 text-sm font-medium">Personagens obrigatórios</p>
+              <PersonagensMultiSelect
+                comTodos
+                personagens={personagens}
+                users={users}
+                selecionados={obrigatorios}
+                onChange={setObrigatorios}
+                vazio="Todos (ninguém marcado)"
               />
             </div>
-            <Button
-              size="icon"
-              title="Convidar"
-              disabled={!convidadoUid}
-              onClick={() => {
-                setConvidados(prev => (prev.includes(convidadoUid) ? prev : [...prev, convidadoUid]))
-                setConvidadoUid('')
-              }}
-              className="shrink-0 bg-primary/10 text-primary hover:bg-primary/15"
-            >
-              <UserPlus className="h-4 w-4" />
-            </Button>
+          )}
+
+          <GruposEnsaioCena grupos={grupos} onChange={setGrupos} personagens={elencoChamado} users={users} locais={locais} />
+          </>
+        )}
+
+        {!comRegistro && (
+          <div>
+            <p className="text-sm font-medium">Convidados</p>
+            <p className="mb-1.5 text-xs text-muted-foreground">
+              Pessoas de fora do elenco chamado: recebem os avisos do ensaio e confirmam presença como o elenco.
+            </p>
+            {convidadosFora.length > 0 && (
+              <div className="mb-2 space-y-1">
+                {convidadosFora.map(uid => (
+                  <PessoaLinha
+                    key={uid}
+                    pessoa={pessoas.find(p => p.uid === uid) ?? { uid, nome: nameFor(uid) }}
+                    className="rounded-lg bg-primary/5 px-2 py-1.5"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setConvidados(prev => prev.filter(u => u !== uid))}
+                      title="Remover convite"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </PessoaLinha>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1">
+                <PessoaSelect
+                  value={convidadoUid}
+                  onChange={setConvidadoUid}
+                  pessoas={disponiveisConvite}
+                  placeholder="Convidar pessoa..."
+                  titulo="Convidar para o ensaio"
+                />
+              </div>
+              <Button
+                size="icon"
+                title="Convidar"
+                disabled={!convidadoUid}
+                onClick={() => {
+                  setConvidados(prev => (prev.includes(convidadoUid) ? prev : [...prev, convidadoUid]))
+                  setConvidadoUid('')
+                }}
+                className="shrink-0 bg-primary/10 text-primary hover:bg-primary/15"
+              >
+                <UserPlus className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
 
         {comRegistro && (
           <>
@@ -1299,7 +1310,7 @@ function EditarEnsaioDialog({
           </>
         )}
 
-        {!confirmando && (
+        {!confirmando && presencaLiberada && (
           <div>
             <p className="mb-1.5 text-sm font-medium">
               Presença ({presencas.filter(uid => elencoUids.has(uid)).length}/{elencoUids.size}
@@ -1397,7 +1408,7 @@ function EditarEnsaioDialog({
 
         <Button className="w-full gap-1.5" onClick={handleSave} disabled={saving || (confirmando && !horario)}>
           {saving ? <Spinner size="sm" className="border-white/40 border-t-white" /> : confirmando && <Check className="h-4 w-4" />}
-          {!confirmando ? 'Salvar' : ensaio ? 'Reconfirmar ensaio' : 'Confirmar ensaio'}
+          {!confirmando ? (comRegistro ? 'Salvar registro' : 'Salvar') : ensaio ? 'Reconfirmar ensaio' : 'Confirmar ensaio'}
         </Button>
 
         {confirmando ? null : confirmCancel ? (

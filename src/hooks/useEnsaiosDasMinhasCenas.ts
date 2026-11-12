@@ -5,11 +5,12 @@ import type { Cena, Ensaio } from '@/types'
 
 /**
  * As cenas ativas em que a pessoa tem personagem e os ensaios de cada uma (ao vivo). `cenas` é
- * `null` enquanto carrega. Modo dependente: `uid` é um filho de `dependenteDe`.
+ * `null` enquanto carrega. Modo dependente: `uid` é um filho de `dependenteDe`. `semConvites`: não
+ * busca convites (cônjuge: a regra só deixa ler os ensaios das cenas, não os convites dele).
  * `cenasDosEnsaios` = `minhasCenas` mais as cenas (ativas) de ensaios pra que a pessoa foi
  * convidada sem ter personagem nelas — dessas, `ensaiosPorCena` traz só os ensaios do convite.
  */
-export function useEnsaiosDasMinhasCenas(uid: string, dependenteDe?: string) {
+export function useEnsaiosDasMinhasCenas(uid: string, dependenteDe?: string, semConvites = false) {
   const [cenas, setCenas] = useState<Cena[] | null>(null)
   const [ensaiosPorCena, setEnsaiosPorCena] = useState<Record<string, Ensaio[]>>({})
   const [convites, setConvites] = useState<Ensaio[]>([])
@@ -25,9 +26,9 @@ export function useEnsaiosDasMinhasCenas(uid: string, dependenteDe?: string) {
 
   // Convites só pra adultos (criança não é convidada — a resposta seria do responsável).
   useEffect(() => {
-    if (dependenteDe) return setConvites([])
+    if (dependenteDe || semConvites) return setConvites([])
     return subscribeToEnsaiosConvidado(uid, setConvites)
-  }, [uid, dependenteDe])
+  }, [uid, dependenteDe, semConvites])
 
   const minhasCenas = useMemo(
     () => (cenas ?? []).filter(c => c.ativo && c.personagens.some(p => p.participanteUid === uid)),

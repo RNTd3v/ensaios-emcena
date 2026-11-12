@@ -979,22 +979,53 @@ export const anotacaoCenaEscrita = onDocumentWritten('cenas/{cenaId}/anotacoes/{
  * filhos (firestore.rules) sem estarem na cena.
  */
 async function sincronizarResponsaveisDaCena(ref: FirebaseFirestore.DocumentReference, dados: DocumentData): Promise<void> {
-  const deps = ((dados.participantes as string[] | undefined) ?? []).filter(u => u.startsWith('dep_'))
+  const participantes = (dados.participantes as string[] | undefined) ?? []
+  const deps = participantes.filter(u => u.startsWith('dep_'))
   const responsaveis = new Set<string>()
   for (const grupo of chunks(deps, 30)) {
     const snaps = await db.getAll(...grupo.map(u => db.collection('users').doc(u)))
     for (const s of snaps) for (const r of ((s.data()?.responsaveisUids as string[] | undefined) ?? [])) responsaveis.add(r)
   }
+  // Cônjuges (vínculo aceito) de quem está na cena: só leitura dos ensaios (`familiaresLeitura`).
+  const familiares = new Set<string>()
+  if (participantes.length) {
+    const vinculos = await db.collection('conjuges').where('status', '==', 'aceito').get()
+    for (const v of vinculos.docs) {
+      const [a, b] = (v.data().uids as string[] | undefined) ?? []
+      if (!a || !b) continue
+      if (participantes.includes(a)) familiares.add(b)
+      if (participantes.includes(b)) familiares.add(a)
+    }
+  }
   const novo = [...responsaveis].sort()
   const atual = [...((dados.responsaveisDependentes as string[] | undefined) ?? [])].sort()
-  if (JSON.stringify(novo) === JSON.stringify(atual)) return // já está certo — evita laço de escrita
-  await ref.update({ responsaveisDependentes: novo })
+  const novoFam = [...familiares].sort()
+  const atualFam = [...((dados.familiaresLeitura as string[] | undefined) ?? [])].sort()
+  if (JSON.stringify(novo) === JSON.stringify(atual) && JSON.stringify(novoFam) === JSON.stringify(atualFam)) return // já está certo — evita laço de escrita
+  await ref.update({ responsaveisDependentes: novo, familiaresLeitura: novoFam })
 }
 
 export const cenaResponsaveisDependentes = onDocumentWritten('cenas/{id}', async event => {
   const depois = event.data?.after
   if (!depois?.exists) return
   await sincronizarResponsaveisDaCena(depois.ref, depois.data() ?? {})
+})
+
+/** Vínculo de cônjuge aceito/desfeito: atualiza quem pode ler os ensaios nas cenas dos dois. */
+export const conjugeVinculo = onDocumentWritten('conjuges/{id}', async event => {
+  const antes = event.data?.before.data()
+  const depois = event.data?.after.data()
+  if (antes?.status === depois?.status) return
+  const uids = [...new Set([...((antes?.uids as string[] | undefined) ?? []), ...((depois?.uids as string[] | undefined) ?? [])])]
+  const feitas = new Set<string>()
+  for (const uid of uids) {
+    const cenas = await db.collection('cenas').where('participantes', 'array-contains', uid).get()
+    for (const c of cenas.docs) {
+      if (feitas.has(c.id)) continue
+      feitas.add(c.id)
+      await sincronizarResponsaveisDaCena(c.ref, c.data())
+    }
+  }
 })
 
 /** Mudou quem é responsável por uma criança: atualiza as cenas em que ela está. */

@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, ChevronLeft, ChevronRight, Crown, Drama, Info, MapPin, Shirt, Star } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Crown, Drama, Heart, Info, MapPin, Shirt, Star } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/Spinner'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers } from '@/services/firebase/auth'
-import { subscribeToCenasComDependentes } from '@/services/firebase/cenas'
+import { subscribeToCenasComDependentes, subscribeToCenasDoParticipante } from '@/services/firebase/cenas'
 import { subscribeToAllEnsaios, subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -21,6 +21,7 @@ import { ensaioStatus } from '@/lib/ensaioStatus'
 import { avisoNaoChamado, grupoDoEnsaio, type PessoaDaCasaNome } from '@/lib/ensaioPublico'
 import { AvisoNaoChamado } from '@/components/ensaio/AvisoNaoChamado'
 import { subscribeToDependentes } from '@/services/firebase/dependentes'
+import { subscribeToMeusVinculos } from '@/services/firebase/conjuges'
 import { grupoDaPessoa, subscribeToTodasSessoes, subscribeToTreinamentos, uidsDoElenco } from '@/services/firebase/treinamentos'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { TreinamentoDialog } from '@/pages/Treinamentos'
@@ -91,7 +92,9 @@ function capitalize(s: string) {
  */
 export function Calendario() {
   const currentUser = useAuthStore(s => s.user)
-  const [cenas, setCenas] = useState<Cena[] | null>(null)
+  const [cenasProprias, setCenas] = useState<Cena[] | null>(null)
+  const [cenasConjuge, setCenasConjuge] = useState<Cena[]>([])
+  const [conjugeUid, setConjugeUid] = useState<string | undefined>()
   const [ensaios, setEnsaios] = useState<Ensaio[] | null>(null)
   const [inscricoes, setInscricoes] = useState<Inscricao[]>([])
   const [users, setUsers] = useState<Record<string, AppUser>>({})
@@ -120,6 +123,24 @@ export function Calendario() {
     // veem também as cenas dos filhos (dependentes).
     return subscribeToCenasComDependentes(currentUser.role, currentUser.uid, lista => setCenas(lista.filter(c => c.ativo)))
   }, [currentUser])
+  // Cônjuge (vínculo aceito): as cenas dele entram só pra ver os ensaios (leitura).
+  useEffect(() => {
+    if (!currentUser) return
+    return subscribeToMeusVinculos(currentUser.uid, lista => {
+      const v = lista.find(x => x.status === 'aceito')
+      setConjugeUid(v?.uids.find(u => u !== currentUser.uid))
+    })
+  }, [currentUser])
+  useEffect(() => {
+    if (!conjugeUid) return setCenasConjuge([])
+    return subscribeToCenasDoParticipante(conjugeUid, lista => setCenasConjuge(lista.filter(c => c.ativo)))
+  }, [conjugeUid])
+  const cenas = useMemo(() => {
+    if (!cenasProprias) return null
+    const porId = new Map(cenasProprias.map(c => [c.id, c]))
+    for (const c of cenasConjuge) if (!porId.has(c.id)) porId.set(c.id, c)
+    return [...porId.values()]
+  }, [cenasProprias, cenasConjuge])
   const isAdmin = currentUser?.role === 'admin'
   const cenaIdsKey = (cenas ?? []).map(c => c.id).sort().join(',')
   useEffect(() => {
@@ -129,12 +150,12 @@ export function Calendario() {
     const ids = cenaIdsKey ? cenaIdsKey.split(',') : []
     if (!ids.length) return setEnsaios([])
     const porCena: Record<string, Ensaio[]> = {}
-    const unsubs = ids.map(cenaId =>
-      subscribeToEnsaiosDaCena(cenaId, lista => {
-        porCena[cenaId] = lista
-        if (ids.every(id => porCena[id])) setEnsaios(ids.flatMap(id => porCena[id]))
-      }),
-    )
+    const atualizar = (cenaId: string, lista: Ensaio[]) => {
+      porCena[cenaId] = lista
+      if (ids.every(id => porCena[id])) setEnsaios(ids.flatMap(id => porCena[id]))
+    }
+    // Sem permissão numa cena (ex.: vínculo de cônjuge ainda propagando) não trava o calendário inteiro.
+    const unsubs = ids.map(cenaId => subscribeToEnsaiosDaCena(cenaId, lista => atualizar(cenaId, lista), () => atualizar(cenaId, [])))
     return () => unsubs.forEach(u => u())
   }, [isAdmin, cenaIdsKey, cenas === null])
   // Inscrições (apelidos) só admin/líder podem listar; os demais ficam com o nome do perfil.
@@ -160,7 +181,7 @@ export function Calendario() {
   const geraisPorData = useMemo(() => {
     const map = new Map<string, Geral[]>()
     if (!currentUser) return map
-    const meus = [currentUser.uid, ...dependentes.map(d => d.uid)]
+    const meus = [currentUser.uid, ...dependentes.map(d => d.uid), ...(conjugeUid ? [conjugeUid] : [])]
     const elenco = uidsDoElenco(cenas ?? [])
     const gerais = new Map(treinamentos.filter(t => t.tipo === 'ensaio_geral').map(t => [t.id, t]))
     for (const sessao of sessoes) {
@@ -171,7 +192,7 @@ export function Calendario() {
     }
     for (const lista of map.values()) lista.sort((a, b) => a.sessao.horario.localeCompare(b.sessao.horario))
     return map
-  }, [currentUser, dependentes, cenas, treinamentos, sessoes, isAdmin])
+  }, [currentUser, dependentes, conjugeUid, cenas, treinamentos, sessoes, isAdmin])
 
   const inscricoesByUid = useMemo(() => Object.fromEntries(inscricoes.map(i => [i.uid, i])), [inscricoes])
 
@@ -413,7 +434,7 @@ export function Calendario() {
                   {key === todayKey && <span className="ml-1.5 text-xs font-medium text-primary">Hoje</span>}
                 </p>
                 {ehApresentacao(key) && <ApresentacaoAviso />}
-                <ListaDoDia itens={itens} gerais={diaNoFiltro(date) ? (geraisPorData.get(key) ?? []) : []} nameFor={nameFor} users={users} uid={currentUser?.uid} dependentes={dependentes} isAdmin={isAdmin} />
+                <ListaDoDia itens={itens} gerais={diaNoFiltro(date) ? (geraisPorData.get(key) ?? []) : []} nameFor={nameFor} users={users} uid={currentUser?.uid} dependentes={dependentes} isAdmin={isAdmin} conjuge={conjugeUid ? { uid: conjugeUid, nome: nameFor(conjugeUid) } : undefined} />
               </Card>
             )
           })}
@@ -489,7 +510,7 @@ export function Calendario() {
               {capitalize(new Date(`${selectedKey}T00:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }))}
             </p>
             {ehApresentacao(selectedKey) && <ApresentacaoAviso />}
-            <ListaDoDia itens={ocorrenciasPorData.get(selectedKey) ?? []} gerais={diaNoFiltro(new Date(`${selectedKey}T00:00:00`)) ? (geraisPorData.get(selectedKey) ?? []) : []} nameFor={nameFor} users={users} uid={currentUser?.uid} dependentes={dependentes} isAdmin={isAdmin} />
+            <ListaDoDia itens={ocorrenciasPorData.get(selectedKey) ?? []} gerais={diaNoFiltro(new Date(`${selectedKey}T00:00:00`)) ? (geraisPorData.get(selectedKey) ?? []) : []} nameFor={nameFor} users={users} uid={currentUser?.uid} dependentes={dependentes} isAdmin={isAdmin} conjuge={conjugeUid ? { uid: conjugeUid, nome: nameFor(conjugeUid) } : undefined} />
           </Card>
         </>
       )}
@@ -527,10 +548,12 @@ interface ListaDoDiaProps {
   uid?: string
   dependentes: PessoaDaCasaNome[]
   isAdmin?: boolean
+  /** Cônjuge com vínculo aceito: ensaios dele aparecem só pra ver, com o nome dele. */
+  conjuge?: PessoaDaCasaNome
 }
 
-function ListaDoDia({ itens, gerais, nameFor, users, uid, dependentes, isAdmin }: ListaDoDiaProps) {
-  const meusUids = [...(uid ? [uid] : []), ...dependentes.map(d => d.uid)]
+function ListaDoDia({ itens, gerais, nameFor, users, uid, dependentes, isAdmin, conjuge }: ListaDoDiaProps) {
+  const meusUids = [...(uid ? [uid] : []), ...dependentes.map(d => d.uid), ...(conjuge ? [conjuge.uid] : [])]
   const todayKey = toDateKey(new Date())
   if (!itens.length && !gerais.length) return <p className="text-xs text-muted-foreground">Nenhum ensaio.</p>
 
@@ -593,6 +616,12 @@ function ListaDoDia({ itens, gerais, nameFor, users, uid, dependentes, isAdmin }
                 {o.ensaio?.geral && <Star className="h-3 w-3 shrink-0 text-amber-500" aria-label="Ensaio geral" />}
                 {o.ensaio?.comFigurino && <Shirt className="h-3 w-3 shrink-0 text-violet-500" aria-label="Com figurino" />}
               </p>
+              {conjuge && o.cena.participantes.includes(conjuge.uid) && (
+                <p className="flex items-center gap-1 text-xs text-primary">
+                  <Heart className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{uid && o.cena.participantes.includes(uid) ? `Você e ${conjuge.nome}` : conjuge.nome}</span>
+                </p>
+              )}
               <div className="flex items-center gap-1 text-xs text-gray-500">
                 {lider ? (
                   <>

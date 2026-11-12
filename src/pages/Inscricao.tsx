@@ -19,6 +19,7 @@ import { AREA_LABELS, DIA_SEMANA_LABELS, type Area, type DiaSemana, type Inscric
 import { AREA_ICONS } from '@/lib/areaIcons'
 import { DIAS_OBRIGATORIOS, diasDisponiveis } from '@/lib/dias'
 import { DependentesCard } from '@/components/inscricao/DependentesCard'
+import { ConjugeCard } from '@/components/inscricao/ConjugeCard'
 import { InteresseEquipesCampo } from '@/components/inscricao/InteresseEquipes'
 import { interesseRespondido, nomesInteresse, perguntaInteresse } from '@/lib/interesse'
 import { useEquipesOrdenadas } from '@/hooks/useEquipesOrdenadas'
@@ -309,6 +310,7 @@ export function Inscricao() {
         </Card>
 
         {user && <DependentesCard uid={user.uid} responsavel={inscricao} />}
+        {user && <ConjugeCard uid={user.uid} />}
       </div>
     )
   }

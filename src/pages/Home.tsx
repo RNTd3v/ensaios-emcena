@@ -19,6 +19,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { useAuthStore } from '@/stores/authStore'
 import { getVersiculos, type VersiculoInput } from '@/services/firebase/versiculos'
 import { VERSICULOS_SUGERIDOS } from '@/lib/versiculosSugeridos'
+import { ConjugeEnsaiosCard } from '@/components/home/ConjugeEnsaiosCard'
 import { InstalarAppCard } from '@/components/home/InstalarAppCard'
 import { InteresseEquipesCard } from '@/components/inscricao/InteresseEquipes'
 import { TarefasEmAndamentoCard } from '@/components/home/TarefasEmAndamentoCard'
@@ -99,6 +100,8 @@ export function Home() {
 
       {/* Um card por ensaio: quando a pessoa e os filhos estão no mesmo, respondem juntos. */}
       {user && <ProximoEnsaioCard uid={user.uid} dependentes={dependentesDaCasa} />}
+
+      {user && <ConjugeEnsaiosCard uid={user.uid} />}
 
       {user && <MeusPersonagensCard uid={user.uid} />}
       {user &&

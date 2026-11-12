@@ -55,6 +55,30 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Vínculo de cônjuge (só pra ver os ensaios um do outro, sem editar nem responder por ele). Id =
+    // os dois uids ordenados, `a_b`. Quem pede cria como 'pendente'; só o outro aceita; qualquer um
+    // dos dois desfaz. A Cloud Function `conjugeVinculo` libera a leitura dos ensaios na cena.
+    match /conjuges/{id} {
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.uids;
+      allow create: if isActiveParticipant()
+        && request.resource.data.keys().hasOnly(['uids', 'solicitanteUid', 'status', 'createdAt'])
+        && request.resource.data.uids.size() == 2
+        && request.resource.data.uids[0] < request.resource.data.uids[1]
+        && id == request.resource.data.uids[0] + '_' + request.resource.data.uids[1]
+        && !request.resource.data.uids[0].matches('dep_.*')
+        && !request.resource.data.uids[1].matches('dep_.*')
+        && request.auth.uid in request.resource.data.uids
+        && request.resource.data.solicitanteUid == request.auth.uid
+        && request.resource.data.status == 'pendente';
+      allow update: if isAuthenticated()
+        && request.auth.uid in resource.data.uids
+        && request.auth.uid != resource.data.solicitanteUid
+        && resource.data.status == 'pendente'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status == 'aceito';
+      allow delete: if isAdmin() || (isAuthenticated() && request.auth.uid in resource.data.uids);
+    }
+
     // Inscrições: cada participante só vê/edita a própria; admin vê e gerencia todas.
     // Só pode criar/editar enquanto o acesso estiver ativo (não revogado).
     // Dependentes (id dep_…): os responsáveis (`responsaveisUids`) criam, veem e editam — mas não
@@ -565,7 +589,10 @@ service cloud.firestore {
         || (isAuthenticated()
             && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.participantes)
         || (isAuthenticated()
-            && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.get('responsaveisDependentes', []));
+            && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.get('responsaveisDependentes', []))
+        // Cônjuge com vínculo aceito (`conjuges`): só leitura — lista mantida pela Cloud Function.
+        || (isAuthenticated()
+            && request.auth.uid in get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.get('familiaresLeitura', []));
       allow create: if isAdmin()
         || gerenciaEnsaios(get(/databases/$(database)/documents/cenas/$(request.resource.data.cenaId)).data);
       allow update: if isAdmin()

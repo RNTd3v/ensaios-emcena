@@ -413,7 +413,7 @@ export function Calendario() {
                   {key === todayKey && <span className="ml-1.5 text-xs font-medium text-primary">Hoje</span>}
                 </p>
                 {ehApresentacao(key) && <ApresentacaoAviso />}
-                <ListaDoDia itens={itens} gerais={diaNoFiltro(date) ? (geraisPorData.get(key) ?? []) : []} nameFor={nameFor} users={users} uid={currentUser?.uid} dependentes={dependentes} />
+                <ListaDoDia itens={itens} gerais={diaNoFiltro(date) ? (geraisPorData.get(key) ?? []) : []} nameFor={nameFor} users={users} uid={currentUser?.uid} dependentes={dependentes} isAdmin={isAdmin} />
               </Card>
             )
           })}
@@ -489,7 +489,7 @@ export function Calendario() {
               {capitalize(new Date(`${selectedKey}T00:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }))}
             </p>
             {ehApresentacao(selectedKey) && <ApresentacaoAviso />}
-            <ListaDoDia itens={ocorrenciasPorData.get(selectedKey) ?? []} gerais={diaNoFiltro(new Date(`${selectedKey}T00:00:00`)) ? (geraisPorData.get(selectedKey) ?? []) : []} nameFor={nameFor} users={users} uid={currentUser?.uid} dependentes={dependentes} />
+            <ListaDoDia itens={ocorrenciasPorData.get(selectedKey) ?? []} gerais={diaNoFiltro(new Date(`${selectedKey}T00:00:00`)) ? (geraisPorData.get(selectedKey) ?? []) : []} nameFor={nameFor} users={users} uid={currentUser?.uid} dependentes={dependentes} isAdmin={isAdmin} />
           </Card>
         </>
       )}
@@ -526,9 +526,10 @@ interface ListaDoDiaProps {
   users: Record<string, AppUser>
   uid?: string
   dependentes: PessoaDaCasaNome[]
+  isAdmin?: boolean
 }
 
-function ListaDoDia({ itens, gerais, nameFor, users, uid, dependentes }: ListaDoDiaProps) {
+function ListaDoDia({ itens, gerais, nameFor, users, uid, dependentes, isAdmin }: ListaDoDiaProps) {
   const meusUids = [...(uid ? [uid] : []), ...dependentes.map(d => d.uid)]
   const todayKey = toDateKey(new Date())
   if (!itens.length && !gerais.length) return <p className="text-xs text-muted-foreground">Nenhum ensaio.</p>
@@ -557,6 +558,11 @@ function ListaDoDia({ itens, gerais, nameFor, users, uid, dependentes }: ListaDo
                 <span className="truncate">{local}</span>
               </p>
             )}
+            {isAdmin && !grupo && treinamento.grupos?.map((g, i) => (
+              <p key={g.id} className="truncate text-xs text-gray-500">
+                {`${formatHoraCompacta(g.horario)} · ${g.nome ? `Grupo ${g.nome}` : `Grupo ${i + 1}`}${g.local ? ` · ${g.local}` : ''}`}
+              </p>
+            ))}
           </div>
           <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
         </Link>
@@ -611,6 +617,11 @@ function ListaDoDia({ itens, gerais, nameFor, users, uid, dependentes }: ListaDo
                   {o.ensaio?.local && grupoEnsaio.local && grupoEnsaio.local !== o.ensaio.local ? ` · ${o.ensaio.local}` : ''}
                 </p>
               )}
+              {isAdmin && !grupoEnsaio && o.ensaio?.grupos?.map((g, i) => (
+                <p key={g.id} className="truncate text-xs text-gray-500">
+                  {`${formatHoraCompacta(g.horario)} · ${g.nome ? `Grupo ${g.nome}` : `Grupo ${i + 1}`}${g.local ? ` · ${g.local}` : ''}`}
+                </p>
+              ))}
               <div className="mt-1 flex flex-wrap items-center gap-1">
                 <EnsaioStatusChip status={ensaioStatus(o.ensaio, todayKey)} />
                 {aviso && <AvisoNaoChamado soPrecisam={aviso.soPrecisam} />}

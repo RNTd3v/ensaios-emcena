@@ -62,6 +62,7 @@ export function Disponibilidade() {
   const filtered = useMemo(() => {
     return (inscricoes ?? []).filter(i => {
       if (users[i.uid]?.active === false) return false
+      if (i.apenasResponsavel) return false
       if (areaFilter !== 'todas' && !i.areas.includes(areaFilter)) return false
       if (search) {
         const term = search.toLowerCase()

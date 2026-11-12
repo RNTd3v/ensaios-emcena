@@ -59,6 +59,7 @@ type RoleFilter = 'todos' | UserRole
 type SortOption = 'recentes' | 'antigos' | 'nome'
 /** Revogados ficam fora da lista por padrão — só aparecem escolhendo no filtro. */
 type AcessoFilter = 'ativos' | 'revogados' | 'todos'
+type StatusFilter = 'todos' | InscricaoStatus
 
 const SORT_LABELS: Record<SortOption, string> = {
   recentes: 'Mais recentes',
@@ -78,6 +79,7 @@ export function Admin() {
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('todos')
   const [sortBy, setSortBy] = useState<SortOption>('recentes')
   const [acessoFilter, setAcessoFilter] = useState<AcessoFilter>('ativos')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('todos')
   /** Id da equipe em que a pessoa quer ajudar ('' = qualquer). */
   const [interesseFilter, setInteresseFilter] = useState('')
   const equipes = useEquipesOrdenadas()
@@ -88,7 +90,7 @@ export function Admin() {
   const [desvinculando, setDesvinculando] = useState(false)
   const [desvinculoErro, setDesvinculoErro] = useState('')
   const hasActiveFilters =
-    areaFilter !== 'todas' || diaFilter.length > 0 || roleFilter !== 'todos' || acessoFilter !== 'ativos' || !!interesseFilter
+    areaFilter !== 'todas' || diaFilter.length > 0 || roleFilter !== 'todos' || acessoFilter !== 'ativos' || statusFilter !== 'todos' || !!interesseFilter
 
   const [selectedUids, setSelectedUids] = useState<Set<string>>(new Set())
   const [cenaModalOpen, setCenaModalOpen] = useState(false)
@@ -148,6 +150,7 @@ export function Admin() {
     const result = (inscricoes ?? []).filter(i => {
       const revogado = users[i.uid]?.active === false
       if (acessoFilter === 'ativos' ? revogado : acessoFilter === 'revogados' ? !revogado : false) return false
+      if (statusFilter === 'pendente' ? i.status !== 'pendente' || i.apenasResponsavel : statusFilter !== 'todos' && i.status !== statusFilter) return false
       if (areaFilter !== 'todas' && !i.areas.includes(areaFilter)) return false
       if (interesseFilter && !i.equipesInteresse?.includes(interesseFilter)) return false
       if (diaFilter.length > 0) {
@@ -170,9 +173,13 @@ export function Admin() {
       result.reverse()
     }
     return result
-  }, [inscricoes, acessoFilter, areaFilter, interesseFilter, diaFilter, diaMatchMode, roleFilter, users, search, sortBy])
+  }, [inscricoes, acessoFilter, statusFilter, areaFilter, interesseFilter, diaFilter, diaMatchMode, roleFilter, users, search, sortBy])
 
-  const pendentesCount = useMemo(() => (inscricoes ?? []).filter(i => i.status === 'pendente').length, [inscricoes])
+  // Mesma regra da lista: revogado não entra (o filtro padrão de acesso o esconde), senão o selo diria 1 e a lista ficaria vazia.
+  const pendentesCount = useMemo(
+    () => (inscricoes ?? []).filter(i => i.status === 'pendente' && !i.apenasResponsavel && users[i.uid]?.active !== false).length,
+    [inscricoes, users],
+  )
 
   /**
    * Quem já entrou no app (tem doc em `users`) mas nunca enviou a inscrição — comparando as duas
@@ -253,8 +260,8 @@ export function Admin() {
     <div
       className="space-y-4"
     >
-      <div className="flex items-start justify-between pb-4 border-b border-white/30">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-3 pb-4 border-b border-white/30">
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold text-white">Gerenciamento</h1>
           <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
             <Badge variant="outline" className="whitespace-nowrap bg-white/10 text-white border-white/30 text-xs px-2 py-0.5">
@@ -263,10 +270,19 @@ export function Admin() {
                 : `Total de participantes: ${inscricoes?.length ?? 0}`}
             </Badge>
             {pendentesCount > 0 && (
-              <Badge variant="warning" className="gap-1 whitespace-nowrap text-xs px-2 py-0.5">
-                <Clock className="h-3 w-3" />
-                {pendentesCount} pendente{pendentesCount === 1 ? '' : 's'}
-              </Badge>
+              <button
+                type="button"
+                title={statusFilter === 'pendente' ? 'Mostrar todos' : 'Filtrar só os pendentes'}
+                onClick={() => setStatusFilter(f => (f === 'pendente' ? 'todos' : 'pendente'))}
+              >
+                <Badge
+                  variant="warning"
+                  className={cn('gap-1 whitespace-nowrap text-xs px-2 py-0.5', statusFilter === 'pendente' && 'ring-2 ring-white')}
+                >
+                  <Clock className="h-3 w-3" />
+                  {pendentesCount} pendente{pendentesCount === 1 ? '' : 's'}
+                </Badge>
+              </button>
             )}
             {semInscricao.length > 0 && (
               <button type="button" onClick={() => setSemInscricaoOpen(true)} title="Ver quem entrou e não se inscreveu">
@@ -404,6 +420,11 @@ export function Admin() {
                       </a>
                       <div className="flex flex-col items-end gap-1">
                         <StatusIcon status={i.status} />
+                        {i.apenasResponsavel && (
+                          <Badge variant="outline" className="text-[10px]">
+                            Só responsável
+                          </Badge>
+                        )}
                         {!active && (
                           <Badge variant="destructive" className="text-[10px]">
                             Revogado
@@ -546,6 +567,15 @@ export function Admin() {
             </Select>
           </div>
           <div>
+            <p className="text-sm text-muted-foreground mb-1.5">Situação da inscrição</p>
+            <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value as StatusFilter)}>
+              <option value="todos">Todas</option>
+              <option value="pendente">Pendentes</option>
+              <option value="confirmado">Confirmadas</option>
+              <option value="recusado">Recusadas</option>
+            </Select>
+          </div>
+          <div>
             <p className="text-sm text-muted-foreground mb-1.5">Acesso</p>
             <Select value={acessoFilter} onChange={e => setAcessoFilter(e.target.value as AcessoFilter)}>
               <option value="ativos">Só com acesso ativo</option>
@@ -640,6 +670,7 @@ export function Admin() {
                 setDiaMatchMode('any')
                 setRoleFilter('todos')
                 setAcessoFilter('ativos')
+                setStatusFilter('todos')
                 setInteresseFilter('')
               }}
             >

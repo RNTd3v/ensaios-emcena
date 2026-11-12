@@ -32,10 +32,11 @@ const schema = z
     nomeCompleto: z.string().min(2, 'Informe seu nome completo'),
     apelido: z.string().min(1, 'Informe como quer ser chamado'),
     telefone: z.string().min(14, 'Telefone incompleto'),
+    apenasResponsavel: z.boolean(),
     menorDeIdade: z.boolean(),
     responsavelNome: z.string().optional(),
     responsavelTelefone: z.string().optional(),
-    areas: z.array(z.enum(['elenco', 'staff', 'figurino', 'tecnica'])).min(1, 'Selecione ao menos uma área'),
+    areas: z.array(z.enum(['elenco', 'staff', 'figurino', 'tecnica'])),
     equipesInteresse: z.array(z.string()),
     ajudaOutro: z.string().optional(),
     dias: z.array(z.enum(['seg', 'ter', 'qua', 'qui', 'sex', 'sab'])),
@@ -44,6 +45,11 @@ const schema = z
     observacoes: z.string().optional(),
   })
   .superRefine((data, ctx) => {
+    // Quem só inscreve os filhos não participa: sem áreas, dias nem menor de idade.
+    if (data.apenasResponsavel) return
+    if (data.areas.length === 0) {
+      ctx.addIssue({ code: 'custom', path: ['areas'], message: 'Selecione ao menos uma área' })
+    }
     if (data.menorDeIdade) {
       if (!data.responsavelNome || data.responsavelNome.trim().length < 2) {
         ctx.addIssue({ code: 'custom', path: ['responsavelNome'], message: 'Informe o nome do responsável' })
@@ -103,6 +109,7 @@ export function Inscricao() {
       nomeCompleto: user?.displayName ?? '',
       apelido: '',
       telefone: '',
+      apenasResponsavel: false,
       menorDeIdade: false,
       responsavelNome: '',
       responsavelTelefone: '',
@@ -122,6 +129,7 @@ export function Inscricao() {
         nomeCompleto: inscricao.nomeCompleto,
         apelido: inscricao.apelido,
         telefone: inscricao.telefone,
+        apenasResponsavel: !!inscricao.apenasResponsavel,
         menorDeIdade: inscricao.menorDeIdade,
         responsavelNome: inscricao.responsavel?.nome ?? '',
         responsavelTelefone: inscricao.responsavel?.telefone ?? '',
@@ -145,6 +153,7 @@ export function Inscricao() {
   const isConfirmed = inscricao?.status === 'confirmado'
   const indisponibilidade = watch('indisponibilidade') ?? []
   const menorDeIdade = watch('menorDeIdade')
+  const apenasResponsavel = watch('apenasResponsavel')
 
   function toggleArea(area: Area) {
     const marcando = !areas.includes(area)
@@ -172,17 +181,22 @@ export function Inscricao() {
           apelido: data.apelido.trim(),
           telefone: data.telefone,
           email: user.email,
-          menorDeIdade: data.menorDeIdade,
-          responsavel: data.menorDeIdade
-            ? { nome: (data.responsavelNome ?? '').trim(), telefone: data.responsavelTelefone ?? '' }
-            : undefined,
-          areas: data.areas,
+          apenasResponsavel: data.apenasResponsavel,
+          menorDeIdade: !data.apenasResponsavel && data.menorDeIdade,
+          responsavel:
+            !data.apenasResponsavel && data.menorDeIdade
+              ? { nome: (data.responsavelNome ?? '').trim(), telefone: data.responsavelTelefone ?? '' }
+              : undefined,
+          areas: data.apenasResponsavel ? [] : data.areas,
           // Só quem tem área de equipe guarda a resposta (elenco puro não entra em equipe).
-          equipesInteresse: data.areas.some(a => a !== 'elenco') ? data.equipesInteresse : [],
-          ajudaOutro: data.areas.some(a => a !== 'elenco') ? data.ajudaOutro?.trim() || undefined : undefined,
-          disponibilidade: { dias: data.dias, observacao: data.disponibilidadeObs || undefined },
-          indisponibilidade: data.indisponibilidade,
-          observacoes: data.observacoes || undefined,
+          equipesInteresse: !data.apenasResponsavel && data.areas.some(a => a !== 'elenco') ? data.equipesInteresse : [],
+          ajudaOutro:
+            !data.apenasResponsavel && data.areas.some(a => a !== 'elenco') ? data.ajudaOutro?.trim() || undefined : undefined,
+          disponibilidade: data.apenasResponsavel
+            ? { dias: [] }
+            : { dias: data.dias, observacao: data.disponibilidadeObs || undefined },
+          indisponibilidade: data.apenasResponsavel ? [] : data.indisponibilidade,
+          observacoes: data.apenasResponsavel ? undefined : data.observacoes || undefined,
         },
         !inscricao,
       )
@@ -238,6 +252,12 @@ export function Inscricao() {
                 <p className="text-sm text-gray-500">Telefone (WhatsApp)</p>
                 <p className="text-base font-medium text-gray-900">{inscricao.telefone}</p>
               </div>
+              {inscricao.apenasResponsavel && (
+                <div className="py-3">
+                  <p className="text-sm text-gray-500">Participação</p>
+                  <p className="text-base font-medium text-gray-900">Só inscrevendo os filhos (responsável)</p>
+                </div>
+              )}
               {inscricao.menorDeIdade && inscricao.responsavel && (
                 <div className="py-3">
                   <p className="text-sm text-gray-500">Responsável (menor de idade)</p>
@@ -246,6 +266,8 @@ export function Inscricao() {
                   </p>
                 </div>
               )}
+              {!inscricao.apenasResponsavel && (
+                <>
               <div className="py-3">
                 <p className="text-sm text-gray-500">Áreas de interesse</p>
                 <div className="flex flex-wrap gap-1.5 mt-1">
@@ -300,6 +322,8 @@ export function Inscricao() {
                   <p className="text-base">{inscricao.observacoes}</p>
                 </div>
               )}
+                </>
+              )}
             </div>
 
             <Button variant="outline" size="sm" className="mt-4 w-full" onClick={() => setEditing(true)}>
@@ -331,6 +355,33 @@ export function Inscricao() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            {!isConfirmed && (
+              <div>
+                <Label>Como você vai participar?</Label>
+                <div className="grid grid-cols-1 gap-2.5 mt-2">
+                  {[
+                    { valor: false, titulo: 'Vou participar', desc: 'Escolho minhas áreas e disponibilidade (e posso inscrever filhos também).' },
+                    { valor: true, titulo: 'Só vou inscrever meus filhos', desc: 'Não vou participar: informo só meus dados de contato.' },
+                  ].map(o => (
+                    <button
+                      key={o.titulo}
+                      type="button"
+                      onClick={() => setValue('apenasResponsavel', o.valor, { shouldValidate: true })}
+                      className={cn(
+                        'rounded-xl border px-4 py-3 text-left transition-colors',
+                        apenasResponsavel === o.valor
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-gray-300 bg-white text-gray-700',
+                      )}
+                    >
+                      <span className="block text-base font-medium">{o.titulo}</span>
+                      <span className="block text-xs text-muted-foreground">{o.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <Label htmlFor="nomeCompleto">Nome completo</Label>
               <Input id="nomeCompleto" autoComplete="off" {...register('nomeCompleto')} />
@@ -354,6 +405,7 @@ export function Inscricao() {
               {errors.telefone && <p className="text-xs text-red-600 mt-1">{errors.telefone.message}</p>}
             </div>
 
+            {!apenasResponsavel && (
             <label className="flex items-center gap-2 text-base font-medium text-gray-900">
               <input
                 type="checkbox"
@@ -363,8 +415,9 @@ export function Inscricao() {
               />
               Sou menor de idade
             </label>
+            )}
 
-            {menorDeIdade && (
+            {!apenasResponsavel && menorDeIdade && (
               <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
                 <div>
                   <Label htmlFor="responsavelNome">Nome do responsável</Label>
@@ -386,7 +439,7 @@ export function Inscricao() {
               </div>
             )}
 
-            {!isConfirmed && (
+            {!isConfirmed && !apenasResponsavel && (
               <>
                 <div>
                   <Label>Áreas de interesse</Label>
@@ -466,7 +519,7 @@ export function Inscricao() {
             )}
 
             {/* Fora do bloco travado: quem já foi confirmado ainda pode contar (ou mudar) em que quer ajudar. */}
-            {perguntaInteresse(areas) && (
+            {!apenasResponsavel && perguntaInteresse(areas) && (
               <div>
                 <Label>Em que você quer ajudar?</Label>
                 <p className="mb-2 text-xs text-muted-foreground">Escolha uma ou mais equipes.</p>
@@ -490,7 +543,7 @@ export function Inscricao() {
                   Cancelar
                 </Button>
               )}
-              <Button type="submit" className="w-full" disabled={submitting || (!isConfirmed && requiresMinDias && diasDisponiveis(dias).length < 3)}>
+              <Button type="submit" className="w-full" disabled={submitting || (!isConfirmed && !apenasResponsavel && requiresMinDias && diasDisponiveis(dias).length < 3)}>
                 {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 {submitting ? 'Enviando...' : inscricao ? 'Salvar alterações' : 'Enviar inscrição'}
               </Button>

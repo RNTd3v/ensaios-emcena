@@ -93,6 +93,7 @@ export function InscricaoInfo({
           </p>
         </div>
       )}
+      {!inscricao.apenasResponsavel && (
       <div className="py-3">
         <p className="text-sm text-muted-foreground">Áreas de interesse</p>
         <div className="flex flex-wrap gap-1.5 mt-1">
@@ -103,6 +104,7 @@ export function InscricaoInfo({
           ))}
         </div>
       </div>
+      )}
       {interesseRespondido(inscricao.equipesInteresse, inscricao.ajudaOutro) && (
         <div className="py-3">
           <p className="text-sm text-muted-foreground">Quer ajudar em</p>

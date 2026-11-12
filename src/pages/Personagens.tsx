@@ -411,8 +411,9 @@ function PersonagemDialog({
     const jaEsta = new Set(cenasAtuais.map(o => o.cena.id))
     return cenas
       .filter(c => c.ativo && !jaEsta.has(c.id))
-      .filter(c => !dias || cenaCabeNaDisponibilidade(c, dias))
-      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }))
+      // Cenas que a pessoa não consegue ensaiar continuam na lista, com aviso, na mesma ordem A-Z das demais.
+      .map(c => ({ cena: c, diasFaltando: dias ? c.dias.filter(d => !dias.includes(d)) : [] }))
+      .sort((a, b) => a.cena.nome.localeCompare(b.cena.nome, 'pt-BR', { numeric: true }))
   }, [cenas, cenasAtuais, dias])
 
   async function handleSave() {
@@ -541,6 +542,7 @@ function PersonagemDialog({
                       <p className={cn('flex items-center gap-1 text-xs', conflito ? 'text-amber-700' : 'text-gray-500')}>
                         {conflito && <AlertTriangle className="h-3 w-3 shrink-0" />}
                         {cena.dias.length ? sortDias(cena.dias).map(d => DIA_SEMANA_LABELS[d]).join(', ') : 'Sem dias definidos'}
+                        {conflito && dias && ` · sem disponibilidade: ${sortDias(cena.dias.filter(d => !dias.includes(d))).map(d => DIA_SEMANA_LABELS[d]).join(', ')}`}
                       </p>
                     </Link>
                     <Button
@@ -564,20 +566,26 @@ function PersonagemDialog({
           <p className="mb-1 text-sm font-semibold">Adicionar em cena</p>
           <p className="mb-2 text-xs text-muted-foreground">
             {dias
-              ? 'Só aparecem as cenas cujos dias de ensaio a pessoa tem disponíveis.'
-              : 'Sem pessoa vinculada não há disponibilidade para filtrar — todas as cenas ativas aparecem.'}
+              ? 'Cenas com dia de ensaio em que a pessoa não pode aparecem com aviso — dá para adicionar mesmo assim.'
+              : 'Sem pessoa vinculada não há disponibilidade para comparar.'}
           </p>
           {cenasDisponiveis.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Nenhuma cena compatível.</p>
+            <p className="text-xs text-muted-foreground">Nenhuma cena para adicionar.</p>
           ) : (
             <div className="space-y-1">
-              {cenasDisponiveis.map(cena => (
+              {cenasDisponiveis.map(({ cena, diasFaltando }) => (
                 <div key={cena.id} className="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{cena.nome}</p>
                     <p className="text-xs text-gray-500">
                       {cena.dias.length ? sortDias(cena.dias).map(d => DIA_SEMANA_LABELS[d]).join(', ') : 'Sem dias definidos'}
                     </p>
+                    {diasFaltando.length > 0 && (
+                      <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-700">
+                        <AlertTriangle className="h-3 w-3 shrink-0" />
+                        Sem disponibilidade: {sortDias(diasFaltando).map(d => DIA_SEMANA_LABELS[d]).join(', ')}
+                      </p>
+                    )}
                   </div>
                   <Button
                     variant="ghost"

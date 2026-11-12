@@ -68,6 +68,8 @@ export interface Inscricao {
   apelido: string
   telefone: string
   email: string
+  /** Só inscreve os filhos (dependentes): não participa, então não tem áreas nem disponibilidade. */
+  apenasResponsavel?: boolean
   menorDeIdade: boolean
   responsavel?: {
     nome: string

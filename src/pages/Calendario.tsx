@@ -7,8 +7,8 @@ import { Card } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/Spinner'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { getUsers } from '@/services/firebase/auth'
-import { subscribeToCenasComDependentes, subscribeToCenasDoParticipante } from '@/services/firebase/cenas'
-import { subscribeToAllEnsaios, subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
+import { subscribeToCena, subscribeToCenasComDependentes, subscribeToCenasDoParticipante } from '@/services/firebase/cenas'
+import { subscribeToAllEnsaios, subscribeToEnsaiosConvidado, subscribeToEnsaiosDaCena } from '@/services/firebase/ensaios'
 import { useAuthStore } from '@/stores/authStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { DEFAULT_SETTINGS } from '@/services/firebase/settings'
@@ -135,13 +135,33 @@ export function Calendario() {
     if (!conjugeUid) return setCenasConjuge([])
     return subscribeToCenasDoParticipante(conjugeUid, lista => setCenasConjuge(lista.filter(c => c.ativo)))
   }, [conjugeUid])
+  // Convites: ensaios de cenas em que a pessoa não tem personagem mas foi chamada (`convidados`).
+  const [convites, setConvites] = useState<Ensaio[]>([])
+  const [cenasConvite, setCenasConvite] = useState<Record<string, Cena | null>>({})
+  const isAdmin = currentUser?.role === 'admin'
+  useEffect(() => {
+    if (!currentUser || isAdmin) return setConvites([])
+    return subscribeToEnsaiosConvidado(currentUser.uid, setConvites)
+  }, [currentUser, isAdmin])
+  const conviteCenaIdsKey = [...new Set(convites.map(e => e.cenaId))]
+    .filter(id => !(cenasProprias ?? []).some(c => c.id === id))
+    .sort()
+    .join(',')
+  useEffect(() => {
+    if (!conviteCenaIdsKey) return
+    const unsubs = conviteCenaIdsKey.split(',').map(id => subscribeToCena(id, cena => setCenasConvite(prev => ({ ...prev, [id]: cena }))))
+    return () => unsubs.forEach(u => u())
+  }, [conviteCenaIdsKey])
   const cenas = useMemo(() => {
     if (!cenasProprias) return null
     const porId = new Map(cenasProprias.map(c => [c.id, c]))
     for (const c of cenasConjuge) if (!porId.has(c.id)) porId.set(c.id, c)
+    for (const id of conviteCenaIdsKey ? conviteCenaIdsKey.split(',') : []) {
+      const c = cenasConvite[id]
+      if (c?.ativo && !porId.has(id)) porId.set(id, c)
+    }
     return [...porId.values()]
-  }, [cenasProprias, cenasConjuge])
-  const isAdmin = currentUser?.role === 'admin'
+  }, [cenasProprias, cenasConjuge, conviteCenaIdsKey, cenasConvite])
   const cenaIdsKey = (cenas ?? []).map(c => c.id).sort().join(',')
   useEffect(() => {
     if (isAdmin) return subscribeToAllEnsaios(setEnsaios)
@@ -221,12 +241,14 @@ export function Calendario() {
   /** Ensaios (confirmados/cancelados) por data, só das cenas que ainda existem. */
   const ensaiosPorData = useMemo(() => {
     const map = new Map<string, Ensaio[]>()
-    for (const e of ensaios ?? []) {
-      if (!cenasById.has(e.cenaId)) continue
+    const vistos = new Set<string>()
+    for (const e of [...(ensaios ?? []), ...convites]) {
+      if (!cenasById.has(e.cenaId) || vistos.has(e.id)) continue
+      vistos.add(e.id)
       map.set(e.data, [...(map.get(e.data) ?? []), e])
     }
     return map
-  }, [ensaios, cenasById])
+  }, [ensaios, convites, cenasById])
 
   const ocorrenciasPorData = useMemo(() => {
     const map = new Map<string, Ocorrencia[]>()

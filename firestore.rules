@@ -583,7 +583,7 @@ service cloud.firestore {
     // consulta por `convidados array-contains uid`.
     match /ensaios/{id} {
       allow read: if isAdmin()
-        || (isAuthenticated() && request.auth.uid in resource.data.get('convidados', []))
+        || (isAuthenticated() && 'convidados' in resource.data && request.auth.uid in resource.data.convidados)
         || (isAuthenticated()
             && get(/databases/$(database)/documents/cenas/$(resource.data.cenaId)).data.liderUid == request.auth.uid)
         || (isAuthenticated()
@@ -604,7 +604,7 @@ service cloud.firestore {
             && listaPropriaOk('ausentes')
             && ausenciaPropriaOk())
         || (isAuthenticated()
-            && request.auth.uid in resource.data.get('convidados', [])
+            && 'convidados' in resource.data && request.auth.uid in resource.data.convidados
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presencas', 'ausentes', 'ausencias'])
             && listaPropriaOk('presencas')
             && listaPropriaOk('ausentes')

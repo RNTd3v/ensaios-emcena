@@ -8,6 +8,8 @@ import { Card } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/Spinner'
 import { EquipeFormDialog } from '@/components/equipe/EquipeFormDialog'
 import { useUsersMap } from '@/components/oracao/OrandoAgora'
+import { ContatoPessoaDialog, type FuncaoNaCena } from '@/components/cena/ContatoPessoaDialog'
+import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { createEquipes, subscribeToEquipes } from '@/services/firebase/equipes'
 import { subscribeToTarefas } from '@/services/firebase/tarefas'
 import { estaAberta } from '@/lib/tarefas'
@@ -15,7 +17,7 @@ import { toDateKey } from '@/lib/agenda'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
 import { EQUIPES_PADRAO, equipeIcon } from '@/lib/equipeIcons'
-import type { AppUser, Equipe, Tarefa } from '@/types'
+import type { AppUser, Equipe, Inscricao, Tarefa } from '@/types'
 
 type MinhaFuncao = 'lider' | 'assistente' | 'membro'
 
@@ -37,6 +39,12 @@ export function Equipes() {
   const [criandoPadrao, setCriandoPadrao] = useState(false)
 
   useEffect(() => subscribeToEquipes(setEquipes), [])
+
+  // Contato (WhatsApp) de quem foi tocado: a inscrição só é lida por admin/líder.
+  const [inscricoes, setInscricoes] = useState<Inscricao[]>([])
+  const [pessoaModal, setPessoaModal] = useState<{ uid: string; funcao: FuncaoNaCena } | null>(null)
+  const podeVerContato = currentUser?.role === 'admin' || currentUser?.role === 'lider'
+  useEffect(() => (podeVerContato ? subscribeToAllInscricoes(setInscricoes) : undefined), [podeVerContato])
 
   const isAdmin = currentUser?.role === 'admin'
   const minhas = useMemo(() => (equipes ?? []).filter(e => funcaoNaEquipe(e, currentUser?.uid)), [equipes, currentUser?.uid])
@@ -92,9 +100,9 @@ export function Equipes() {
         <p className="py-6 text-center text-sm text-white/80">Nenhuma equipe criada ainda.</p>
       ) : (
         <>
-          {minhas.length > 0 && <Lista titulo="Minhas equipes" equipes={minhas} users={users} uid={currentUser?.uid} abertas />}
+          {minhas.length > 0 && <Lista titulo="Minhas equipes" equipes={minhas} users={users} uid={currentUser?.uid} abertas onPessoa={(u, f) => setPessoaModal({ uid: u, funcao: f })} />}
           {outras.length > 0 && (
-            <Lista titulo={minhas.length ? 'Outras equipes' : 'Todas as equipes'} equipes={outras} users={users} uid={currentUser?.uid} abertas={false} />
+            <Lista titulo={minhas.length ? 'Outras equipes' : 'Todas as equipes'} equipes={outras} users={users} uid={currentUser?.uid} abertas={false} onPessoa={(u, f) => setPessoaModal({ uid: u, funcao: f })} />
           )}
         </>
       )}
@@ -102,16 +110,26 @@ export function Equipes() {
       {isAdmin && criando && (
         <EquipeFormDialog onClose={() => setCriando(false)} onCreated={id => navigate(`/equipes/${id}`)} isAdmin />
       )}
+
+      {pessoaModal && (
+        <ContatoPessoaDialog
+          uid={pessoaModal.uid}
+          funcao={pessoaModal.funcao}
+          users={users}
+          inscricao={inscricoes.find(i => i.uid === pessoaModal.uid)}
+          onClose={() => setPessoaModal(null)}
+        />
+      )}
     </div>
   )
 }
 
-function Lista({ titulo, equipes, users, uid, abertas }: { titulo: string; equipes: Equipe[]; users: Record<string, AppUser>; uid?: string; abertas: boolean }) {
+function Lista({ titulo, equipes, users, uid, abertas, onPessoa }: { titulo: string; equipes: Equipe[]; users: Record<string, AppUser>; uid?: string; abertas: boolean; onPessoa: (uid: string, funcao: FuncaoNaCena) => void }) {
   return (
     <div className="space-y-2">
       <p className="text-xs font-semibold uppercase tracking-wide text-white/80">{titulo}</p>
       {equipes.map(e => (
-        <EquipeCard key={e.id} equipe={e} users={users} uid={uid} abertaInicial={abertas} />
+        <EquipeCard key={e.id} equipe={e} users={users} uid={uid} abertaInicial={abertas} onPessoa={onPessoa} />
       ))}
     </div>
   )
@@ -126,7 +144,7 @@ function formatPrazo(prazo: string) {
  * tarefas e as que estão em andamento com o prazo. As tarefas só são lidas com o card aberto
  * (em "Minhas equipes" já abre, a não ser que a equipe não tenha nenhuma tarefa).
  */
-function EquipeCard({ equipe, users, uid, abertaInicial }: { equipe: Equipe; users: Record<string, AppUser>; uid?: string; abertaInicial: boolean }) {
+function EquipeCard({ equipe, users, uid, abertaInicial, onPessoa }: { equipe: Equipe; users: Record<string, AppUser>; uid?: string; abertaInicial: boolean; onPessoa: (uid: string, funcao: FuncaoNaCena) => void }) {
   // 'auto' (minhas equipes): lê as tarefas com o card ainda fechado e só abre se tiver alguma.
   const [estado, setEstado] = useState<boolean | 'auto'>(abertaInicial ? 'auto' : false)
   const aberta = estado === true
@@ -167,7 +185,18 @@ function EquipeCard({ equipe, users, uid, abertaInicial }: { equipe: Equipe; use
           </p>
           {lider ? (
             <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Avatar photoURL={lider.photoURL} name={lider.nome} className="h-5 w-5 text-[9px]" />
+              <button
+                type="button"
+                className="shrink-0"
+                title={`Líder: ${lider.nome}`}
+                onClick={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onPessoa(lider.uid, 'lider')
+                }}
+              >
+                <Avatar photoURL={lider.photoURL} name={lider.nome} className="h-5 w-5 text-[9px]" />
+              </button>
               <span className="truncate">
                 <span className="text-amber-600">Líder</span> · {lider.nome}
                 {lider.apelido && <span className="text-muted-foreground/80"> ({lider.apelido})</span>}

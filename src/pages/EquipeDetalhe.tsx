@@ -18,8 +18,10 @@ import { deleteEquipe, subscribeToEquipe, updateEquipePessoas } from '@/services
 import { useAuthStore } from '@/stores/authStore'
 import { equipeIcon } from '@/lib/equipeIcons'
 import { cn } from '@/lib/utils'
-import type { Equipe } from '@/types'
+import type { Equipe, Inscricao } from '@/types'
 import { PessoaSelect, inscritosConfirmados, pessoaOpcao, podeEntrarEmEquipe } from '@/components/ui/PessoaSelect'
+import { ContatoPessoaDialog } from '@/components/cena/ContatoPessoaDialog'
+import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
 import { PessoaLinha } from '@/components/ui/PessoaLinha'
 
 /**
@@ -38,6 +40,10 @@ export function EquipeDetalhe() {
   const [novoMembro, setNovoMembro] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [liderModal, setLiderModal] = useState(false)
+  const [inscricoes, setInscricoes] = useState<Inscricao[]>([])
+  const podeVerContato = currentUser?.role === 'admin' || currentUser?.role === 'lider'
+  useEffect(() => (podeVerContato ? subscribeToAllInscricoes(setInscricoes) : undefined), [podeVerContato])
 
   useEffect(() => {
     if (!id) return
@@ -164,7 +170,9 @@ export function EquipeDetalhe() {
           <p className="text-sm font-semibold">Pessoas ({equipe.membros.length})</p>
 
           {equipe.liderUid ? (
-            <PessoaLinha pessoa={pessoaOpcao(equipe.liderUid, users[equipe.liderUid])} funcao="lider" className="py-0" />
+            <button type="button" onClick={() => setLiderModal(true)} className="block w-full text-left">
+              <PessoaLinha pessoa={pessoaOpcao(equipe.liderUid, users[equipe.liderUid])} funcao="lider" className="py-0" />
+            </button>
           ) : (
             <p className="text-xs text-muted-foreground">
               Sem líder definido{isAdmin ? ' — escolha pelo lápis.' : '.'}
@@ -274,6 +282,16 @@ export function EquipeDetalhe() {
         ))}
 
       {editOpen && <EquipeFormDialog equipe={equipe} isAdmin={isAdmin} users={users} onClose={() => setEditOpen(false)} />}
+
+      {liderModal && equipe.liderUid && (
+        <ContatoPessoaDialog
+          uid={equipe.liderUid}
+          funcao="lider"
+          users={users}
+          inscricao={inscricoes.find(i => i.uid === equipe.liderUid)}
+          onClose={() => setLiderModal(false)}
+        />
+      )}
     </div>
   )
 }

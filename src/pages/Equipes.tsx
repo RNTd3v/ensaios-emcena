@@ -10,7 +10,7 @@ import { EquipeFormDialog } from '@/components/equipe/EquipeFormDialog'
 import { useUsersMap } from '@/components/oracao/OrandoAgora'
 import { ContatoPessoaDialog, type FuncaoNaCena } from '@/components/cena/ContatoPessoaDialog'
 import { subscribeToAllInscricoes } from '@/services/firebase/inscricoes'
-import { createEquipes, subscribeToEquipes } from '@/services/firebase/equipes'
+import { createEquipes, subscribeToEquipes, updateEquipeLiderTelefone } from '@/services/firebase/equipes'
 import { subscribeToTarefas } from '@/services/firebase/tarefas'
 import { estaAberta } from '@/lib/tarefas'
 import { toDateKey } from '@/lib/agenda'
@@ -47,6 +47,16 @@ export function Equipes() {
   useEffect(() => (podeVerContato ? subscribeToAllInscricoes(setInscricoes) : undefined), [podeVerContato])
 
   const isAdmin = currentUser?.role === 'admin'
+
+  // Admin mantém em dia a cópia do telefone do líder em cada equipe (cobre equipes antigas e telefone alterado).
+  useEffect(() => {
+    if (!isAdmin || !equipes || inscricoes.length === 0) return
+    for (const e of equipes) {
+      if (!e.liderUid) continue
+      const telefone = inscricoes.find(i => i.uid === e.liderUid)?.telefone || undefined
+      if (telefone !== e.liderTelefone) updateEquipeLiderTelefone(e.id, telefone).catch(() => {})
+    }
+  }, [isAdmin, equipes, inscricoes])
   const minhas = useMemo(() => (equipes ?? []).filter(e => funcaoNaEquipe(e, currentUser?.uid)), [equipes, currentUser?.uid])
   const outras = useMemo(() => (equipes ?? []).filter(e => !funcaoNaEquipe(e, currentUser?.uid)), [equipes, currentUser?.uid])
 
@@ -117,6 +127,7 @@ export function Equipes() {
           funcao={pessoaModal.funcao}
           users={users}
           inscricao={inscricoes.find(i => i.uid === pessoaModal.uid)}
+          telefone={equipes?.find(e => e.liderUid === pessoaModal.uid)?.liderTelefone}
           onClose={() => setPessoaModal(null)}
         />
       )}

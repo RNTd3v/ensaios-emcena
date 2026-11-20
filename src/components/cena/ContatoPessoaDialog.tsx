@@ -22,14 +22,18 @@ export function ContatoPessoaDialog({
   funcao,
   users,
   inscricao,
+  telefone: telefoneAvulso,
   onClose,
 }: {
   uid: string
   funcao: FuncaoNaCena
   users: Record<string, AppUser>
   inscricao?: Inscricao
+  /** Telefone quando não há inscrição à mão (ex.: cópia guardada na equipe). */
+  telefone?: string
   onClose: () => void
 }) {
+  const telefone = inscricao?.telefone || telefoneAvulso
   return (
     <Dialog
       open
@@ -41,17 +45,17 @@ export function ContatoPessoaDialog({
           <p className="text-sm text-muted-foreground">Papel</p>
           <p className="text-base">{PAPEL[funcao]}</p>
         </div>
-        {inscricao?.telefone && (
+        {telefone && (
           <div className="py-3">
             <p className="text-sm text-muted-foreground">Telefone (WhatsApp)</p>
             <a
-              href={whatsappLink(inscricao.telefone)}
+              href={whatsappLink(telefone)}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 text-base text-primary hover:underline"
             >
               <MessageCircle className="h-3.5 w-3.5" />
-              {inscricao.telefone}
+              {telefone}
             </a>
           </div>
         )}
@@ -61,7 +65,7 @@ export function ContatoPessoaDialog({
             <p className="text-base">{inscricao.email}</p>
           </div>
         )}
-        {!inscricao && <p className="py-3 text-sm text-muted-foreground">Sem dados de contato cadastrados.</p>}
+        {!inscricao && !telefone && <p className="py-3 text-sm text-muted-foreground">Sem dados de contato cadastrados.</p>}
       </div>
     </Dialog>
   )

@@ -1,5 +1,6 @@
 import { addDoc, arrayUnion, collection, deleteDoc, deleteField, doc, onSnapshot, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore'
 import { db } from './config'
+import { getInscricao } from './inscricoes'
 import type { Equipe } from '@/types'
 
 function fromSnap(id: string, data: Record<string, unknown>): Equipe {
@@ -9,6 +10,7 @@ function fromSnap(id: string, data: Record<string, unknown>): Equipe {
     icone: data.icone as string | undefined,
     descricao: data.descricao as string | undefined,
     liderUid: (data.liderUid as string | null) ?? undefined,
+    liderTelefone: (data.liderTelefone as string | undefined) || undefined,
     assistentes: (data.assistentes as string[]) ?? [],
     membros: (data.membros as string[]) ?? [],
     gerencia: (data.gerencia as Equipe['gerencia']) ?? [],
@@ -76,12 +78,19 @@ export async function updateEquipeInfo(
   }
   if (input.liderUid !== equipe.liderUid) {
     data.liderUid = input.liderUid ?? deleteField()
+    const telefone = input.liderUid ? (await getInscricao(input.liderUid))?.telefone : undefined
+    data.liderTelefone = telefone || deleteField()
     if (input.liderUid) {
       data.membros = equipe.membros.includes(input.liderUid) ? equipe.membros : [...equipe.membros, input.liderUid]
       data.assistentes = equipe.assistentes.filter(a => a !== input.liderUid)
     }
   }
   await updateDoc(doc(db, 'equipes', equipe.id), data)
+}
+
+/** Atualiza a cópia do telefone do líder na equipe (só admin; as rules barram os demais). */
+export async function updateEquipeLiderTelefone(id: string, telefone: string | undefined): Promise<void> {
+  await updateDoc(doc(db, 'equipes', id), { liderTelefone: telefone || deleteField() })
 }
 
 /** Prazo de envio da foto do figurino (equipe de figurino) — admin, líder ou assistente da equipe. */

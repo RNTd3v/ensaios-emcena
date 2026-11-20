@@ -561,6 +561,8 @@ export interface Equipe {
   icone?: string
   descricao?: string
   liderUid?: string
+  /** Cópia do telefone do líder (da inscrição, que só admin lê) pra todos poderem chamar no WhatsApp; o admin mantém em dia. */
+  liderTelefone?: string
   assistentes: string[]
   membros: string[]
   /** O que os membros dessa equipe podem cadastrar/editar em qualquer cena (só admin define). */

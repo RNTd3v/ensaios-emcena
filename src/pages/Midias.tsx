@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { MusicasCard } from '@/components/midia/MusicasCard'
 import { FigurinosCard } from '@/components/midia/FigurinosCard'
+import { LiderEquipeDestaque } from '@/components/equipe/LiderEquipeDestaque'
 import { AprovacoesFigurinoCard } from '@/components/midia/AprovacoesFigurinoCard'
 import { useUsersMap } from '@/components/oracao/OrandoAgora'
 import { useMigrarMidiasLegadas } from '@/hooks/useMigrarMidiasLegadas'
@@ -52,10 +53,12 @@ export function MusicasPage() {
   const isAdmin = currentUser?.role === 'admin'
   const [equipes, setEquipes] = useState<Equipe[]>([])
   useEffect(() => subscribeToEquipes(setEquipes), [])
+  const users = useUsersMap()
   const equipeMusicas = equipeQueGerenciaDe(equipes, currentUser?.uid, 'musicas')
   return (
     <div className="space-y-4">
       <Cabecalho titulo="Músicas" />
+      <LiderEquipeDestaque equipe={equipes.find(e => e.gerencia?.includes('musicas'))} users={users} titulo="Líder da sonoplastia" />
       <MusicasCard semTitulo gerenciar={equipeMusicas ? { equipeId: equipeMusicas.id } : isAdmin ? {} : undefined} />
     </div>
   )
@@ -77,6 +80,7 @@ export function FigurinosPage() {
   return (
     <div className="space-y-4">
       <Cabecalho titulo="Figurinos" />
+      <LiderEquipeDestaque equipe={equipes.find(e => e.gerencia?.includes('figurinos'))} users={users} titulo="Líder do figurino" />
       <AprovacoesFigurinoCard equipeId={equipeFigurino?.id} users={users} />
       <FigurinosCard semTitulo gerenciar={isAdmin ? {} : undefined} />
     </div>

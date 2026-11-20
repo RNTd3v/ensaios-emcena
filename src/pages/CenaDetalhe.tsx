@@ -805,6 +805,18 @@ export function CenaDetalhe() {
 
       {cena && (
         <>
+          {cena.liderUid && (
+            <Card className="p-3">
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Líder da cena</p>
+              <PessoaLinha
+                pessoa={pessoaOpcao(cena.liderUid, users[cena.liderUid], inscricoesByUid[cena.liderUid])}
+                funcao="lider"
+                onClick={() => setPessoaModal(cena.liderUid!)}
+                className="py-0"
+              />
+            </Card>
+          )}
+
           <Card>
             <CardContent>
               <div className={cn(agendaOpen && 'pb-2.5 border-b border-gray-100')}>

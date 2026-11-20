@@ -289,6 +289,7 @@ export function EquipeDetalhe() {
           funcao="lider"
           users={users}
           inscricao={inscricoes.find(i => i.uid === equipe.liderUid)}
+          telefone={equipe.liderTelefone}
           onClose={() => setLiderModal(false)}
         />
       )}

@@ -574,6 +574,16 @@ interface ListaDoDiaProps {
   conjuge?: PessoaDaCasaNome
 }
 
+/** Quem da casa está na cena: tem personagem nela (a lista de participantes pode ter quem não faz nenhum). */
+function noElenco(cena: Cena, uid: string): boolean {
+  return cena.personagens.some(p => p.participanteUid === uid)
+}
+
+/** "Ana", "Ana e Beto", "Ana, Beto e Caio". */
+function juntarNomes(nomes: string[]): string {
+  return nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}` : (nomes[0] ?? '')
+}
+
 function ListaDoDia({ itens, gerais, nameFor, users, uid, dependentes, isAdmin, conjuge }: ListaDoDiaProps) {
   const meusUids = [...(uid ? [uid] : []), ...dependentes.map(d => d.uid), ...(conjuge ? [conjuge.uid] : [])]
   const todayKey = toDateKey(new Date())
@@ -638,10 +648,16 @@ function ListaDoDia({ itens, gerais, nameFor, users, uid, dependentes, isAdmin, 
                 {o.ensaio?.geral && <Star className="h-3 w-3 shrink-0 text-amber-500" aria-label="Ensaio geral" />}
                 {o.ensaio?.comFigurino && <Shirt className="h-3 w-3 shrink-0 text-violet-500" aria-label="Com figurino" />}
               </p>
-              {conjuge && o.cena.participantes.includes(conjuge.uid) && (
+              {conjuge && noElenco(o.cena, conjuge.uid) && (
                 <p className="flex items-center gap-1 text-xs text-primary">
                   <Heart className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{uid && o.cena.participantes.includes(uid) ? `Você e ${conjuge.nome}` : conjuge.nome}</span>
+                  <span className="truncate">
+                    {juntarNomes([
+                      ...(uid && noElenco(o.cena, uid) ? ['Você'] : []),
+                      ...dependentes.filter(d => noElenco(o.cena, d.uid)).map(d => d.nome),
+                      conjuge.nome,
+                    ])}
+                  </span>
                 </p>
               )}
               <div className="flex items-center gap-1 text-xs text-gray-500">

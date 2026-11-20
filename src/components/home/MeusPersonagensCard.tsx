@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight, VenetianMask } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog } from '@/components/ui/dialog'
+import { useUsersMap } from '@/components/oracao/OrandoAgora'
+import { subscribeToMeusVinculos } from '@/services/firebase/conjuges'
 import { useEnsaiosDasMinhasCenas } from '@/hooks/useEnsaiosDasMinhasCenas'
 import { uidsAusentes } from '@/services/firebase/ensaios'
 import { formatRelativeDia, toDateKey } from '@/lib/agenda'
@@ -26,8 +28,8 @@ function corDaResposta(uid: string, ensaio?: Ensaio, quem?: string): { cor: stri
  * cancelado nem finalizado da cena em que o personagem é chamado (sem obrigatórios marcados, todos
  * são). Modo dependente: `uid` é um filho de `dependenteDe`.
  */
-function usePersonagensComProximo(uid: string, dependenteDe?: string): ItemPersonagem[] {
-  const { minhasCenas, ensaiosPorCena } = useEnsaiosDasMinhasCenas(uid, dependenteDe)
+function usePersonagensComProximo(uid: string, dependenteDe?: string, semConvites = false): ItemPersonagem[] {
+  const { minhasCenas, ensaiosPorCena } = useEnsaiosDasMinhasCenas(uid, dependenteDe, semConvites)
   const todayKey = toDateKey(new Date())
 
   return useMemo(() => {
@@ -57,21 +59,8 @@ function usePersonagensComProximo(uid: string, dependenteDe?: string): ItemPerso
  * vermelho = "não vou", cinza = sem resposta ou sem ensaio. Sem personagem, não aparece.
  */
 export function MeusPersonagensCard({ uid }: { uid: string }) {
-  const itens = usePersonagensComProximo(uid)
-
-  if (!itens.length) return null
-
-  return (
-    <Card>
-      <CardContent className="space-y-1">
-        <p className="flex items-center gap-1.5 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <VenetianMask className="h-3.5 w-3.5" />
-          {itens.length > 1 ? 'Seus personagens' : 'Seu personagem'}
-        </p>
-        <ListaPersonagens uid={uid} itens={itens} />
-      </CardContent>
-    </Card>
-  )
+  const u = useUsersMap()[uid]
+  return <PersonagensDePessoaBotao uid={uid} proprio nome={u?.apelido || u?.displayName || 'Você'} fotoUrl={u?.photoURL ?? undefined} />
 }
 
 /**
@@ -89,13 +78,62 @@ export function PersonagensDoDependenteBotao({
   nome: string
   fotoUrl?: string
 }) {
-  const itens = usePersonagensComProximo(uid, dependenteDe)
+  return <PersonagensDePessoaBotao uid={uid} dependenteDe={dependenteDe} nome={nome} fotoUrl={fotoUrl} />
+}
+
+/**
+ * Igual ao do dependente, pro cônjuge (vínculo aceito): só pra ver os personagens dele e o próximo
+ * ensaio de cada um — sem resposta de presença. Sem vínculo ou sem personagem, não aparece.
+ */
+export function PersonagensDoConjugeBotao({ uid }: { uid: string }) {
+  const users = useUsersMap()
+  const [conjugeUid, setConjugeUid] = useState<string | undefined>()
+  useEffect(
+    () => subscribeToMeusVinculos(uid, lista => setConjugeUid(lista.find(v => v.status === 'aceito')?.uids.find(u => u !== uid))),
+    [uid],
+  )
+  if (!conjugeUid) return null
+  const u = users[conjugeUid]
+  return (
+    <PersonagensDePessoaBotao
+      uid={conjugeUid}
+      semConvites
+      nome={u?.apelido || u?.displayName?.split(' ')[0] || 'Cônjuge'}
+      fotoUrl={u?.photoURL ?? undefined}
+    />
+  )
+}
+
+function PersonagensDePessoaBotao({
+  uid,
+  dependenteDe,
+  semConvites,
+  proprio,
+  nome,
+  fotoUrl,
+}: {
+  uid: string
+  dependenteDe?: string
+  semConvites?: boolean
+  /** É a própria pessoa: "Seus personagens" e respostas em "Você". */
+  proprio?: boolean
+  nome: string
+  fotoUrl?: string
+}) {
+  const itens = usePersonagensComProximo(uid, dependenteDe, semConvites)
   const [aberto, setAberto] = useState(false)
   const todayKey = toDateKey(new Date())
 
   if (!itens.length) return null
 
   const { proximo, horario } = itens[0]
+  const titulo = proprio
+    ? itens.length > 1
+      ? 'Seus personagens'
+      : 'Seu personagem'
+    : itens.length > 1
+      ? `Personagens de ${nome}`
+      : `Personagem de ${nome}`
 
   return (
     <>
@@ -106,7 +144,7 @@ export function PersonagensDoDependenteBotao({
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-gray-900">
                 <VenetianMask className="h-3.5 w-3.5 shrink-0 text-primary" />
-                {itens.length > 1 ? `Personagens de ${nome}` : `Personagem de ${nome}`}
+                {titulo}
               </p>
               <p className={cn('truncate text-xs', proximo?.data === todayKey ? 'font-semibold text-primary' : 'text-muted-foreground')}>
                 {proximo
@@ -119,8 +157,8 @@ export function PersonagensDoDependenteBotao({
         </Card>
       </button>
 
-      <Dialog open={aberto} onClose={() => setAberto(false)} title={itens.length > 1 ? `Personagens de ${nome}` : `Personagem de ${nome}`}>
-        <ListaPersonagens uid={uid} itens={itens} quem={nome} />
+      <Dialog open={aberto} onClose={() => setAberto(false)} title={titulo}>
+        <ListaPersonagens uid={uid} itens={itens} quem={proprio ? undefined : nome} />
       </Dialog>
     </>
   )

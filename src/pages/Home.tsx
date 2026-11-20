@@ -7,7 +7,7 @@ import { MinhaFotoDialog } from '@/components/layout/MinhaFotoDialog'
 import { Card, CardContent } from '@/components/ui/card'
 import { ProximoEnsaioCard } from '@/components/home/ProximoEnsaioCard'
 import { ProximoTreinamentoCard } from '@/components/home/ProximoTreinamentoCard'
-import { MeusPersonagensCard, PersonagensDoDependenteBotao } from '@/components/home/MeusPersonagensCard'
+import { MeusPersonagensCard, PersonagensDoConjugeBotao, PersonagensDoDependenteBotao } from '@/components/home/MeusPersonagensCard'
 import { ApresentacoesCard } from '@/components/home/ApresentacoesCard'
 import { FinanceiroCards } from '@/components/home/FinanceiroCards'
 import { OrandoAgoraCard } from '@/components/oracao/OrandoAgora'
@@ -19,7 +19,6 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { useAuthStore } from '@/stores/authStore'
 import { getVersiculos, type VersiculoInput } from '@/services/firebase/versiculos'
 import { VERSICULOS_SUGERIDOS } from '@/lib/versiculosSugeridos'
-import { ConjugeEnsaiosCard } from '@/components/home/ConjugeEnsaiosCard'
 import { InstalarAppCard } from '@/components/home/InstalarAppCard'
 import { InteresseEquipesCard } from '@/components/inscricao/InteresseEquipes'
 import { TarefasEmAndamentoCard } from '@/components/home/TarefasEmAndamentoCard'
@@ -92,16 +91,11 @@ export function Home() {
 
       {user && <InteresseEquipesCard uid={user.uid} />}
 
-      {user && <ProximoTreinamentoCard uid={user.uid} />}
-      {user &&
-        dependentes.map(d => (
-          <ProximoTreinamentoCard key={d.uid} uid={d.uid} dependenteDe={user.uid} nome={d.apelido || d.nomeCompleto} />
-        ))}
+      {/* Um card por treinamento/ensaio geral: quando a pessoa e os filhos estão na mesma sessão, respondem juntos. */}
+      {user && <ProximoTreinamentoCard uid={user.uid} dependentes={dependentesDaCasa} />}
 
       {/* Um card por ensaio: quando a pessoa e os filhos estão no mesmo, respondem juntos. */}
       {user && <ProximoEnsaioCard uid={user.uid} dependentes={dependentesDaCasa} />}
-
-      {user && <ConjugeEnsaiosCard uid={user.uid} />}
 
       {user && <MeusPersonagensCard uid={user.uid} />}
       {user &&
@@ -114,6 +108,7 @@ export function Home() {
             fotoUrl={d.fotoUrl}
           />
         ))}
+      {user && <PersonagensDoConjugeBotao uid={user.uid} />}
 
       {user && <TarefasEmAndamentoCard uid={user.uid} />}
 

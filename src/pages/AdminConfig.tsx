@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button'
 import { removerRoteiro, saveSettings, saveSettingsParcial, uploadRoteiro } from '@/services/firebase/settings'
 import { urlDoArquivo } from '@/services/firebase/storage'
 import { ROTEIRO_TIPOS } from '@/lib/roteiro'
-import { CHECKIN_ABRE_DIAS_ANTES } from '@/lib/agenda'
 import { useSettingsStore } from '@/stores/settingsStore'
 import type { AppSettings, MaterialEstudoLink, RoteiroArquivo, RoteiroTipo } from '@/types'
 import { PessoaSelect, pessoaOpcao } from '@/components/ui/PessoaSelect'
@@ -193,7 +192,7 @@ export function AdminConfig() {
                 {...register('checkinLimiteHoras', { valueAsNumber: true })}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                O elenco pode confirmar presença a partir de {CHECKIN_ABRE_DIAS_ANTES} dias antes do ensaio, até esse tanto de horas antes do horário.
+                O elenco pode confirmar presença assim que o ensaio é confirmado, até esse tanto de horas antes do horário.
               </p>
             </div>
           </CardContent>

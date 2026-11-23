@@ -18,7 +18,7 @@ import {
   registrarAusenciaTreinamento,
   subscribeToMinhaAusenciaTreinamento,
 } from '@/services/firebase/treinamentos'
-import { CHECKIN_ABRE_DIAS_ANTES, canCheckin } from '@/lib/agenda'
+import { canCheckin } from '@/lib/agenda'
 import type { AusenciaMotivo, Ensaio, RessalvaPresenca } from '@/types'
 
 /** Se o horário de início do ensaio já passou. */
@@ -300,7 +300,7 @@ export function RespostaPresenca({ ensaio, uid, checkinLimiteHoras, paraQuem, ti
       )}
       {!podeConfirmar && (
         <p className="text-center text-[11px] text-muted-foreground">
-          A confirmação abre {CHECKIN_ABRE_DIAS_ANTES} dias antes do {tipo}, até {checkinLimiteHoras}h antes do horário.
+          A confirmação fechou: vai até {checkinLimiteHoras}h antes do horário do {tipo}.
         </p>
       )}
       {error && <p className="text-xs text-red-600">{error}</p>}

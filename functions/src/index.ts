@@ -502,12 +502,12 @@ function horaDeMinutos(total: number): string {
 const AVISO_DO_DIA_MIN = 8 * 60
 /**
  * Dias antes em que sai, às 8h, um lembrete de confirmação pra quem ainda não respondeu. Acompanha
- * a janela do check-in no app (`CHECKIN_ABRE_DIAS_ANTES` em src/lib/agenda.ts): abre 2 dias antes.
+ * o app, onde a confirmação já está aberta desde que o ensaio foi confirmado.
  */
 const AVISOS_ANTECIPADOS_DIAS = [2, 1]
 function tituloAntecipado(diasAntes: number, oQue: 'ensaio' | 'treinamento'): string {
   if (diasAntes === 1) return `${oQue === 'ensaio' ? 'Ensaio' : 'Treinamento'} amanhã — confirme sua presença`
-  return `Já dá pra confirmar presença no ${oQue}`
+  return `Confirme sua presença no ${oQue}`
 }
 /** Antes disso não sai lembrete de confirmação (ensaio cedo fecha a confirmação de madrugada). */
 const SILENCIO_ATE_MIN = 7 * 60
@@ -603,7 +603,7 @@ function lembretesDaOcorrencia(
  * Roda a cada 5 min (fuso de São Paulo), pros ensaios e sessões de treinamento de hoje e dos
  * próximos 2 dias:
  * - 2 dias antes e na véspera, às 8h, um lembrete de confirmação só pra quem ainda não respondeu
- *   (a confirmação abre 2 dias antes);
+ *   (a confirmação já está aberta desde que o ensaio foi confirmado);
  * - às 8h do dia, "Hoje tem ensaio/treinamento" pro público (menos quem já avisou que não vai);
  * - 2h, 1h, 30 e 10 min antes de a confirmação fechar (`checkinLimiteHoras` antes do início), um
  *   lembrete só pra quem ainda não respondeu (nem "vou" nem "não vou").

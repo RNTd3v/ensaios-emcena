@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, CalendarPlus, ChevronLeft, ChevronRight, Crown, Drama, Heart, Info, MapPin, Shirt, Star } from 'lucide-react'
+import { ArrowLeft, CalendarPlus, ChevronLeft, ChevronRight, Crown, Drama, Heart, Info, MapPin, Shirt, SlidersHorizontal, Star } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -18,7 +18,7 @@ import { formatHoraCompacta, horarioDoDia } from '@/lib/cenaHorario'
 import { DIAS_ORDER } from '@/lib/dias'
 import { cn } from '@/lib/utils'
 import { ensaioStatus } from '@/lib/ensaioStatus'
-import { avisoNaoChamado, grupoDoEnsaio, type PessoaDaCasaNome } from '@/lib/ensaioPublico'
+import { avisoNaoChamado, grupoDoEnsaio, uidsDoEnsaio, type PessoaDaCasaNome } from '@/lib/ensaioPublico'
 import { AvisoNaoChamado } from '@/components/ensaio/AvisoNaoChamado'
 import { subscribeToDependentes } from '@/services/firebase/dependentes'
 import { subscribeToMeusVinculos } from '@/services/firebase/conjuges'
@@ -64,6 +64,8 @@ interface Filtro {
   /** Vazio = todos os dias. */
   dias: DiaSemana[]
   previstos: boolean
+  /** Ensaios cancelados ficam escondidos por padrão. */
+  cancelados: boolean
 }
 
 function lerFiltro(): Filtro {
@@ -72,9 +74,10 @@ function lerFiltro(): Filtro {
     return {
       dias: (salvo?.dias ?? []).filter(d => DIAS_ORDER.includes(d)),
       previstos: salvo?.previstos ?? true,
+      cancelados: salvo?.cancelados ?? false,
     }
   } catch {
-    return { dias: [], previstos: true }
+    return { dias: [], previstos: true, cancelados: false }
   }
 }
 
@@ -100,11 +103,13 @@ export function Calendario() {
   const [inscricoes, setInscricoes] = useState<Inscricao[]>([])
   const [users, setUsers] = useState<Record<string, AppUser>>({})
   const [visao, setVisao] = useState<Visao>('semana')
-  const [base, setBase] = useState(() => new Date())
+  // Domingo não tem ensaio: nele já abre a semana seguinte (exceto se for o dia da apresentação).
+  const [base, setBase] = useState(() => hojeParaSemana(useSettingsStore.getState().settings.eventDate || DEFAULT_SETTINGS.eventDate || ''))
   const [selectedKey, setSelectedKey] = useState(() => toDateKey(new Date()))
   const [meusAberto, setMeusAberto] = useState(false)
   const [geralAberto, setGeralAberto] = useState(false)
   const [assinarAberto, setAssinarAberto] = useState(false)
+  const [filtroAberto, setFiltroAberto] = useState(false)
   // Filtro (dias da semana + não confirmados) fica salvo no aparelho.
   const [filtro, setFiltroState] = useState(lerFiltro)
   function setFiltro(f: Filtro) {
@@ -252,6 +257,20 @@ export function Calendario() {
     return map
   }, [ensaios, convites, cenasById])
 
+  /**
+   * Ensaio só de parte do elenco em que ninguém da casa (a pessoa, filhos, cônjuge) foi chamado não
+   * aparece — exceto pra admin e pra quem lidera/ajuda a cena.
+   */
+  function precisaIrAlguemDaCasa(e: Ensaio): boolean {
+    const cena = cenasById.get(e.cenaId)
+    if (!cena || isAdmin || !currentUser) return true
+    const uid = currentUser.uid
+    if (cena.liderUid === uid || cena.assistentes?.includes(uid)) return true
+    if (!e.obrigatorios?.length) return true
+    const chamados = uidsDoEnsaio(cena.personagens, e)
+    return [uid, ...dependentes.map(d => d.uid), ...(conjugeUid ? [conjugeUid] : [])].some(u => chamados.has(u))
+  }
+
   const ocorrenciasPorData = useMemo(() => {
     const map = new Map<string, Ocorrencia[]>()
     for (const date of dates) {
@@ -261,7 +280,10 @@ export function Calendario() {
         continue
       }
       const doDia = ensaiosPorData.get(key) ?? []
-      const itens: Ocorrencia[] = doDia.map(e => ({
+      const itens: Ocorrencia[] = doDia
+        .filter(e => filtro.cancelados || !e.canceledByUid)
+        .filter(e => precisaIrAlguemDaCasa(e))
+        .map(e => ({
         key: e.id,
         data: key,
         cena: cenasById.get(e.cenaId)!,
@@ -284,7 +306,7 @@ export function Calendario() {
       map.set(key, itens)
     }
     return map
-  }, [dates, ensaiosPorData, cenas, cenasById, todayKey, filtro, eventDate])
+  }, [dates, ensaiosPorData, cenas, cenasById, todayKey, filtro, eventDate, isAdmin, currentUser, dependentes, conjugeUid])
 
   function navegar(delta: number) {
     const next = visao === 'semana' ? addDays(base, delta * 7) : new Date(base.getFullYear(), base.getMonth() + delta, 1)
@@ -294,7 +316,7 @@ export function Calendario() {
 
   function irParaHoje() {
     const hoje = new Date()
-    setBase(hoje)
+    setBase(hojeParaSemana(eventDate))
     setSelectedKey(toDateKey(hoje))
   }
 
@@ -316,12 +338,15 @@ export function Calendario() {
     visao === 'mes'
       ? capitalize(base.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }))
       : (() => {
-          const [ini, fim] = [dates[0], dates[dates.length - 1]]
+          const visiveis = dates.filter(mostrarDia)
+          const [ini, fim] = [visiveis[0] ?? dates[0], visiveis[visiveis.length - 1] ?? dates[dates.length - 1]]
           const fmt = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '')
           return `${fmt(ini)} – ${fmt(fim)}`
         })()
 
   const loading = !cenas || !ensaios
+  // Filtros fora do padrão (dias marcados, sem não confirmados, com cancelados).
+  const ativos = (filtro.dias.length ? 1 : 0) + (filtro.previstos ? 0 : 1) + (filtro.cancelados ? 1 : 0)
 
   return (
     <div className="space-y-4">
@@ -348,16 +373,6 @@ export function Calendario() {
           variant="ghost"
           size="icon"
           className={cn('shrink-0 text-white hover:bg-white/10', !isAdmin && 'ml-auto')}
-          onClick={() => setAssinarAberto(true)}
-          title="Ensaios no Google Agenda / Apple"
-          aria-label="Ensaios no Google Agenda / Apple"
-        >
-          <CalendarPlus className="h-5 w-5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0 text-white hover:bg-white/10"
           onClick={() => setMeusAberto(true)}
           title="Meus ensaios da semana"
           aria-label="Meus ensaios da semana"
@@ -413,7 +428,33 @@ export function Calendario() {
 
       <Legenda />
 
-      <div className="space-y-2">
+      <div className="flex gap-2">
+        <button
+          type="button"
+          aria-expanded={filtroAberto}
+          onClick={() => setFiltroAberto(v => !v)}
+          className={cn(
+            'flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium',
+            filtroAberto || ativos > 0 ? 'border-white bg-white text-gray-900' : 'border-white/30 bg-white/10 text-white hover:bg-white/20',
+          )}
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+          Filtros{ativos > 0 && ` (${ativos})`}
+        </button>
+        {currentUser && (
+          <button
+            type="button"
+            onClick={() => setAssinarAberto(true)}
+            className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full border border-white/30 bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20"
+          >
+            <CalendarPlus className="h-4 w-4 shrink-0" />
+            <span className="truncate">Google Agenda / Apple</span>
+          </button>
+        )}
+      </div>
+
+      {filtroAberto && (
+      <div className="space-y-2 rounded-2xl border border-white/20 bg-white/5 p-3">
         <div className="flex gap-1">
           {DIAS_ORDER.map(d => {
             const marcado = filtro.dias.includes(d)
@@ -433,26 +474,45 @@ export function Calendario() {
             )
           })}
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={filtro.previstos}
-            onClick={() => setFiltro({ ...filtro, previstos: !filtro.previstos })}
-            className="flex items-center gap-2 text-xs text-white"
-          >
-            <span className={cn('relative h-5 w-9 shrink-0 rounded-full transition-colors', filtro.previstos ? 'bg-primary' : 'bg-white/30')}>
-              <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all', filtro.previstos ? 'left-[18px]' : 'left-0.5')} />
-            </span>
-            Mostrar não confirmados
-          </button>
-          {filtro.dias.length > 0 && (
-            <button type="button" onClick={() => setFiltro({ ...filtro, dias: [] })} className="text-xs text-white/70 hover:underline">
-              Todos os dias
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={filtro.previstos}
+              onClick={() => setFiltro({ ...filtro, previstos: !filtro.previstos })}
+              className="flex items-center gap-2 text-xs text-white"
+            >
+              <span className={cn('relative h-5 w-9 shrink-0 rounded-full transition-colors', filtro.previstos ? 'bg-primary' : 'bg-white/30')}>
+                <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all', filtro.previstos ? 'left-[18px]' : 'left-0.5')} />
+              </span>
+              Mostrar não confirmados
+            </button>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={filtro.cancelados}
+              onClick={() => setFiltro({ ...filtro, cancelados: !filtro.cancelados })}
+              className="flex items-center gap-2 text-xs text-white"
+            >
+              <span className={cn('relative h-5 w-9 shrink-0 rounded-full transition-colors', filtro.cancelados ? 'bg-primary' : 'bg-white/30')}>
+                <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all', filtro.cancelados ? 'left-[18px]' : 'left-0.5')} />
+              </span>
+              Mostrar cancelados
+            </button>
+          </div>
+          {ativos > 0 && (
+            <button
+              type="button"
+              onClick={() => setFiltro({ dias: [], previstos: true, cancelados: false })}
+              className="shrink-0 text-xs text-white/70 hover:underline"
+            >
+              Limpar
             </button>
           )}
         </div>
       </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-10">
@@ -554,6 +614,12 @@ export function Calendario() {
   )
 }
 
+/** Hoje, ou amanhã quando hoje é domingo sem apresentação (a semana vista vai de segunda a sábado). */
+function hojeParaSemana(eventDate: string) {
+  const hoje = new Date()
+  return hoje.getDay() === 0 && toDateKey(hoje) !== eventDate ? addDays(hoje, 1) : hoje
+}
+
 function Legenda() {
   const itens: { status: Status; label: string }[] = [
     { status: 'confirmado', label: 'Confirmado' },
@@ -643,7 +709,14 @@ function ListaDoDia({ itens, gerais, nameFor, users, uid, dependentes, isAdmin, 
         const grupoEnsaio = grupoDoEnsaio(o.ensaio, o.cena.personagens, meusUids)
         const horarioExibido = grupoEnsaio?.horario ?? o.horario
         const localExibido = grupoEnsaio?.local || o.ensaio?.local
-        const aviso = o.status === 'cancelado' ? null : avisoNaoChamado(o.cena.personagens, o.ensaio, uid, dependentes)
+        const casa = [...dependentes, ...(conjuge ? [conjuge] : [])]
+        const aviso = o.status === 'cancelado' ? null : avisoNaoChamado(o.cena.personagens, o.ensaio, uid, casa)
+        // Ensaio só de parte do elenco: separa quem da casa precisa ir de quem não.
+        const chamados = o.ensaio?.obrigatorios?.length ? uidsDoEnsaio(o.cena.personagens, o.ensaio) : null
+        const doElenco = casa.filter(p => noElenco(o.cena, p.uid))
+        const precisam = doElenco.filter(p => !chamados || chamados.has(p.uid))
+        const naoPrecisam = chamados ? doElenco.filter(p => !chamados.has(p.uid)) : []
+        const vocePrecisa = !!uid && noElenco(o.cena, uid) && (!chamados || chamados.has(uid))
         return (
           <Link key={o.key} to={o.ensaio ? `/cenas/${o.cena.id}/ensaios/${o.ensaio.id}` : `/cenas/${o.cena.id}/ensaios/dia/${o.data}`} className="flex items-center gap-3 py-2">
             <div className={cn('w-11 shrink-0 text-sm font-semibold', o.status === 'confirmado' ? 'text-primary' : 'text-gray-400')}>
@@ -662,17 +735,14 @@ function ListaDoDia({ itens, gerais, nameFor, users, uid, dependentes, isAdmin, 
                 {o.ensaio?.geral && <Star className="h-3 w-3 shrink-0 text-amber-500" aria-label="Ensaio geral" />}
                 {o.ensaio?.comFigurino && <Shirt className="h-3 w-3 shrink-0 text-violet-500" aria-label="Com figurino" />}
               </p>
-              {conjuge && noElenco(o.cena, conjuge.uid) && (
+              {conjuge && noElenco(o.cena, conjuge.uid) && (vocePrecisa || precisam.length > 0) && (
                 <p className="flex items-center gap-1 text-xs text-primary">
                   <Heart className="h-3 w-3 shrink-0" />
-                  <span className="truncate">
-                    {juntarNomes([
-                      ...(uid && noElenco(o.cena, uid) ? ['Você'] : []),
-                      ...dependentes.filter(d => noElenco(o.cena, d.uid)).map(d => d.nome),
-                      conjuge.nome,
-                    ])}
-                  </span>
+                  <span className="truncate">{juntarNomes([...(vocePrecisa ? ['Você'] : []), ...precisam.map(p => p.nome)])}</span>
                 </p>
+              )}
+              {o.status !== 'cancelado' && naoPrecisam.length > 0 && (
+                <p className="truncate text-xs text-gray-400">Não precisa ir: {juntarNomes(naoPrecisam.map(p => p.nome))}</p>
               )}
               <div className="flex items-center gap-1 text-xs text-gray-500">
                 {lider ? (

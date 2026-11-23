@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Check, CheckCircle2, Clock, ExternalLink, Info, Plus, MapPin, MessageCircle, NotebookPen, Pause, Pencil, Play, RotateCcw, Shirt, SlidersHorizontal, Star, UserPlus, Users, X, XCircle, RefreshCw } from 'lucide-react'
+import { ArrowLeft, CalendarPlus, Check, CheckCircle2, Clock, ExternalLink, Info, Plus, MapPin, MessageCircle, NotebookPen, Pause, Pencil, Play, RotateCcw, Shirt, SlidersHorizontal, Star, UserPlus, Users, X, XCircle, RefreshCw } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { NotificarElenco } from '@/components/ensaio/NotificarElenco'
 import { PreparoCampos, PreparoInfo, type Preparo } from '@/components/ensaio/PreparoEnsaio'
@@ -48,7 +48,8 @@ import { DIAS_ORDER } from '@/lib/dias'
 import { cn } from '@/lib/utils'
 import { formatDateTime, whatsappLink } from '@/lib/formatters'
 import { CRONOMETRO_ZERADO, segundosDoCronometro } from '@/lib/cronometro'
-import { elencoDoEnsaio } from '@/lib/ensaioPublico'
+import { elencoDoEnsaio, grupoDoEnsaio } from '@/lib/ensaioPublico'
+import { baixarIcs, linkGoogleAgenda, type EventoIcs } from '@/lib/ics'
 import { ensaioStatus } from '@/lib/ensaioStatus'
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { RespostaPresenca } from '@/components/ensaio/RespostaPresenca'
@@ -446,7 +447,7 @@ export function EnsaioAoVivo() {
         </>
       ) : (
         <>
-          <InfoEnsaio ensaio={ensaio} />
+          <InfoEnsaio ensaio={ensaio} calendario={currentUser ? { cena, uid: currentUser.uid } : undefined} />
           <GruposInfo ensaio={ensaio} personagens={cena.personagens} nameFor={nameFor} />
           <LocalCard ensaio={ensaio} />
 
@@ -626,7 +627,29 @@ function GruposInfo({ ensaio, personagens, nameFor }: { ensaio: Ensaio; personag
 }
 
 /** Data por extenso + status + flags (geral / com figurino) do ensaio. */
-function InfoEnsaio({ ensaio }: { ensaio: Ensaio }) {
+function InfoEnsaio({ ensaio, calendario }: { ensaio: Ensaio; calendario?: { cena: Cena; uid: string } }) {
+  // "Adicionar ao calendário": só de ensaio que ainda vai acontecer, no horário/local do grupo da pessoa.
+  const evento: EventoIcs | undefined =
+    calendario && !ensaio.canceledByUid && ensaio.data >= toDateKey(new Date())
+      ? (() => {
+          const grupo = grupoDoEnsaio(ensaio, calendario.cena.personagens, [calendario.uid])
+          return {
+            uid: `ensaio-${ensaio.id}@ensaios-emcena.web.app`,
+            titulo: `${ensaio.geral ? 'Ensaio geral' : 'Ensaio'} · ${calendario.cena.nome}`,
+            data: ensaio.data,
+            horario: grupo?.horario ?? ensaio.horario,
+            local: grupo?.local || ensaio.local || undefined,
+            descricao: [
+              ensaio.comFigurino ? 'Com figurino' : '',
+              ensaio.roupa ? `Vestir: ${ensaio.roupa}` : '',
+              ensaio.levar ? `Levar: ${ensaio.levar}` : '',
+            ]
+              .filter(Boolean)
+              .join('\n'),
+            url: window.location.href,
+          }
+        })()
+      : undefined
   return (
     <Card>
       <CardContent className="space-y-2">
@@ -639,6 +662,18 @@ function InfoEnsaio({ ensaio }: { ensaio: Ensaio }) {
           <EnsaioStatusChip status={ensaioStatus(ensaio, toDateKey(new Date()))} className="mt-0.5" />
         </div>
         <PreparoInfo roupa={ensaio.roupa} levar={ensaio.levar} />
+        {evento && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            <a href={linkGoogleAgenda(evento)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+              <CalendarPlus className="h-3.5 w-3.5" />
+              Google Agenda
+            </a>
+            <button type="button" onClick={() => baixarIcs(evento, evento.titulo)} className="inline-flex items-center gap-1 text-primary hover:underline">
+              <CalendarPlus className="h-3.5 w-3.5" />
+              Apple / Outlook (.ics)
+            </button>
+          </div>
+        )}
         {(ensaio.geral || ensaio.comFigurino) && (
           <div className="flex flex-wrap gap-1.5">
             {ensaio.geral && (

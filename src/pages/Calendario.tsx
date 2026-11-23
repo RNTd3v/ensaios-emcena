@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, ChevronLeft, ChevronRight, Crown, Drama, Heart, Info, MapPin, Shirt, Star } from 'lucide-react'
+import { ArrowLeft, CalendarPlus, ChevronLeft, ChevronRight, Crown, Drama, Heart, Info, MapPin, Shirt, Star } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -26,6 +26,7 @@ import { grupoDaPessoa, subscribeToTodasSessoes, subscribeToTreinamentos, uidsDo
 import { EnsaioStatusChip } from '@/components/ensaio/EnsaioStatusChip'
 import { TreinamentoDialog } from '@/pages/Treinamentos'
 import { MeusEnsaiosSemanaDialog } from '@/components/ensaio/MeusEnsaiosSemanaDialog'
+import { AssinarCalendarioDialog } from '@/components/calendario/AssinarCalendarioDialog'
 
 type Visao = 'semana' | 'mes'
 
@@ -103,6 +104,7 @@ export function Calendario() {
   const [selectedKey, setSelectedKey] = useState(() => toDateKey(new Date()))
   const [meusAberto, setMeusAberto] = useState(false)
   const [geralAberto, setGeralAberto] = useState(false)
+  const [assinarAberto, setAssinarAberto] = useState(false)
   // Filtro (dias da semana + não confirmados) fica salvo no aparelho.
   const [filtro, setFiltroState] = useState(lerFiltro)
   function setFiltro(f: Filtro) {
@@ -346,6 +348,16 @@ export function Calendario() {
           variant="ghost"
           size="icon"
           className={cn('shrink-0 text-white hover:bg-white/10', !isAdmin && 'ml-auto')}
+          onClick={() => setAssinarAberto(true)}
+          title="Ensaios no Google Agenda / Apple"
+          aria-label="Ensaios no Google Agenda / Apple"
+        >
+          <CalendarPlus className="h-5 w-5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0 text-white hover:bg-white/10"
           onClick={() => setMeusAberto(true)}
           title="Meus ensaios da semana"
           aria-label="Meus ensaios da semana"
@@ -353,6 +365,8 @@ export function Calendario() {
           <Info className="h-5 w-5" />
         </Button>
       </div>
+
+      {assinarAberto && currentUser && <AssinarCalendarioDialog uid={currentUser.uid} onClose={() => setAssinarAberto(false)} />}
 
       {geralAberto && <TreinamentoDialog geral onClose={() => setGeralAberto(false)} />}
 

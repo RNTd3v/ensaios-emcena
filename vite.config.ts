@@ -46,6 +46,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        // /api/* (push, calendário .ics) é do servidor — o service worker não devolve o index.html no lugar.
+        navigateFallbackDenylist: [/^\/api\//],
         // Recorte de PDF do roteiro (pdf-lib + pdf.js, ~850 KB): só o admin usa, carrega sob demanda.
         globIgnores: ['**/roteiroPdf-*.js'],
         // Fotos do Storage (figurinos, dependentes) ficam no aparelho depois da primeira vez —

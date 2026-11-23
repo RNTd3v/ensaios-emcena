@@ -79,6 +79,17 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isAuthenticated() && request.auth.uid in resource.data.uids);
     }
 
+    // Link secreto de assinatura do calendário (Google Agenda / Apple): o id do doc é o token
+    // (48 hex). Cada pessoa só cria, lê e apaga o próprio; quem monta o .ics é a Cloud Function
+    // `calendarioIcs` (Admin SDK, não passa por aqui).
+    match /calendarioTokens/{token} {
+      allow read, delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isActiveParticipant()
+        && token.matches('[a-f0-9]{48}')
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid;
+    }
+
     // Inscrições: cada participante só vê/edita a própria; admin vê e gerencia todas.
     // Só pode criar/editar enquanto o acesso estiver ativo (não revogado).
     // Dependentes (id dep_…): os responsáveis (`responsaveisUids`) criam, veem e editam — mas não

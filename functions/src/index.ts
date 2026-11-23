@@ -14,6 +14,7 @@ import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from 'firebas
 import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { onRequest } from 'firebase-functions/v2/https'
 import { logger } from 'firebase-functions'
+import { montarIcs, type EventoIcs } from './ics'
 
 initializeApp()
 setGlobalOptions({ region: 'southamerica-east1', maxInstances: 5 })
@@ -1113,4 +1114,141 @@ export const reporteResolvido = onDocumentUpdated('reportes/{id}', async event =
     corpo: resposta || `"${trecho}" — obrigado por avisar!`,
     tipo: 'reporte',
   })
+})
+
+// ---------- Assinatura do calendário (Google Agenda / Apple) ----------
+
+/** Dias passados que entram no calendário (pra quem assina ver o que acabou de acontecer). */
+const CALENDARIO_DIAS_ATRAS = 30
+
+function nomeCurto(u: DocumentData | undefined): string {
+  return (u?.apelido as string | undefined)?.trim() || (u?.displayName as string | undefined)?.trim() || 'Pessoa'
+}
+
+/**
+ * Calendário pessoal em iCalendar, assinado pelo Google Agenda / Calendário da Apple: GET
+ * /api/calendario/<token>.ics (rewrite do Hosting). O token vem de `calendarioTokens` (criado no app
+ * por quem quer assinar; apagar revoga). Traz os ensaios em que a pessoa — ou um filho, ou o
+ * cônjuge com vínculo aceito — foi chamada ou convidada, e os das cenas que ela lidera/ajuda; admin
+ * recebe todos. Cada ensaio usa o horário e o local do grupo da pessoa, se o ensaio foi dividido.
+ */
+export const calendarioIcs = onRequest({ maxInstances: 5 }, async (req, res) => {
+  const token = /\/([a-f0-9]{48})\.ics$/.exec(req.path)?.[1]
+  if (req.method !== 'GET' || !token) {
+    res.status(404).end()
+    return
+  }
+  try {
+    const tokenSnap = await db.collection('calendarioTokens').doc(token).get()
+    const uid = tokenSnap.data()?.uid as string | undefined
+    if (!uid) {
+      res.status(404).end()
+      return
+    }
+    const userSnap = await db.collection('users').doc(uid).get()
+    const user = userSnap.data()
+    if (!user || user.active === false) {
+      res.status(403).end()
+      return
+    }
+    const admin = user.role === 'admin'
+
+    // Quem conta como "da pessoa": ela, os filhos (dependentes) e o cônjuge (vínculo aceito).
+    const nomes = new Map<string, string>([[uid, nomeCurto(user)]])
+    const outros = new Set<string>()
+    const filhos = await db.collection('users').where('responsaveisUids', 'array-contains', uid).get()
+    for (const f of filhos.docs) {
+      nomes.set(f.id, nomeCurto(f.data()))
+      outros.add(f.id)
+    }
+    const vinculos = await db.collection('conjuges').where('uids', 'array-contains', uid).get()
+    for (const v of vinculos.docs) {
+      if (v.data().status !== 'aceito') continue
+      const outro = ((v.data().uids as string[]) ?? []).find(u => u !== uid)
+      if (!outro) continue
+      nomes.set(outro, nomeCurto((await db.collection('users').doc(outro).get()).data()))
+      outros.add(outro)
+    }
+    const meus = [uid, ...outros]
+
+    // Cenas relevantes (ativas) — admin vê todas.
+    const cenas = new Map<string, DocumentData>()
+    const juntar = (docs: FirebaseFirestore.QueryDocumentSnapshot[]) => docs.forEach(d => cenas.set(d.id, d.data()))
+    if (admin) {
+      juntar((await db.collection('cenas').get()).docs)
+    } else {
+      for (const u of meus) juntar((await db.collection('cenas').where('participantes', 'array-contains', u).get()).docs)
+      juntar((await db.collection('cenas').where('liderUid', '==', uid).get()).docs)
+      juntar((await db.collection('cenas').where('assistentes', 'array-contains', uid).get()).docs)
+    }
+
+    const { hoje } = agoraEmSaoPaulo()
+    const desde = diasDepois(hoje, -CALENDARIO_DIAS_ATRAS)
+    const ensaios = new Map<string, DocumentData>()
+    for (const d of (await db.collection('ensaios').where('data', '>=', desde).get()).docs) {
+      if (admin || cenas.has(d.data().cenaId)) ensaios.set(d.id, d.data())
+    }
+    if (!admin) {
+      for (const d of (await db.collection('ensaios').where('convidados', 'array-contains', uid).get()).docs) {
+        if (d.data().data >= desde) ensaios.set(d.id, d.data())
+      }
+    }
+
+    const eventos: EventoIcs[] = []
+    for (const [id, e] of ensaios) {
+      const cena = cenas.get(e.cenaId) ?? (await getCena(e.cenaId))
+      if (!cena || cena.ativo === false || !e.data || !e.horario) continue
+      const publico = new Set(publicoDoEnsaio(cena, e))
+      const chamados = meus.filter(u => publico.has(u))
+      const gestor = admin || cena.liderUid === uid || ((cena.assistentes as string[] | undefined) ?? []).includes(uid)
+      if (!chamados.length && !gestor && !(e.convidados as string[] | undefined)?.includes(uid)) continue
+
+      // Horário/local do grupo de quem foi chamado (o ensaio todo, se não foi dividido).
+      const personagens = (cena.personagens as { id: string; participanteUid?: string }[] | undefined) ?? []
+      let horario = e.horario as string
+      let local = (e.local as string | undefined) || undefined
+      let grupoNome: string | undefined
+      for (const g of (e.grupos as GrupoEnsaio[] | undefined) ?? []) {
+        const noGrupo = personagens.some(p => p.participanteUid && chamados.includes(p.participanteUid) && g.personagens?.includes(p.id))
+        if (!noGrupo) continue
+        horario = g.horario
+        local = g.local || local
+        grupoNome = g.nome
+        break
+      }
+
+      // Prefixo com o nome quando o ensaio é de um filho/cônjuge (a própria pessoa não ganha prefixo).
+      const deOutros = chamados.length > 0 && !chamados.includes(uid)
+      const prefixo = deOutros ? `(${juntarNomes(chamados.map(u => nomes.get(u) ?? 'Pessoa'))}) ` : ''
+      const descricao = [
+        chamados.length ? undefined : 'Você acompanha esta cena como líder/assistente.',
+        grupoNome ? `Grupo: ${grupoNome}` : undefined,
+        e.geral ? 'Ensaio geral' : undefined,
+        e.comFigurino ? 'Com figurino' : undefined,
+        e.roupa ? `Vestir: ${e.roupa}` : undefined,
+        e.levar ? `Levar: ${e.levar}` : undefined,
+        `${APP_URL}/cenas/${e.cenaId}/ensaios/${id}`,
+      ]
+        .filter(Boolean)
+        .join('\n')
+      eventos.push({
+        uid: `ensaio-${id}@ensaios-emcena.web.app`,
+        titulo: `${prefixo}${e.geral ? 'Ensaio geral' : 'Ensaio'} · ${cena.nome}`,
+        data: e.data,
+        horario,
+        local,
+        descricao,
+        url: `${APP_URL}/cenas/${e.cenaId}/ensaios/${id}`,
+        cancelado: !!e.canceledByUid,
+      })
+    }
+
+    res.set('Content-Type', 'text/calendar; charset=utf-8')
+    res.set('Cache-Control', 'private, max-age=300')
+    res.set('Content-Disposition', 'inline; filename="ensaios.ics"')
+    res.status(200).send(montarIcs(eventos))
+  } catch (e) {
+    logger.error('calendarioIcs: falha ao montar o calendário', e)
+    res.status(500).end()
+  }
 })

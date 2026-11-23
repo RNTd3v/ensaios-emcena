@@ -17,9 +17,14 @@ export interface EventoIcs {
   descricao?: string
   url?: string
   cancelado?: boolean
+  /** Lembretes, em minutos antes do início. Sem o campo, vale `ALARMES_PADRAO_MIN`; `[]` = sem lembrete. */
+  alarmesMin?: number[]
 }
 
 export const DURACAO_PADRAO_MIN = 120
+
+/** Lembretes padrão: na véspera (24h antes) e 1h antes. O Calendário da Apple respeita; o Google Agenda usa os lembretes dele. */
+export const ALARMES_PADRAO_MIN = [1440, 60]
 
 const FUSO = 'America/Sao_Paulo'
 
@@ -72,7 +77,13 @@ function vevent(e: EventoIcs): string[] {
   if (e.local) linhas.push(`LOCATION:${escapar(e.local)}`)
   if (e.descricao) linhas.push(`DESCRIPTION:${escapar(e.descricao)}`)
   if (e.url) linhas.push(`URL:${e.url}`)
-  linhas.push(`STATUS:${e.cancelado ? 'CANCELLED' : 'CONFIRMED'}`, 'END:VEVENT')
+  linhas.push(`STATUS:${e.cancelado ? 'CANCELLED' : 'CONFIRMED'}`)
+  if (!e.cancelado) {
+    for (const min of e.alarmesMin ?? ALARMES_PADRAO_MIN) {
+      linhas.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${escapar(e.titulo)}`, `TRIGGER:-PT${min}M`, 'END:VALARM')
+    }
+  }
+  linhas.push('END:VEVENT')
   return linhas
 }
 

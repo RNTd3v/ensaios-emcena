@@ -13,6 +13,20 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "ensaios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "cenaId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "data",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

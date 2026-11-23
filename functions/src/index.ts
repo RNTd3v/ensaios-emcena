@@ -1203,6 +1203,25 @@ export const reporteResolvido = onDocumentUpdated('reportes/{id}', async event =
 /** Dias passados que entram no calendário (pra quem assina ver o que acabou de acontecer). */
 const CALENDARIO_DIAS_ATRAS = 30
 
+/**
+ * Ensaios das cenas `cenaIds` de `desde` em diante, sem ler os das outras cenas. Precisa do índice
+ * composto (cenaId, data) em firestore.indexes.json; enquanto ele não existe no projeto, cai na
+ * consulta só por cena (lê o histórico dessas cenas e filtra a data aqui).
+ */
+async function ensaiosDasCenas(cenaIds: string[], desde: string): Promise<FirebaseFirestore.QueryDocumentSnapshot[]> {
+  const docs: FirebaseFirestore.QueryDocumentSnapshot[] = []
+  for (const parte of chunks(cenaIds, 30)) {
+    const base = db.collection('ensaios').where('cenaId', 'in', parte)
+    try {
+      docs.push(...(await base.where('data', '>=', desde).get()).docs)
+    } catch (e) {
+      logger.warn('calendarioIcs: índice ensaios(cenaId, data) ausente, lendo o histórico das cenas', e)
+      docs.push(...(await base.get()).docs.filter(d => d.data().data >= desde))
+    }
+  }
+  return docs
+}
+
 function nomeCurto(u: DocumentData | undefined): string {
   return (u?.apelido as string | undefined)?.trim() || (u?.displayName as string | undefined)?.trim() || 'Pessoa'
 }
@@ -1212,7 +1231,7 @@ function nomeCurto(u: DocumentData | undefined): string {
  * /api/calendario/<token>.ics (rewrite do Hosting). O token vem de `calendarioTokens` (criado no app
  * por quem quer assinar; apagar revoga). Traz os ensaios em que a pessoa — ou um filho, ou o
  * cônjuge com vínculo aceito — foi chamada ou convidada, e os das cenas que ela lidera/ajuda; admin
- * recebe todos. Cada ensaio usa o horário e o local do grupo da pessoa, se o ensaio foi dividido.
+ * recebe todos. Também os ensaios gerais do público dela. Cada evento leva lembretes (24h e 1h antes). Cada ensaio usa o horário e o local do grupo da pessoa, se o ensaio foi dividido.
  */
 export const calendarioIcs = onRequest({ maxInstances: 5 }, async (req, res) => {
   const token = /\/([a-f0-9]{48})\.ics$/.exec(req.path)?.[1]
@@ -1267,9 +1286,11 @@ export const calendarioIcs = onRequest({ maxInstances: 5 }, async (req, res) => 
     const { hoje } = agoraEmSaoPaulo()
     const desde = diasDepois(hoje, -CALENDARIO_DIAS_ATRAS)
     const ensaios = new Map<string, DocumentData>()
-    for (const d of (await db.collection('ensaios').where('data', '>=', desde).get()).docs) {
-      if (admin || cenas.has(d.data().cenaId)) ensaios.set(d.id, d.data())
-    }
+    // Admin precisa de todos; os demais, só os das cenas deles (lê só o que vai usar).
+    const doPeriodo = admin
+      ? (await db.collection('ensaios').where('data', '>=', desde).get()).docs
+      : await ensaiosDasCenas([...cenas.keys()], desde)
+    for (const d of doPeriodo) ensaios.set(d.id, d.data())
     if (!admin) {
       for (const d of (await db.collection('ensaios').where('convidados', 'array-contains', uid).get()).docs) {
         if (d.data().data >= desde) ensaios.set(d.id, d.data())
@@ -1325,8 +1346,60 @@ export const calendarioIcs = onRequest({ maxInstances: 5 }, async (req, res) => 
       })
     }
 
+    // Ensaios gerais (sessões de treinamentos `tipo: 'ensaio_geral'`): admin vê todos; os demais, os do
+    // público a que pertencem (elenco, pessoas escolhidas, todos) — a própria pessoa, filhos e cônjuge.
+    const gerais = new Map<string, DocumentData>()
+    for (const d of (await db.collection('treinamentos').where('tipo', '==', 'ensaio_geral').get()).docs) gerais.set(d.id, d.data())
+    if (gerais.size) {
+      const inscricoes = new Map((await db.getAll(...meus.map(u => db.collection('inscricoes').doc(u)))).map(i => [i.id, i.data() ?? {}]))
+      const valePara = new Map<string, string[]>()
+      for (const [tid, t] of gerais) {
+        const quem: string[] = []
+        for (const u of meus) if (await valePraPessoaTreinamento(t, u, inscricoes.get(u) ?? {})) quem.push(u)
+        valePara.set(tid, quem)
+      }
+      for (const d of (await db.collection('treinamentoSessoes').where('data', '>=', desde).get()).docs) {
+        const s = d.data()
+        const t = gerais.get(s.treinamentoId)
+        const chamados = valePara.get(s.treinamentoId) ?? []
+        if (!t || !s.data || !s.horario || (!admin && !chamados.length)) continue
+        // Horário/local do grupo da pessoa (ou do filho), se o ensaio geral foi dividido.
+        const grupo = ((t.grupos as { nome?: string; horario: string; local?: string; pessoas: string[] }[] | undefined) ?? []).find(g =>
+          g.pessoas?.some(u => chamados.includes(u)),
+        )
+        const horario = (grupo?.horario ?? s.horario) as string
+        const local = (grupo?.local || t.local || undefined) as string | undefined
+        const ate = !grupo && t.horarioFim ? (t.horarioFim as string) : undefined
+        const [h1, m1] = horario.split(':').map(Number)
+        const duracaoMin = ate ? (() => { const [h2, m2] = ate.split(':').map(Number); return h2 * 60 + m2 - (h1 * 60 + m1) })() : undefined
+        const deOutros = chamados.length > 0 && !chamados.includes(uid)
+        const prefixo = deOutros ? `(${juntarNomes(chamados.map(u => nomes.get(u) ?? 'Pessoa'))}) ` : ''
+        const titulo = t.titulo && String(t.titulo).toLowerCase() !== 'ensaio geral' ? ` · ${t.titulo}` : ''
+        const link = `${APP_URL}/treinamentos/${s.treinamentoId}`
+        eventos.push({
+          uid: `geral-${d.id}@ensaios-emcena.web.app`,
+          titulo: `${prefixo}Ensaio geral${titulo}`,
+          data: s.data,
+          horario,
+          duracaoMin: duracaoMin && duracaoMin > 0 ? duracaoMin : undefined,
+          local,
+          descricao: [
+            chamados.length ? undefined : 'Você acompanha este ensaio geral como administrador.',
+            grupo ? `Grupo${grupo.nome ? `: ${grupo.nome}` : ''}` : undefined,
+            ate ? `Até ${ate}` : undefined,
+            t.roupa ? `Vestir: ${t.roupa}` : undefined,
+            t.levar ? `Levar: ${t.levar}` : undefined,
+            link,
+          ]
+            .filter(Boolean)
+            .join('\n'),
+          url: link,
+        })
+      }
+    }
+
     res.set('Content-Type', 'text/calendar; charset=utf-8')
-    res.set('Cache-Control', 'private, max-age=300')
+    res.set('Cache-Control', 'private, max-age=900')
     res.set('Content-Disposition', 'inline; filename="ensaios.ics"')
     res.status(200).send(montarIcs(eventos))
   } catch (e) {

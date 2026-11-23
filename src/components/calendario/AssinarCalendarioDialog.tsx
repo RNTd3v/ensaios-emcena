@@ -95,8 +95,9 @@ export function AssinarCalendarioDialog({ uid, onClose }: Props) {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              O Calendário da Apple atualiza sozinho (de hora em hora, ou como você configurar). O Google Agenda costuma demorar de 8 a 24 horas
-              pra refletir mudanças — é um limite do Google.
+              Entram os ensaios das cenas e os ensaios gerais. O Calendário da Apple atualiza sozinho (de hora em hora, ou como você configurar) e
+              avisa 1 dia e 1 hora antes. O Google Agenda costuma demorar de 8 a 24 horas pra refletir mudanças e não usa os lembretes do
+              link — ele aplica os lembretes padrão da sua agenda.
             </p>
             <div className="space-y-1 border-t pt-3">
               <p className="text-xs text-muted-foreground">

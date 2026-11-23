@@ -298,6 +298,7 @@ export const ensaioCriado = onDocumentCreated('ensaios/{id}', async event => {
   const convidados = convidadosDoEnsaio(cena, e)
   await notificarDoEnsaio(cena, e, elencoDoEnsaio(cena, e), { titulo: 'Ensaio confirmado', link }, e.confirmedByUid)
   await notificar(convidados, { titulo: 'Você foi convidado para um ensaio', corpo, link, tipo: 'ensaio' }, e.confirmedByUid)
+  await marcarIndisponiveis(event.data!.ref, e, publicoDoEnsaio(cena, e))
 })
 
 /** Mesma lista (sem ligar pra ordem) no campo `campo` dos dois lados? */
@@ -339,6 +340,11 @@ export const ensaioAlterado = onDocumentUpdated('ensaios/{id}', async event => {
   const entraram = publicoMudou ? [...publicoDepois].filter(u => !publicoAntes.has(u)) : []
   const sairam = publicoMudou ? [...publicoAntes].filter(u => !publicoDepois.has(u)) : []
   if (!depois.canceledByUid) await limparRespostasDeQuemSaiu(event.params.id, sairam, depois)
+  // Quem entrou no público (ou todos, se o ensaio foi reconfirmado) e marcou a data como indisponível na inscrição.
+  const reconfirmado = !!antes.canceledByUid && !depois.canceledByUid
+  if (cena && !depois.canceledByUid && (reconfirmado || entraram.length)) {
+    await marcarIndisponiveis(event.data!.after.ref, depois, reconfirmado ? [...publicoDepois] : entraram)
+  }
 
   // Quem alterou/cancelou escolheu não notificar (`notificar: false` no mesmo update): o elenco vê
   // só pelo app. Apaga o campo pra próxima mudança voltar ao padrão (esse update não gera aviso).
@@ -819,6 +825,82 @@ export const treinamentoAlterado = onDocumentUpdated('treinamentos/{id}', async 
   const [eram, sao] = await Promise.all([publicoDoTreinamento(antes), publicoDoTreinamento(depois)])
   const jaAvisados = new Set(eram)
   await avisarTreinamento(event.params.id, depois, sao.filter(u => !jaAvisados.has(u)))
+})
+
+// ---------- Indisponibilidade da inscrição → "não vou" ----------
+
+/** Mesmo texto do app (`MOTIVO_INDISPONIBILIDADE` em src/services/firebase/ensaios.ts). */
+const MOTIVO_INDISPONIBILIDADE = 'Indisponível nessa data (informado na inscrição).'
+
+/**
+ * Marca como "não vou" (origem `inscricao`) quem de `candidatos` ainda não respondeu e colocou a data
+ * do ensaio/sessão como indisponível na inscrição. Roda aqui no servidor (Admin SDK) porque quem
+ * confirma o ensaio — líder ou assistente da cena — não tem leitura das inscrições dos outros.
+ * `ref` é um ensaio ou uma sessão de treinamento (mesmo esquema de presencas/ausentes/ausencias).
+ */
+async function marcarIndisponiveis(ref: FirebaseFirestore.DocumentReference, dados: DocumentData, candidatos: string[]): Promise<void> {
+  if (dados.canceledByUid || dados.finalizadoAt || !dados.data || dados.data < agoraEmSaoPaulo().hoje) return
+  const respondeu = new Set<string>([...(dados.presencas ?? []), ...(dados.ausentes ?? []), ...Object.keys(dados.ausencias ?? {})])
+  const pendentes = [...new Set(candidatos)].filter(u => !respondeu.has(u))
+  if (!pendentes.length) return
+  const inscricoes = await db.getAll(...pendentes.map(u => db.collection('inscricoes').doc(u)))
+  const alvo = inscricoes.filter(i => ((i.data()?.indisponibilidade as string[] | undefined) ?? []).includes(dados.data)).map(i => i.id)
+  if (!alvo.length) return
+  const registradaEm = new Date().toISOString()
+  const batch = db.batch()
+  batch.update(ref, { ausentes: FieldValue.arrayUnion(...alvo) })
+  for (const uid of alvo) batch.set(ref.collection('ausencias').doc(uid), { uid, motivo: MOTIVO_INDISPONIBILIDADE, registradaEm, origem: 'inscricao' })
+  await batch.commit()
+}
+
+/** A pessoa é do público do treinamento/ensaio geral? (versão por pessoa de `publicoDoTreinamento`.) */
+async function valePraPessoaTreinamento(t: DocumentData, uid: string, inscricao: DocumentData): Promise<boolean> {
+  if ((t.pessoas as string[] | undefined)?.includes(uid)) return true
+  if (t.publico === 'pessoas') return false
+  if (t.publico === 'elenco') {
+    const cenas = await db.collection('cenas').where('participantes', 'array-contains', uid).get()
+    return cenas.docs.some(
+      c => c.data().ativo !== false && ((c.data().personagens as { participanteUid?: string }[] | undefined) ?? []).some(p => p.participanteUid === uid),
+    )
+  }
+  return inscricao.status !== 'recusado'
+}
+
+/** Sessão de ensaio geral/treinamento nova: marca quem do público já tinha a data como indisponível. */
+export const sessaoTreinamentoCriada = onDocumentCreated('treinamentoSessoes/{id}', async event => {
+  const sessao = event.data?.data()
+  if (!sessao?.treinamentoId) return
+  const t = (await db.collection('treinamentos').doc(sessao.treinamentoId).get()).data()
+  if (!t) return
+  await marcarIndisponiveis(event.data!.ref, sessao, await publicoDoTreinamento(t))
+})
+
+/**
+ * Datas novas na indisponibilidade da inscrição: a pessoa vira "não vou" nos ensaios (de cena e
+ * geral) dessas datas que ainda não respondeu. Só as datas acrescentadas — quem já foi marcado e
+ * mudou de ideia não é marcado de novo.
+ */
+export const inscricaoIndisponibilidade = onDocumentWritten('inscricoes/{uid}', async event => {
+  const depois = event.data?.after.data()
+  if (!depois) return
+  const antes = new Set<string>((event.data?.before.data()?.indisponibilidade as string[] | undefined) ?? [])
+  const { hoje } = agoraEmSaoPaulo()
+  const novas = ((depois.indisponibilidade as string[] | undefined) ?? []).filter(d => !antes.has(d) && d >= hoje)
+  if (!novas.length) return
+  const uid = event.params.uid
+  for (const data of novas) {
+    for (const d of (await db.collection('ensaios').where('data', '==', data).get()).docs) {
+      const e = d.data()
+      const cena = await getCena(e.cenaId)
+      if (!cena || cena.ativo === false || !publicoDoEnsaio(cena, e).includes(uid)) continue
+      await marcarIndisponiveis(d.ref, e, [uid])
+    }
+    for (const d of (await db.collection('treinamentoSessoes').where('data', '==', data).get()).docs) {
+      const t = (await db.collection('treinamentos').doc(d.data().treinamentoId).get()).data()
+      if (!t || !(await valePraPessoaTreinamento(t, uid, depois))) continue
+      await marcarIndisponiveis(d.ref, d.data(), [uid])
+    }
+  }
 })
 
 // ---------- Figurino ----------

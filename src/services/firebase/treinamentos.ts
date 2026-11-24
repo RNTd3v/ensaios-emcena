@@ -30,7 +30,7 @@ export interface TreinamentoInput {
   roupa?: string
   levar?: string
   local?: string
-  tipo?: 'ensaio_geral'
+  tipo?: 'ensaio_geral' | 'reuniao'
   horarioFim?: string
   grupos?: GrupoEnsaio[]
   publico: TreinamentoPublico
@@ -46,8 +46,8 @@ function dadosTreinamento(input: TreinamentoInput) {
   return {
     titulo: input.titulo.trim(),
     descricao: input.descricao.trim(),
-    roupa: input.roupa?.trim() ?? '',
-    levar: input.levar?.trim() ?? '',
+    roupa: input.tipo === 'reuniao' ? '' : (input.roupa?.trim() ?? ''),
+    levar: input.tipo === 'reuniao' ? '' : (input.levar?.trim() ?? ''),
     local: input.local?.trim() ?? '',
     ...(input.tipo ? { tipo: input.tipo } : {}),
     horarioFim: input.horarioFim ?? '',

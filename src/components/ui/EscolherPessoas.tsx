@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Check, Search } from 'lucide-react'
+import { Check, Drama, Search, Users, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select } from '@/components/ui/select'
 import { PessoaLinha } from '@/components/ui/PessoaLinha'
 import { inscritosConfirmados, pessoaOpcao } from '@/components/ui/PessoaSelect'
 import { cn } from '@/lib/utils'
@@ -36,7 +35,9 @@ export function EscolherPessoas({
   excluir?: Set<string>
 }) {
   const [filtro, setFiltro] = useState<FiltroPessoas>('todas')
-  const [grupo, setGrupo] = useState('')
+  const [gruposSel, setGruposSel] = useState<string[]>([])
+  const [buscaGrupo, setBuscaGrupo] = useState('')
+  const [grupoAberto, setGrupoAberto] = useState(false)
   const [busca, setBusca] = useState('')
 
   const lideres = useMemo(
@@ -56,14 +57,32 @@ export function EscolherPessoas({
     return base.filter(u => !u.dependente && !excluir?.has(u.uid)).map(u => pessoaOpcao(u.uid, u)).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
   }, [isAdmin, users, cenas, equipes, lideres, assistentes, excluir])
 
+  const opcoesGrupo = useMemo(
+    () => [
+      ...equipes.map(e => ({ chave: `equipe:${e.id}`, tipo: 'equipe' as const, nome: e.nome })),
+      ...cenas.map(c => ({ chave: `cena:${c.id}`, tipo: 'cena' as const, nome: c.nome })),
+    ],
+    [cenas, equipes],
+  )
+  const sugestoesGrupo = useMemo(() => {
+    const q = normalizar(buscaGrupo.trim())
+    return opcoesGrupo.filter(o => !gruposSel.includes(o.chave) && (!q || normalizar(o.nome).includes(q)))
+  }, [opcoesGrupo, gruposSel, buscaGrupo])
+
   const visiveis = useMemo(() => {
-    const [tipo, id] = grupo.split(':')
-    const doGrupo =
-      tipo === 'cena'
-        ? new Set([...(cenas.find(c => c.id === id)?.participantes ?? []), cenas.find(c => c.id === id)?.liderUid ?? ''])
-        : tipo === 'equipe'
-          ? new Set(equipes.find(e => e.id === id)?.membros ?? [])
-          : null
+    // Várias cenas/equipes juntas: vale quem está em qualquer uma delas.
+    const doGrupo = gruposSel.length
+      ? new Set(
+          gruposSel.flatMap(chave => {
+            const [tipo, id] = chave.split(':')
+            if (tipo === 'cena') {
+              const c = cenas.find(x => x.id === id)
+              return [...(c?.participantes ?? []), c?.liderUid ?? '']
+            }
+            return equipes.find(e => e.id === id)?.membros ?? []
+          }),
+        )
+      : null
     const q = normalizar(busca.trim())
     return pool.filter(
       p =>
@@ -71,7 +90,7 @@ export function EscolherPessoas({
         (!doGrupo || doGrupo.has(p.uid)) &&
         (!q || normalizar(`${p.nome} ${p.apelido ?? ''}`).includes(q)),
     )
-  }, [pool, filtro, grupo, busca, cenas, equipes, lideres, assistentes])
+  }, [pool, filtro, gruposSel, busca, cenas, equipes, lideres, assistentes])
 
   const selecionados = new Set(escolhidos)
   const todosVisiveisMarcados = visiveis.length > 0 && visiveis.every(p => selecionados.has(p.uid))
@@ -117,27 +136,60 @@ export function EscolherPessoas({
       </div>
 
       {(cenas.length > 0 || equipes.length > 0) && (
-        <Select value={grupo} onChange={e => setGrupo(e.target.value)} aria-label="Filtrar por cena ou equipe">
-          <option value="">De qualquer cena ou equipe</option>
-          {cenas.length > 0 && (
-            <optgroup label="Cenas">
-              {cenas.map(c => (
-                <option key={c.id} value={`cena:${c.id}`}>
-                  {c.nome}
-                </option>
-              ))}
-            </optgroup>
+        <div className="space-y-1.5">
+          {gruposSel.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {gruposSel.map(chave => {
+                const opcao = opcoesGrupo.find(o => o.chave === chave)
+                if (!opcao) return null
+                return (
+                  <span key={chave} className="flex items-center gap-1 rounded-full bg-primary/10 py-1 pl-2.5 pr-1.5 text-xs font-medium text-primary">
+                    {opcao.tipo === 'cena' ? <Drama className="h-3 w-3" /> : <Users className="h-3 w-3" />}
+                    {opcao.nome}
+                    <button type="button" aria-label={`Tirar ${opcao.nome}`} onClick={() => setGruposSel(l => l.filter(x => x !== chave))}>
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                )
+              })}
+            </div>
           )}
-          {equipes.length > 0 && (
-            <optgroup label="Equipes">
-              {equipes.map(e => (
-                <option key={e.id} value={`equipe:${e.id}`}>
-                  {e.nome}
-                </option>
-              ))}
-            </optgroup>
-          )}
-        </Select>
+          <div className="relative">
+            <Input
+              value={buscaGrupo}
+              onChange={e => {
+                setBuscaGrupo(e.target.value)
+                setGrupoAberto(true)
+              }}
+              onFocus={() => setGrupoAberto(true)}
+              onBlur={() => setTimeout(() => setGrupoAberto(false), 150)}
+              placeholder="Filtrar por cena ou equipe (digite pra buscar)"
+              aria-label="Filtrar por cena ou equipe"
+              autoComplete="off"
+            />
+            {grupoAberto && sugestoesGrupo.length > 0 && (
+              <ul className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                {sugestoesGrupo.map(o => (
+                  <li key={o.chave}>
+                    <button
+                      type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => {
+                        setGruposSel(l => [...l, o.chave])
+                        setBuscaGrupo('')
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                    >
+                      {o.tipo === 'cena' ? <Drama className="h-4 w-4 text-gray-400" /> : <Users className="h-4 w-4 text-gray-400" />}
+                      <span className="flex-1 truncate">{o.nome}</span>
+                      <span className="text-[11px] text-gray-400">{o.tipo === 'cena' ? 'Cena' : 'Equipe'}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       )}
 
       <div className="relative">

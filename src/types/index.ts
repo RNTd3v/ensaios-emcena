@@ -421,8 +421,8 @@ export interface Treinamento {
   /** O que precisa levar (texto livre, ex.: "Garrafa d'água, toalha"). */
   levar?: string
   local?: string
-  /** 'ensaio_geral' = ensaio geral do elenco (sem o tipo, é um treinamento comum). */
-  tipo?: 'ensaio_geral'
+  /** 'ensaio_geral' = ensaio geral do elenco; 'reuniao' = reunião (sem roupa/o que levar); sem o tipo, é um treinamento comum. */
+  tipo?: 'ensaio_geral' | 'reuniao'
   /** HH:mm — até que horas vai (usado no ensaio geral). */
   horarioFim?: string
   /** Ensaio geral dividido em grupos, cada um com horário/local próprios (quem fica sem grupo segue o geral). */

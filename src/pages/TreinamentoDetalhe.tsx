@@ -79,8 +79,8 @@ export function TreinamentoDetalhe() {
   if (!treinamento) {
     return (
       <div className="space-y-4">
-        <Cabecalho titulo="Treinamento" />
-        <p className="py-6 text-center text-sm text-white/80">Esse treinamento não existe mais.</p>
+        <Cabecalho titulo="Treinamento ou reunião" />
+        <p className="py-6 text-center text-sm text-white/80">Esse treinamento ou reunião não existe mais.</p>
       </div>
     )
   }
@@ -99,8 +99,8 @@ export function TreinamentoDetalhe() {
         <CardContent className="space-y-2">
           {treinamento.descricao && <p className="whitespace-pre-wrap text-sm text-gray-800">{treinamento.descricao}</p>}
           <Info icone={MapPin} rotulo="Local" valor={treinamento.local} />
-          {treinamento.tipo !== 'ensaio_geral' && <Info icone={Shirt} rotulo="Roupa" valor={treinamento.roupa} />}
-          <Info icone={Backpack} rotulo="Levar" valor={treinamento.levar} />
+          {treinamento.tipo !== 'ensaio_geral' && treinamento.tipo !== 'reuniao' && <Info icone={Shirt} rotulo="Roupa" valor={treinamento.roupa} />}
+          {treinamento.tipo !== 'reuniao' && <Info icone={Backpack} rotulo="Levar" valor={treinamento.levar} />}
           <Info
             icone={treinamento.publico === 'elenco' ? Drama : treinamento.publico === 'pessoas' ? UserCheck : Users}
             rotulo="Pra quem"

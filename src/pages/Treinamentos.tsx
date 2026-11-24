@@ -33,7 +33,7 @@ import { cn } from '@/lib/utils'
 import type { Cena, Equipe, GrupoEnsaio, LocalEnsaio, Treinamento, TreinamentoPublico, TreinamentoSessao } from '@/types'
 
 /**
- * Treinamentos: o admin cadastra (dias/horários, roupa, o que levar, pra quem: todos, só o elenco ou
+ * Treinamentos e reuniões: o admin cadastra (dias/horários, roupa, o que levar, pra quem: todos, só o elenco ou
  * pessoas escolhidas) e quem participa vê os que valem pra si. Ao cadastrar, a Cloud Function `treinamentoCriado` avisa as
  * pessoas pra confirmarem presença.
  */
@@ -72,10 +72,10 @@ export function Treinamentos() {
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <h1 className="text-xl font-semibold text-white">Treinamentos</h1>
+          <h1 className="text-xl font-semibold text-white">Treinamentos e reuniões</h1>
         </div>
         {isAdmin && (
-          <Button size="icon" title="Novo treinamento" onClick={() => setNovoOpen(true)}>
+          <Button size="icon" title="Novo treinamento ou reunião" onClick={() => setNovoOpen(true)}>
             <Plus className="h-4 w-4" />
           </Button>
         )}
@@ -86,7 +86,7 @@ export function Treinamentos() {
           <Spinner />
         </div>
       ) : proximos.length === 0 && anteriores.length === 0 ? (
-        <p className="py-6 text-center text-sm text-white/80">Nenhum treinamento marcado por enquanto.</p>
+        <p className="py-6 text-center text-sm text-white/80">Nenhum treinamento ou reunião marcado por enquanto.</p>
       ) : (
         <>
           {proximos.length > 0 && <ListaTreinamentos itens={proximos} todayKey={todayKey} />}
@@ -112,14 +112,14 @@ function ListaTreinamentos({ itens, todayKey }: { itens: { treinamento: Treiname
         return (
           <Link key={t.id} to={`/treinamentos/${t.id}`} className="flex w-full items-center gap-3 rounded-2xl px-2 py-2.5 text-left hover:bg-gray-50">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-              {t.tipo === 'ensaio_geral' ? <Drama className="h-5 w-5" /> : <GraduationCap className="h-5 w-5" />}
+              {t.tipo === 'ensaio_geral' ? <Drama className="h-5 w-5" /> : t.tipo === 'reuniao' ? <Users className="h-5 w-5" /> : <GraduationCap className="h-5 w-5" />}
             </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{t.titulo}</p>
               <p className="truncate text-xs text-gray-500">
                 {proxima ? `${formatRelativeDia(proxima.data, todayKey)} · ${formatHoraCompacta(proxima.horario)}` : 'Sem dias marcados'}
                 {sessoes.length > 1 && ` · ${sessoes.length} dias`}
-                {t.tipo === 'ensaio_geral' ? ' · Ensaio geral' : t.publico === 'elenco' && ' · Só elenco'}
+                {t.tipo === 'ensaio_geral' ? ' · Ensaio geral' : t.tipo === 'reuniao' ? ' · Reunião' : t.publico === 'elenco' && ' · Só elenco'}
                 {t.publico === 'pessoas' && ` · ${t.pessoas?.length ?? 0} pessoas`}
               </p>
             </div>
@@ -150,7 +150,8 @@ export function TreinamentoDialog({ treinamento, sessoes: existentes = [], geral
   const geral = treinamento ? treinamento.tipo === 'ensaio_geral' : !!geralProp
   // Ensaio já realizado (todos os dias no passado): não faz sentido convidar mais ninguém.
   const jaRealizado = !!treinamento && existentes.length > 0 && existentes.every(s => s.data < toDateKey(new Date()))
-  const nomeTipo = geral ? 'ensaio geral' : 'treinamento'
+  const [reuniao, setReuniao] = useState(treinamento?.tipo === 'reuniao')
+  const nomeTipo = geral ? 'ensaio geral' : reuniao ? 'reunião' : 'treinamento'
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
   const [titulo, setTitulo] = useState(treinamento?.titulo ?? '')
@@ -208,7 +209,7 @@ export function TreinamentoDialog({ treinamento, sessoes: existentes = [], geral
       publico,
       // Convidados do ensaio geral: só quem não tem personagem.
       pessoas: geral ? pessoas.filter(u => !elenco.has(u)) : pessoas,
-      ...(geral ? { tipo: 'ensaio_geral' as const, horarioFim, grupos: gruposValidos } : {}),
+      ...(geral ? { tipo: 'ensaio_geral' as const, horarioFim, grupos: gruposValidos } : reuniao ? { tipo: 'reuniao' as const } : {}),
     }
     const ordenadas = [...sessoes].sort((a, b) => a.data.localeCompare(b.data))
     try {
@@ -244,11 +245,32 @@ export function TreinamentoDialog({ treinamento, sessoes: existentes = [], geral
     )
 
   return (
-    <Dialog open onClose={onClose} title={treinamento ? `Editar ${nomeTipo}` : geral ? 'Novo ensaio geral' : 'Novo treinamento'}>
+    <Dialog open onClose={onClose} title={treinamento ? `Editar ${nomeTipo}` : geral ? 'Novo ensaio geral' : reuniao ? 'Nova reunião' : 'Novo treinamento'}>
       <div className="space-y-4">
+        {!geral && (
+          <div className="grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1">
+            {[
+              { valor: false, label: 'Treinamento', icon: GraduationCap },
+              { valor: true, label: 'Reunião', icon: Users },
+            ].map(({ valor, label, icon: Icon }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setReuniao(valor)}
+                className={cn(
+                  'flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-sm font-medium transition-colors',
+                  reuniao === valor ? 'bg-white text-primary shadow-sm' : 'text-gray-500',
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         <div>
           <Label htmlFor="treino-titulo">Título</Label>
-          <Input id="treino-titulo" value={titulo} onChange={e => setTitulo(e.target.value)} placeholder={geral ? 'Ex.: Ensaio geral' : 'Ex.: Oficina de expressão corporal'} autoFocus />
+          <Input id="treino-titulo" value={titulo} onChange={e => setTitulo(e.target.value)} placeholder={geral ? 'Ex.: Ensaio geral' : reuniao ? 'Ex.: Reunião de figurino' : 'Ex.: Oficina de expressão corporal'} autoFocus />
         </div>
         <div>
           <Label htmlFor="treino-descricao">Descrição</Label>
@@ -325,16 +347,18 @@ export function TreinamentoDialog({ treinamento, sessoes: existentes = [], geral
             </div>
           )}
         </div>
-        {!geral && (
+        {!geral && !reuniao && (
           <div>
             <Label htmlFor="treino-roupa">Tipo de roupa</Label>
             <Input id="treino-roupa" value={roupa} onChange={e => setRoupa(e.target.value)} placeholder="Ex.: Roupa confortável e tênis" />
           </div>
         )}
-        <div>
-          <Label htmlFor="treino-levar">{geral ? 'O que levar pro ensaio' : 'O que levar'}</Label>
-          <Input id="treino-levar" value={levar} onChange={e => setLevar(e.target.value)} placeholder="Ex.: Garrafa d'água e toalha" />
-        </div>
+        {!reuniao && (
+          <div>
+            <Label htmlFor="treino-levar">{geral ? 'O que levar pro ensaio' : 'O que levar'}</Label>
+            <Input id="treino-levar" value={levar} onChange={e => setLevar(e.target.value)} placeholder="Ex.: Garrafa d'água e toalha" />
+          </div>
+        )}
 
         {geral ? (
           <>

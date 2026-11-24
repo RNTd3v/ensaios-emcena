@@ -511,16 +511,16 @@ const AVISO_DO_DIA_MIN = 8 * 60
  * o app, onde a confirmação já está aberta desde que o ensaio foi confirmado.
  */
 const AVISOS_ANTECIPADOS_DIAS = [2, 1]
-function tituloAntecipado(diasAntes: number, oQue: 'ensaio' | 'treinamento'): string {
-  if (diasAntes === 1) return `${oQue === 'ensaio' ? 'Ensaio' : 'Treinamento'} amanhã — confirme sua presença`
-  return `Confirme sua presença no ${oQue}`
+function tituloAntecipado(diasAntes: number, rotulo: string): string {
+  if (diasAntes === 1) return `${rotulo.charAt(0).toUpperCase()}${rotulo.slice(1)} amanhã — confirme sua presença`
+  return `Confirme sua presença ${rotulo === 'reunião' ? 'na' : 'no'} ${rotulo}`
 }
 /** Antes disso não sai lembrete de confirmação (ensaio cedo fecha a confirmação de madrugada). */
 const SILENCIO_ATE_MIN = 7 * 60
 /** Minutos antes de a confirmação fechar em que quem não respondeu é lembrado. */
 const MARCOS_CONFIRMACAO = [120, 60, 30, 10]
-function tituloMarco(marco: number, oQue: 'ensaio' | 'treinamento'): string {
-  if (marco === 120) return `Confirme sua presença no ${oQue} de hoje`
+function tituloMarco(marco: number, rotulo: string): string {
+  if (marco === 120) return `Confirme sua presença ${rotulo === 'reunião' ? 'na' : 'no'} ${rotulo} de hoje`
   if (marco === 60) return 'Falta 1h pra fechar a confirmação'
   if (marco === 30) return 'Faltam 30 min pra confirmar'
   return 'Últimos minutos pra confirmar'
@@ -530,6 +530,8 @@ interface Ocorrencia {
   /** Ensaio ou sessão de treinamento de hoje (mesmos campos de data/horário/respostas/marcas). */
   e: DocumentData
   oQue: 'ensaio' | 'treinamento'
+  /** Como a notificação chama: 'ensaio', 'treinamento' ou 'reunião'. */
+  rotulo?: string
   participantes: string[]
   /** Nome da cena ou título do treinamento. */
   nome: string
@@ -542,7 +544,7 @@ interface Ocorrencia {
  * marcar no doc e as notificações a enviar. `diasAntes` = quantos dias faltam (0 = hoje).
  */
 function lembretesDaOcorrencia(
-  { e, oQue, participantes, nome, descricao, link }: Ocorrencia,
+  { e, oQue, rotulo = oQue, participantes, nome, descricao, link }: Ocorrencia,
   diasAntes: number,
   inicio: number,
   minutos: number,
@@ -566,7 +568,7 @@ function lembretesDaOcorrencia(
     ) {
       atualizacao.avisosAntecipados = { chave, dias: [...anteriores, diasAntes] }
       const pendentes = participantes.filter(u => !presentes.has(u) && !ausentes.has(u))
-      if (pendentes.length) envios.push([pendentes, { titulo: tituloAntecipado(diasAntes, oQue), corpo: descricao, link, tipo }])
+      if (pendentes.length) envios.push([pendentes, { titulo: tituloAntecipado(diasAntes, rotulo), corpo: descricao, link, tipo }])
     }
     return { atualizacao, envios }
   }
@@ -576,7 +578,7 @@ function lembretesDaOcorrencia(
     atualizacao.avisoDoDiaEnviado = chave
     envios.push([
       participantes.filter(u => !ausentes.has(u)),
-      { titulo: `Hoje tem ${oQue}! Se programe`, corpo: descricao, link, tipo },
+      { titulo: `Hoje tem ${rotulo}! Se programe`, corpo: descricao, link, tipo },
     ])
   }
 
@@ -593,7 +595,7 @@ function lembretesDaOcorrencia(
         envios.push([
           pendentes,
           {
-            titulo: tituloMarco(Math.min(...devidos), oQue),
+            titulo: tituloMarco(Math.min(...devidos), rotulo),
             corpo: `${nome} hoje às ${horaDeMinutos(inicio)} — confirme até ${horaDeMinutos(fecha)}.`,
             link,
             tipo,
@@ -657,6 +659,7 @@ export const lembretesDoDia = onSchedule({ schedule: 'every 5 minutes', timeZone
         return {
           e,
           oQue: 'treinamento',
+          rotulo: t.tipo === 'reuniao' ? 'reunião' : t.tipo === 'ensaio_geral' ? 'ensaio geral' : 'treinamento',
           participantes: await publicoDoTreinamento(t),
           nome: t.titulo,
           descricao: descricaoTreinamento(t, e),
@@ -796,8 +799,8 @@ async function avisarTreinamento(id: string, t: DocumentData, uids: string[]): P
   await notificar(
     uids,
     {
-      titulo: t.tipo === 'ensaio_geral' ? `Ensaio geral: ${t.titulo}` : `Novo treinamento: ${t.titulo}`,
-      corpo: `${dias}${t.horarioFim ? ` até ${t.horarioFim}` : ''}${t.local ? ` · ${t.local}` : ''}${t.levar ? ` · Levar: ${t.levar}` : ''}. Confirme sua presença${t.tipo === 'ensaio_geral' ? '' : ' no dia'}.`,
+      titulo: t.tipo === 'ensaio_geral' ? `Ensaio geral: ${t.titulo}` : t.tipo === 'reuniao' ? `Nova reunião: ${t.titulo}` : `Novo treinamento: ${t.titulo}`,
+      corpo: `${dias}${t.horarioFim ? ` até ${t.horarioFim}` : ''}${t.local ? ` · ${t.local}` : ''}${t.levar && t.tipo !== 'reuniao' ? ` · Levar: ${t.levar}` : ''}. Confirme sua presença${t.tipo === 'ensaio_geral' ? '' : ' no dia'}.`,
       link: `/treinamentos/${id}`,
       tipo: 'treinamento',
     },

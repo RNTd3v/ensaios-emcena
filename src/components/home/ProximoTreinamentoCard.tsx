@@ -88,16 +88,21 @@ export function ProximoTreinamentoCard({ uid, dependentes }: { uid: string; depe
         const horarioUnico = horariosDistintos.length === 1 ? horariosDistintos[0] : undefined
         const horario = meuGrupo?.horario ?? horarioUnico ?? sessao.horario
         const local = meuGrupo?.local || treinamento.local
-        const rotulo = geral ? 'Ensaio geral' : 'Treinamento'
+        const reuniao = treinamento.tipo === 'reuniao'
+        const rotulo = geral ? 'Ensaio geral' : reuniao ? 'Reunião' : 'Treinamento'
         const titulo = soEu
           ? geral
             ? 'Ensaio geral'
-            : 'Seu próximo treinamento'
+            : reuniao
+              ? 'Sua próxima reunião'
+              : 'Seu próximo treinamento'
           : semMim
-            ? `${geral ? 'Ensaio geral' : 'Próximo treinamento'} de ${nomes}`
+            ? `${geral ? 'Ensaio geral' : reuniao ? 'Próxima reunião' : 'Próximo treinamento'} de ${nomes}`
             : geral
               ? 'Ensaio geral'
-              : 'Próximo treinamento'
+              : reuniao
+                ? 'Próxima reunião'
+                : 'Próximo treinamento'
         const diasAte = Math.round((new Date(`${sessao.data}T00:00:00`).getTime() - new Date(`${todayKey}T00:00:00`).getTime()) / 86_400_000)
         const aberto = abertos[sessao.id] ?? diasAte <= 2
         const ausentesDaSessao = uidsAusentes(sessao)
